@@ -3,39 +3,23 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:padding="24dp">
+    android:layout_height="match_parent">
 
-    <TextView
-        android:id="@+id/status_text"
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/main_tabs"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <Button
-        android:id="@+id/upload_button"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/upload_image"
-        app:layout_constraintTop_toBottomOf="@id/status_text"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
-
-    <ImageView
-        android:id="@+id/preview_image"
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/main_pager"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:adjustViewBounds="true"
-        android:scaleType="fitCenter"
-        android:contentDescription="@string/preview_image"
-        app:layout_constraintTop_toBottomOf="@id/upload_button"
+        app:layout_constraintTop_toBottomOf="@id/main_tabs"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginTop="16dp" />
+        app:layout_constraintBottom_toBottomOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

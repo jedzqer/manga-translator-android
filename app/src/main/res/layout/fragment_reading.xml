@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/reading_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF0F0F0F">
+
+    <ImageView
+        android:id="@+id/reading_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:adjustViewBounds="true"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/preview_image" />
+
+    <TextView
+        android:id="@+id/reading_page_info"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="12dp"
+        android:textColor="#FFFFFFFF"
+        android:textSize="12sp"
+        android:background="#66000000"
+        android:padding="6dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/reading_empty_hint"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="@string/reading_empty"
+        android:textColor="#FFCCCCCC"
+        android:textSize="14sp" />
+
+    <com.manga.translate.FloatingTranslationView
+        android:id="@+id/translation_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+</FrameLayout>
