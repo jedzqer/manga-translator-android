@@ -49,4 +49,3 @@ Thumbs.db
 
 # Model weights (local only)
 assets/*.onnx
-assets/*.pt
