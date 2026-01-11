@@ -1,7 +1,10 @@
 package com.manga.translate
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,12 +13,15 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
+import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.manga.translate.databinding.FragmentLibraryBinding
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class LibraryFragment : Fragment() {
@@ -37,12 +43,24 @@ class LibraryFragment : Fragment() {
     )
     private var currentFolder: File? = null
     private var imageSelectionMode = false
+    private val prefs by lazy {
+        requireContext().getSharedPreferences("library_prefs", Context.MODE_PRIVATE)
+    }
+    private val ehViewerTreeKey = "ehviewer_tree_uri"
 
     private val pickImages = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
             addImagesToFolder(uris)
+        }
+    }
+
+    private val pickEhViewerTree = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            handleEhViewerTreeSelection(uri)
         }
     }
 
@@ -66,6 +84,7 @@ class LibraryFragment : Fragment() {
         binding.folderImageList.adapter = imageAdapter
 
         binding.addFolderFab.setOnClickListener { showCreateFolderDialog() }
+        binding.importEhviewerButton.setOnClickListener { importFromEhViewer() }
         binding.folderBackButton.setOnClickListener { showFolderList() }
         binding.folderAddImages.setOnClickListener { pickImages.launch(arrayOf("image/*")) }
         binding.folderTranslate.setOnClickListener { translateFolder() }
@@ -106,6 +125,7 @@ class LibraryFragment : Fragment() {
         binding.libraryListContainer.visibility = View.VISIBLE
         binding.folderDetailContainer.visibility = View.GONE
         binding.addFolderFab.visibility = View.VISIBLE
+        binding.importEhviewerButton.visibility = View.VISIBLE
         clearFolderStatus()
         exitSelectionMode()
         folderAdapter.clearDeleteSelection()
@@ -118,6 +138,7 @@ class LibraryFragment : Fragment() {
         binding.libraryListContainer.visibility = View.GONE
         binding.folderDetailContainer.visibility = View.VISIBLE
         binding.addFolderFab.visibility = View.GONE
+        binding.importEhviewerButton.visibility = View.GONE
         exitSelectionMode()
         AppLogger.log("Library", "Opened folder ${folder.name}")
         loadImages(folder)
@@ -185,6 +206,186 @@ class LibraryFragment : Fragment() {
         loadFolders()
     }
 
+    private fun importFromEhViewer() {
+        val treeUri = getEhViewerTreeUri()
+        if (treeUri == null || !hasEhViewerPermission(treeUri)) {
+            Toast.makeText(
+                requireContext(),
+                R.string.ehviewer_permission_hint,
+                Toast.LENGTH_LONG
+            ).show()
+            requestEhViewerPermission()
+            return
+        }
+        showEhViewerSubfolderPicker(treeUri)
+    }
+
+    private fun requestEhViewerPermission() {
+        val initialUri = buildEhViewerInitialUri()
+        pickEhViewerTree.launch(initialUri)
+    }
+
+    private fun handleEhViewerTreeSelection(uri: Uri) {
+        if (!isEhViewerTree(uri)) {
+            Toast.makeText(
+                requireContext(),
+                R.string.ehviewer_permission_invalid,
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        try {
+            requireContext().contentResolver.takePersistableUriPermission(uri, flags)
+        } catch (e: SecurityException) {
+            AppLogger.log("Library", "Persist ehviewer permission failed", e)
+        }
+        prefs.edit().putString(ehViewerTreeKey, uri.toString()).apply()
+        showEhViewerSubfolderPicker(uri)
+    }
+
+    private fun showEhViewerSubfolderPicker(treeUri: Uri) {
+        val root = DocumentFile.fromTreeUri(requireContext(), treeUri)
+        if (root == null || !root.canRead()) {
+            Toast.makeText(
+                requireContext(),
+                R.string.ehviewer_permission_required,
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        val folders = root.listFiles().filter { it.isDirectory }
+        if (folders.isEmpty()) {
+            Toast.makeText(
+                requireContext(),
+                R.string.ehviewer_no_subfolders,
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        val names = folders.map { it.name ?: "未命名" }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.ehviewer_select_folder)
+            .setItems(names) { _, index ->
+                val folder = folders[index]
+                val defaultName = folder.name ?: ""
+                promptEhViewerImportName(defaultName) { importName ->
+                    importEhViewerFolder(folder, importName)
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun promptEhViewerImportName(defaultName: String, onConfirm: (String) -> Unit) {
+        val input = EditText(requireContext()).apply {
+            hint = getString(R.string.folder_name_hint)
+            setText(defaultName)
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.ehviewer_import_name_title)
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val name = input.text?.toString()?.trim().orEmpty()
+                if (name.isEmpty()) {
+                    Toast.makeText(
+                        requireContext(),
+                        R.string.folder_create_failed,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    onConfirm(name)
+                }
+            }
+            .show()
+    }
+
+    private fun importEhViewerFolder(source: DocumentFile, importName: String) {
+        val folder = repository.createFolder(importName)
+        if (folder == null) {
+            Toast.makeText(
+                requireContext(),
+                R.string.ehviewer_folder_exists,
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        val images = source.listFiles().filter { it.isFile && isImageDocument(it) }
+        if (images.isEmpty()) {
+            folder.deleteRecursively()
+            Toast.makeText(
+                requireContext(),
+                R.string.ehviewer_no_images,
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            val added = repository.addImages(folder, images.map { it.uri })
+            withContext(Dispatchers.Main) {
+                if (added.isEmpty()) {
+                    folder.deleteRecursively()
+                    Toast.makeText(
+                        requireContext(),
+                        R.string.ehviewer_import_failed,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        requireContext(),
+                        getString(R.string.ehviewer_import_done, added.size),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                loadFolders()
+                showFolderList()
+            }
+        }
+    }
+
+    private fun getEhViewerTreeUri(): Uri? {
+        return prefs.getString(ehViewerTreeKey, null)?.let(Uri::parse)
+    }
+
+    private fun hasEhViewerPermission(uri: Uri): Boolean {
+        val persisted = requireContext()
+            .contentResolver
+            .persistedUriPermissions
+            .any { it.uri == uri && it.isReadPermission }
+        val root = DocumentFile.fromTreeUri(requireContext(), uri)
+        return persisted && root?.canRead() == true
+    }
+
+    private fun isEhViewerTree(uri: Uri): Boolean {
+        return try {
+            val docId = DocumentsContract.getTreeDocumentId(uri)
+            docId.contains("EhViewer/download", ignoreCase = true)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun buildEhViewerInitialUri(): Uri? {
+        return try {
+            DocumentsContract.buildTreeDocumentUri(
+                "com.android.externalstorage.documents",
+                "primary:EhViewer/download"
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun isImageDocument(file: DocumentFile): Boolean {
+        val name = file.name?.lowercase().orEmpty()
+        return name.endsWith(".jpg") ||
+            name.endsWith(".jpeg") ||
+            name.endsWith(".png") ||
+            name.endsWith(".webp")
+    }
+
     private fun confirmDeleteFolder(folder: File) {
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.folder_delete)
@@ -226,6 +427,7 @@ class LibraryFragment : Fragment() {
             return
         }
         binding.folderTranslate.isEnabled = false
+        TranslationKeepAliveService.start(requireContext())
         AppLogger.log(
             "Library",
             "Start translating folder ${folder.name}, ${pendingImages.size} images"
@@ -284,6 +486,7 @@ class LibraryFragment : Fragment() {
                 loadImages(folder)
             } finally {
                 binding.folderTranslate.isEnabled = true
+                TranslationKeepAliveService.stop(requireContext())
             }
         }
     }

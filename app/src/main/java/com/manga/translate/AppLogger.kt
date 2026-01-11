@@ -15,7 +15,12 @@ object AppLogger {
     private var logFile: File? = null
 
     fun init(context: Context) {
-        val dir = File(context.filesDir, "logs")
+        val externalRoot = context.getExternalFilesDir(null)?.parentFile
+        val dir = if (externalRoot != null) {
+            File(externalRoot, "log")
+        } else {
+            File(context.filesDir, "logs")
+        }
         if (!dir.exists()) {
             dir.mkdirs()
         }
