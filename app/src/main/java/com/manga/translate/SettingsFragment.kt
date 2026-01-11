@@ -37,6 +37,7 @@ class SettingsFragment : Fragment() {
         binding.apiUrlInput.setText(settings.apiUrl)
         binding.apiKeyInput.setText(settings.apiKey)
         binding.modelNameInput.setText(settings.modelName)
+        binding.maxConcurrencyInput.setText(settingsStore.loadMaxConcurrency().toString())
         binding.textLayoutSwitch.isChecked = settingsStore.loadUseHorizontalText()
         binding.textLayoutSwitch.setOnCheckedChangeListener { _, isChecked ->
             settingsStore.saveUseHorizontalText(isChecked)
@@ -48,6 +49,13 @@ class SettingsFragment : Fragment() {
             val key = binding.apiKeyInput.text?.toString()?.trim().orEmpty()
             val model = binding.modelNameInput.text?.toString()?.trim().orEmpty()
             settingsStore.save(ApiSettings(url, key, model))
+            val concurrencyInput = binding.maxConcurrencyInput.text?.toString()?.trim()
+            val maxConcurrency = concurrencyInput?.toIntOrNull() ?: settingsStore.loadMaxConcurrency()
+            val normalized = maxConcurrency.coerceIn(1, 50)
+            settingsStore.saveMaxConcurrency(normalized)
+            if (normalized.toString() != concurrencyInput) {
+                binding.maxConcurrencyInput.setText(normalized.toString())
+            }
             AppLogger.log("Settings", "API settings saved")
             Toast.makeText(requireContext(), R.string.settings_saved, Toast.LENGTH_SHORT).show()
         }

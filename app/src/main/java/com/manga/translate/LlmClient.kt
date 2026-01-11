@@ -29,9 +29,10 @@ class LlmClient(context: Context) {
 
     suspend fun extractGlossary(
         text: String,
+        glossary: Map<String, String>,
         promptAsset: String
     ): Map<String, String>? = withContext(Dispatchers.IO) {
-        requestContent(text, emptyMap(), promptAsset, useJsonPayload = false)
+        requestContent(text, glossary, promptAsset, useJsonPayload = true)
             ?.let { parseGlossaryContent(it) }
     }
 

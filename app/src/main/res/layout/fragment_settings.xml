@@ -56,12 +56,29 @@
             android:inputType="text" />
     </com.google.android.material.textfield.TextInputLayout>
 
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/max_concurrency_layout"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="@string/max_concurrency_hint"
+        app:layout_constraintTop_toBottomOf="@id/model_name_layout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/max_concurrency_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number" />
+    </com.google.android.material.textfield.TextInputLayout>
+
     <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/text_layout_switch"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="@string/text_layout_horizontal"
-        app:layout_constraintTop_toBottomOf="@id/model_name_layout"
+        app:layout_constraintTop_toBottomOf="@id/max_concurrency_layout"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="16dp" />

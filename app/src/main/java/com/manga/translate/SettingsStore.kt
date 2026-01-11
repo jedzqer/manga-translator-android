@@ -40,12 +40,28 @@ class SettingsStore(context: Context) {
             .apply()
     }
 
+    fun loadMaxConcurrency(): Int {
+        val saved = prefs.getInt(KEY_MAX_CONCURRENCY, DEFAULT_MAX_CONCURRENCY)
+        return saved.coerceIn(MIN_MAX_CONCURRENCY, MAX_MAX_CONCURRENCY)
+    }
+
+    fun saveMaxConcurrency(value: Int) {
+        val normalized = value.coerceIn(MIN_MAX_CONCURRENCY, MAX_MAX_CONCURRENCY)
+        prefs.edit()
+            .putInt(KEY_MAX_CONCURRENCY, normalized)
+            .apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "manga_translate_settings"
         private const val KEY_API_URL = "api_url"
         private const val KEY_API_KEY = "api_key"
         private const val KEY_MODEL_NAME = "model_name"
         private const val KEY_HORIZONTAL_TEXT = "horizontal_text_layout"
+        private const val KEY_MAX_CONCURRENCY = "max_concurrency"
         private const val DEFAULT_MODEL = "gpt-3.5-turbo"
+        private const val DEFAULT_MAX_CONCURRENCY = 3
+        private const val MIN_MAX_CONCURRENCY = 1
+        private const val MAX_MAX_CONCURRENCY = 50
     }
 }

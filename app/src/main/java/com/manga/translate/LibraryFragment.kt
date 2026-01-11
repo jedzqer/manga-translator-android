@@ -20,9 +20,16 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.manga.translate.databinding.FragmentLibraryBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class LibraryFragment : Fragment() {
     private var _binding: FragmentLibraryBinding? = null
@@ -547,7 +554,10 @@ class LibraryFragment : Fragment() {
                     ocrCount += 1
                     setFolderStatus(getString(R.string.translation_preparing))
                 }
-                val glossaryText = buildGlossaryText(ocrResults)
+                val glossaryPages = ocrResults.filterNot {
+                    translationStore.translationFileFor(it.imageFile).exists()
+                }
+                val glossaryText = buildGlossaryText(glossaryPages)
                 if (glossaryText.isNotBlank()) {
                     setFolderStatus(
                         getString(R.string.translation_preparing),
@@ -555,47 +565,68 @@ class LibraryFragment : Fragment() {
                     )
                     val extracted = llmClient.extractGlossary(
                         glossaryText,
+                        glossary,
                         "llm_prompts_abstract.json"
                     )
                     if (!extracted.isNullOrEmpty()) {
-                        glossary.putAll(extracted)
+                        for ((key, value) in extracted) {
+                            if (!glossary.containsKey(key)) {
+                                glossary[key] = value
+                            }
+                        }
                         glossaryStore.save(folder, glossary)
                     }
                 }
-                var translatedCount = 0
+                val maxConcurrency = SettingsStore(requireContext()).loadMaxConcurrency()
+                val semaphore = Semaphore(maxConcurrency)
+                val translatedCount = AtomicInteger(0)
+                val hasFailures = AtomicBoolean(false)
                 setFolderStatus(getString(R.string.translation_preparing))
-                val pendingByName = pendingImages.associateBy { it.name }
-                for (page in ocrResults) {
-                    val image = pendingByName[page.imageFile.name] ?: continue
-                    val result = try {
-                        translationPipeline.translateFullPage(
-                            page,
-                            glossary,
-                            "llm_prompts_FullTrans.json"
-                        ) { }
-                    } catch (e: Exception) {
-                        AppLogger.log("Library", "Full-page translation failed for ${image.name}", e)
-                        null
+                coroutineScope {
+                    val tasks = ocrResults.map { page ->
+                        async {
+                            semaphore.withPermit {
+                                val result = try {
+                                    translationPipeline.translateFullPage(
+                                        page,
+                                        glossary,
+                                        "llm_prompts_FullTrans.json"
+                                    ) { }
+                                } catch (e: Exception) {
+                                    AppLogger.log(
+                                        "Library",
+                                        "Full-page translation failed for ${page.imageFile.name}",
+                                        e
+                                    )
+                                    null
+                                }
+                                if (result != null) {
+                                    translationPipeline.saveResult(page.imageFile, result)
+                                    translatedCount.incrementAndGet()
+                                } else {
+                                    hasFailures.set(true)
+                                }
+                                withContext(Dispatchers.Main) {
+                                    val count = translatedCount.get()
+                                    setFolderStatus(
+                                        getString(
+                                            R.string.folder_translation_count,
+                                            count,
+                                            pendingImages.size
+                                        )
+                                    )
+                                    TranslationKeepAliveService.updateProgress(
+                                        requireContext(),
+                                        count,
+                                        pendingImages.size
+                                    )
+                                }
+                            }
+                        }
                     }
-                    if (result != null) {
-                        translationPipeline.saveResult(image, result)
-                        translatedCount += 1
-                    } else {
-                        failed = true
-                    }
-                    setFolderStatus(
-                        getString(
-                            R.string.folder_translation_count,
-                            translatedCount,
-                            pendingImages.size
-                        )
-                    )
-                    TranslationKeepAliveService.updateProgress(
-                        requireContext(),
-                        translatedCount,
-                        pendingImages.size
-                    )
+                    tasks.awaitAll()
                 }
+                failed = failed || hasFailures.get()
                 setFolderStatus(
                     if (failed) getString(R.string.translation_failed) else getString(R.string.translation_done)
                 )
