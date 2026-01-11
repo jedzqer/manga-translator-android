@@ -11,18 +11,40 @@ import java.net.URL
 class LlmClient(context: Context) {
     private val appContext = context.applicationContext
     private val settingsStore = SettingsStore(appContext)
-    private val promptConfig: LlmPromptConfig by lazy { loadPromptConfig() }
+    private val promptCache = mutableMapOf<String, LlmPromptConfig>()
 
     fun isConfigured(): Boolean {
         return settingsStore.load().isValid()
     }
 
-    suspend fun translate(text: String, glossary: Map<String, String>): LlmTranslationResult? =
+    suspend fun translate(
+        text: String,
+        glossary: Map<String, String>,
+        promptAsset: String = PROMPT_CONFIG_ASSET
+    ): LlmTranslationResult? =
         withContext(Dispatchers.IO) {
+            requestContent(text, glossary, promptAsset, useJsonPayload = true)
+                ?.let { parseTranslationContent(it) }
+    }
+
+    suspend fun extractGlossary(
+        text: String,
+        promptAsset: String
+    ): Map<String, String>? = withContext(Dispatchers.IO) {
+        requestContent(text, emptyMap(), promptAsset, useJsonPayload = false)
+            ?.let { parseGlossaryContent(it) }
+    }
+
+    private fun requestContent(
+        text: String,
+        glossary: Map<String, String>,
+        promptAsset: String,
+        useJsonPayload: Boolean
+    ): String? {
         val settings = settingsStore.load()
-        if (!settings.isValid()) return@withContext null
+        if (!settings.isValid()) return null
         val endpoint = buildEndpoint(settings.apiUrl)
-        val payload = buildPayload(text, glossary, settings.modelName)
+        val payload = buildPayload(text, glossary, settings.modelName, promptAsset, useJsonPayload)
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json")
@@ -31,7 +53,7 @@ class LlmClient(context: Context) {
             readTimeout = TIMEOUT_MS
             doOutput = true
         }
-        return@withContext try {
+        return try {
             connection.outputStream.use { output ->
                 output.write(payload.toString().toByteArray(Charsets.UTF_8))
             }
@@ -46,7 +68,7 @@ class LlmClient(context: Context) {
                 AppLogger.log("LlmClient", "HTTP $code: $body")
                 null
             } else {
-                parseResponse(body)
+                parseResponseContent(body)
             }
         } catch (e: Exception) {
             AppLogger.log("LlmClient", "Request failed", e)
@@ -65,8 +87,14 @@ class LlmClient(context: Context) {
         }
     }
 
-    private fun buildPayload(text: String, glossary: Map<String, String>, modelName: String): JSONObject {
-        val config = promptConfig
+    private fun buildPayload(
+        text: String,
+        glossary: Map<String, String>,
+        modelName: String,
+        promptAsset: String,
+        useJsonPayload: Boolean
+    ): JSONObject {
+        val config = getPromptConfig(promptAsset)
         val messages = JSONArray()
         messages.put(
             JSONObject()
@@ -83,7 +111,14 @@ class LlmClient(context: Context) {
         messages.put(
             JSONObject()
                 .put("role", "user")
-                .put("content", config.userPromptPrefix + buildUserPayload(text, glossary))
+                .put(
+                    "content",
+                    config.userPromptPrefix + if (useJsonPayload) {
+                        buildUserPayload(text, glossary)
+                    } else {
+                        text
+                    }
+                )
         )
         return JSONObject()
             .put("model", modelName)
@@ -91,14 +126,13 @@ class LlmClient(context: Context) {
             .put("messages", messages)
     }
 
-    private fun parseResponse(body: String): LlmTranslationResult? {
+    private fun parseResponseContent(body: String): String? {
         return try {
             val json = JSONObject(body)
             val choices = json.optJSONArray("choices") ?: return null
             val first = choices.optJSONObject(0) ?: return null
             val message = first.optJSONObject("message") ?: return null
-            val content = message.optString("content")?.trim()?.ifBlank { null } ?: return null
-            parseTranslationContent(content)
+            message.optString("content")?.trim()?.ifBlank { null }
         } catch (e: Exception) {
             null
         }
@@ -129,8 +163,31 @@ class LlmClient(context: Context) {
         }
     }
 
-    private fun loadPromptConfig(): LlmPromptConfig {
-        val json = JSONObject(readAsset(PROMPT_CONFIG_ASSET))
+    private fun parseGlossaryContent(content: String): Map<String, String> {
+        return try {
+            val cleaned = stripCodeFence(content)
+            val json = JSONObject(cleaned)
+            val glossaryJson = json.optJSONObject("glossary_used") ?: return emptyMap()
+            val glossary = mutableMapOf<String, String>()
+            for (key in glossaryJson.keys()) {
+                val value = glossaryJson.optString(key).trim()
+                if (key.isNotBlank() && value.isNotBlank()) {
+                    glossary[key] = value
+                }
+            }
+            glossary
+        } catch (e: Exception) {
+            AppLogger.log("LlmClient", "Glossary parse failed", e)
+            emptyMap()
+        }
+    }
+
+    private fun getPromptConfig(name: String): LlmPromptConfig {
+        return promptCache.getOrPut(name) { loadPromptConfig(name) }
+    }
+
+    private fun loadPromptConfig(name: String): LlmPromptConfig {
+        val json = JSONObject(readAsset(name))
         val systemPrompt = json.optString("system_prompt")
         val userPromptPrefix = json.optString("user_prompt_prefix")
         val examplesJson = json.optJSONArray("example_messages") ?: JSONArray()

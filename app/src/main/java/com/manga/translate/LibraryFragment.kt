@@ -47,6 +47,7 @@ class LibraryFragment : Fragment() {
         requireContext().getSharedPreferences("library_prefs", Context.MODE_PRIVATE)
     }
     private val ehViewerTreeKey = "ehviewer_tree_uri"
+    private val fullTranslateKeyPrefix = "full_translate_enabled_"
 
     private val pickImages = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -92,6 +93,11 @@ class LibraryFragment : Fragment() {
         binding.folderSelectAll.setOnClickListener { toggleSelectAllImages() }
         binding.folderDeleteSelected.setOnClickListener { confirmDeleteSelectedImages() }
         binding.folderCancelSelection.setOnClickListener { exitSelectionMode() }
+        binding.folderRetranslateSelected.setOnClickListener { retranslateSelectedImages() }
+        binding.folderFullTranslateInfo.setOnClickListener { showFullTranslateInfo() }
+        binding.folderFullTranslateSwitch.setOnCheckedChangeListener { _, isChecked ->
+            currentFolder?.let { setFullTranslateEnabled(it, isChecked) }
+        }
 
         requireActivity().onBackPressedDispatcher.addCallback(
             viewLifecycleOwner,
@@ -135,6 +141,7 @@ class LibraryFragment : Fragment() {
     private fun showFolderDetail(folder: File) {
         currentFolder = folder
         binding.folderTitle.text = folder.name
+        binding.folderFullTranslateSwitch.isChecked = isFullTranslateEnabled(folder)
         binding.libraryListContainer.visibility = View.GONE
         binding.folderDetailContainer.visibility = View.VISIBLE
         binding.addFolderFab.visibility = View.GONE
@@ -411,12 +418,19 @@ class LibraryFragment : Fragment() {
     private fun translateFolder() {
         val folder = currentFolder ?: return
         exitSelectionMode()
-        val images = repository.listImages(folder)
+        if (isFullTranslateEnabled(folder)) {
+            translateFolderFull(folder, repository.listImages(folder), force = false)
+        } else {
+            translateFolderStandard(folder, repository.listImages(folder), force = false)
+        }
+    }
+
+    private fun translateFolderStandard(folder: File, images: List<File>, force: Boolean) {
         if (images.isEmpty()) {
             setFolderStatus(getString(R.string.folder_images_empty))
             return
         }
-        val pendingImages = images.filterNot { translationStore.translationFileFor(it).exists() }
+        val pendingImages = resolvePendingImages(images, force)
         if (pendingImages.isEmpty()) {
             setFolderStatus(getString(R.string.translation_done))
             return
@@ -428,6 +442,10 @@ class LibraryFragment : Fragment() {
         }
         binding.folderTranslate.isEnabled = false
         TranslationKeepAliveService.start(requireContext())
+        TranslationKeepAliveService.updateStatus(
+            requireContext(),
+            getString(R.string.translation_preparing)
+        )
         AppLogger.log(
             "Library",
             "Start translating folder ${folder.name}, ${pendingImages.size} images"
@@ -437,19 +455,10 @@ class LibraryFragment : Fragment() {
             try {
                 val glossary = glossaryStore.load(folder)
                 var translatedCount = 0
-                setFolderStatus(
-                    getString(
-                        R.string.folder_translation_progress,
-                        translatedCount,
-                        pendingImages.size
-                    ),
-                    getString(R.string.detecting_bubbles)
-                )
+                setFolderStatus(getString(R.string.translation_preparing))
                 for (image in pendingImages) {
                     val result = try {
-                        translationPipeline.translateImage(image, glossary) { progress ->
-                            binding.folderProgressRight.post { binding.folderProgressRight.text = progress }
-                        }
+                        translationPipeline.translateImage(image, glossary) { }
                     } catch (e: Exception) {
                         AppLogger.log("Library", "Translation failed for ${image.name}", e)
                         null
@@ -465,15 +474,15 @@ class LibraryFragment : Fragment() {
                     }
                     setFolderStatus(
                         getString(
-                            R.string.folder_translation_progress,
+                            R.string.folder_translation_count,
                             translatedCount,
                             pendingImages.size
-                        ),
-                        if (translatedCount < pendingImages.size) {
-                            getString(R.string.detecting_bubbles)
-                        } else {
-                            ""
-                        }
+                        )
+                    )
+                    TranslationKeepAliveService.updateProgress(
+                        requireContext(),
+                        translatedCount,
+                        pendingImages.size
                     )
                 }
                 setFolderStatus(
@@ -482,6 +491,117 @@ class LibraryFragment : Fragment() {
                 AppLogger.log(
                     "Library",
                     "Folder translation ${if (failed) "completed with failures" else "completed"}: ${folder.name}"
+                )
+                loadImages(folder)
+            } finally {
+                binding.folderTranslate.isEnabled = true
+                TranslationKeepAliveService.stop(requireContext())
+            }
+        }
+    }
+
+    private fun translateFolderFull(folder: File, images: List<File>, force: Boolean) {
+        if (images.isEmpty()) {
+            setFolderStatus(getString(R.string.folder_images_empty))
+            return
+        }
+        val pendingImages = resolvePendingImages(images, force)
+        if (pendingImages.isEmpty()) {
+            setFolderStatus(getString(R.string.translation_done))
+            return
+        }
+        val llmClient = LlmClient(requireContext())
+        if (!llmClient.isConfigured()) {
+            setFolderStatus(getString(R.string.missing_api_settings))
+            return
+        }
+        binding.folderTranslate.isEnabled = false
+        TranslationKeepAliveService.start(requireContext())
+        TranslationKeepAliveService.updateStatus(
+            requireContext(),
+            getString(R.string.translation_preparing)
+        )
+        AppLogger.log(
+            "Library",
+            "Start full-page translating folder ${folder.name}, ${pendingImages.size} images"
+        )
+        viewLifecycleOwner.lifecycleScope.launch {
+            var failed = false
+            try {
+                val glossary = glossaryStore.load(folder).toMutableMap()
+                val ocrResults = ArrayList<PageOcrResult>(pendingImages.size)
+                var ocrCount = 0
+                setFolderStatus(getString(R.string.translation_preparing))
+                for (image in pendingImages) {
+                    val result = try {
+                        translationPipeline.ocrImage(image) { }
+                    } catch (e: Exception) {
+                        AppLogger.log("Library", "OCR failed for ${image.name}", e)
+                        null
+                    }
+                    if (result != null) {
+                        ocrResults.add(result)
+                    } else {
+                        failed = true
+                    }
+                    ocrCount += 1
+                    setFolderStatus(getString(R.string.translation_preparing))
+                }
+                val glossaryText = buildGlossaryText(ocrResults)
+                if (glossaryText.isNotBlank()) {
+                    setFolderStatus(
+                        getString(R.string.translation_preparing),
+                        getString(R.string.folder_glossary_progress)
+                    )
+                    val extracted = llmClient.extractGlossary(
+                        glossaryText,
+                        "llm_prompts_abstract.json"
+                    )
+                    if (!extracted.isNullOrEmpty()) {
+                        glossary.putAll(extracted)
+                        glossaryStore.save(folder, glossary)
+                    }
+                }
+                var translatedCount = 0
+                setFolderStatus(getString(R.string.translation_preparing))
+                val pendingByName = pendingImages.associateBy { it.name }
+                for (page in ocrResults) {
+                    val image = pendingByName[page.imageFile.name] ?: continue
+                    val result = try {
+                        translationPipeline.translateFullPage(
+                            page,
+                            glossary,
+                            "llm_prompts_FullTrans.json"
+                        ) { }
+                    } catch (e: Exception) {
+                        AppLogger.log("Library", "Full-page translation failed for ${image.name}", e)
+                        null
+                    }
+                    if (result != null) {
+                        translationPipeline.saveResult(image, result)
+                        translatedCount += 1
+                    } else {
+                        failed = true
+                    }
+                    setFolderStatus(
+                        getString(
+                            R.string.folder_translation_count,
+                            translatedCount,
+                            pendingImages.size
+                        )
+                    )
+                    TranslationKeepAliveService.updateProgress(
+                        requireContext(),
+                        translatedCount,
+                        pendingImages.size
+                    )
+                }
+                setFolderStatus(
+                    if (failed) getString(R.string.translation_failed) else getString(R.string.translation_done)
+                )
+                AppLogger.log(
+                    "Library",
+                    "Full-page translation ${if (failed) "completed with failures" else "completed"}: ${folder.name}"
                 )
                 loadImages(folder)
             } finally {
@@ -581,6 +701,21 @@ class LibraryFragment : Fragment() {
             .show()
     }
 
+    private fun retranslateSelectedImages() {
+        val folder = currentFolder ?: return
+        val selected = imageAdapter.getSelectedFiles()
+        if (selected.isEmpty()) {
+            setFolderStatus(getString(R.string.retranslate_images_empty))
+            return
+        }
+        exitSelectionMode()
+        if (isFullTranslateEnabled(folder)) {
+            translateFolderFull(folder, selected, force = true)
+        } else {
+            translateFolderStandard(folder, selected, force = true)
+        }
+    }
+
     private fun setFolderStatus(left: String, right: String = "") {
         binding.folderProgressLeft.text = left
         binding.folderProgressRight.text = right
@@ -588,5 +723,42 @@ class LibraryFragment : Fragment() {
 
     private fun clearFolderStatus() {
         setFolderStatus("")
+    }
+
+    private fun showFullTranslateInfo() {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.folder_full_translate_info_title)
+            .setMessage(getString(R.string.folder_full_translate_info))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun isFullTranslateEnabled(folder: File): Boolean {
+        return prefs.getBoolean(fullTranslateKeyPrefix + folder.absolutePath, true)
+    }
+
+    private fun setFullTranslateEnabled(folder: File, enabled: Boolean) {
+        prefs.edit().putBoolean(fullTranslateKeyPrefix + folder.absolutePath, enabled).apply()
+    }
+
+    private fun buildGlossaryText(pages: List<PageOcrResult>): String {
+        val builder = StringBuilder()
+        for (page in pages) {
+            for (bubble in page.bubbles) {
+                val text = bubble.text.trim()
+                if (text.isNotBlank()) {
+                    builder.append("<b>").append(text).append("</b>\n")
+                }
+            }
+        }
+        return builder.toString().trim()
+    }
+
+    private fun resolvePendingImages(images: List<File>, force: Boolean): List<File> {
+        return if (force) {
+            images
+        } else {
+            images.filterNot { translationStore.translationFileFor(it).exists() }
+        }
     }
 }

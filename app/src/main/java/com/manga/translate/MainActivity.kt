@@ -6,8 +6,12 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.manga.translate.BuildConfig
 import com.google.android.material.tabs.TabLayoutMediator
@@ -18,6 +22,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var pagerAdapter: MainPagerAdapter
     private lateinit var crashStateStore: CrashStateStore
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) {
+                Toast.makeText(this, R.string.notification_permission_denied, Toast.LENGTH_SHORT)
+                    .show()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,6 +47,7 @@ class MainActivity : AppCompatActivity() {
                 binding.mainPager.isUserInputEnabled = position != MainPagerAdapter.READING_INDEX
             }
         })
+        requestNotificationPermissionIfNeeded()
         maybeShowCrashDialog()
         checkForUpdate()
     }
@@ -122,8 +134,7 @@ class MainActivity : AppCompatActivity() {
         val latest = AppLogger.listLogFiles().firstOrNull()
         if (latest == null || !latest.exists()) {
             AppLogger.log("MainActivity", "No crash logs available to share")
-            android.widget.Toast.makeText(this, R.string.logs_empty, android.widget.Toast.LENGTH_SHORT)
-                .show()
+            Toast.makeText(this, R.string.logs_empty, Toast.LENGTH_SHORT).show()
             return
         }
         val uri = androidx.core.content.FileProvider.getUriForFile(
@@ -193,5 +204,25 @@ class MainActivity : AppCompatActivity() {
             parts.add(match.value.toIntOrNull() ?: 0)
         }
         return parts
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val permission = android.Manifest.permission.POST_NOTIFICATIONS
+        val granted = ContextCompat.checkSelfPermission(this, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) return
+        if (shouldShowRequestPermissionRationale(permission)) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.notification_permission_title)
+                .setMessage(R.string.notification_permission_message)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    notificationPermissionLauncher.launch(permission)
+                }
+                .show()
+        } else {
+            notificationPermissionLauncher.launch(permission)
+        }
     }
 }
