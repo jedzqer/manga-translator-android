@@ -16,9 +16,12 @@
 ## 现状
 - 已搭建基础翻译流程
 
+## 交流
+- 可以加入QQ群 1080302768 一起交流
+
 ## 本地构建与部署
 1) 准备环境：JDK 17、Android SDK (platform 34 + build-tools 35.0.0)
 2) `https://github.com/jedzqer/manga-translator.git`
 3) 放置模型文件（不纳入 Git）：
-   - `assets/comic-speech-bubble-detector.onnx` 模型地址：https://huggingface.co/ogkalu/comic-speech-bubble-detector-yolov8m
-   - `assets/encoder_model.onnx`、`assets/decoder_model.onnx` 模型地址：https://huggingface.co/l0wgear/manga-ocr-2025-onnx
+   - 气泡识别模型 `assets/comic-speech-bubble-detector.onnx` 模型地址：https://huggingface.co/ogkalu/comic-speech-bubble-detector-yolov8m
+   - 文字识别模型 `assets/encoder_model.onnx`、`assets/decoder_model.onnx` 模型地址：https://huggingface.co/l0wgear/manga-ocr-2025-onnx
