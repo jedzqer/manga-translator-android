@@ -1,6 +1,6 @@
 {
   "versionCode": 8,
   "versionName": "1.1.0",
-  "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/1.0.0/app-release.apk",
+  "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/1.1.0/app-release.apk",
   "changelog": "支持HTTP，添加教程页面，优化了体验细节。"
 }
