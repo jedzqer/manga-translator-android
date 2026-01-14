@@ -228,9 +228,9 @@ class SettingsFragment : Fragment() {
         return try {
             @Suppress("DEPRECATION")
             val info = context.packageManager.getPackageInfo(context.packageName, 0)
-            info.versionName ?: BuildConfig.VERSION_NAME
+            info.versionName ?: VersionInfo.VERSION_NAME
         } catch (e: Exception) {
-            BuildConfig.VERSION_NAME
+            VersionInfo.VERSION_NAME
         }
     }
 

@@ -64,7 +64,7 @@ object AppLogger {
     fun listLogFiles(): List<File> {
         val dir = logDir ?: return emptyList()
         val files = dir.listFiles { file -> file.isFile }?.toList().orEmpty()
-        return files.sortedByDescending { it.name }
+        return files.sortedBy { it.name }
     }
 
     private fun createNewLogFile(dir: File): File {

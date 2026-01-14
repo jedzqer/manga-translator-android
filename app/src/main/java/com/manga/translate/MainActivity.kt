@@ -13,7 +13,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.manga.translate.BuildConfig
 import com.google.android.material.tabs.TabLayoutMediator
 import com.manga.translate.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
@@ -69,7 +68,7 @@ class MainActivity : AppCompatActivity() {
             if (updateInfo == null) return@launch
             AppLogger.log(
                 "UpdateChecker",
-                "Local version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}), " +
+                "Local version=${VersionInfo.VERSION_NAME} (${VersionInfo.VERSION_CODE}), " +
                     "remote version=${updateInfo.versionName} (${updateInfo.versionCode})"
             )
             if (!isNewerVersion(updateInfo)) return@launch
@@ -174,7 +173,7 @@ class MainActivity : AppCompatActivity() {
     private fun isNewerVersion(updateInfo: UpdateInfo): Boolean {
         val remoteCode = updateInfo.versionCode
         if (remoteCode <= 0) return false
-        return remoteCode > BuildConfig.VERSION_CODE
+        return remoteCode > VersionInfo.VERSION_CODE
     }
 
     private fun buildVersionLabel(updateInfo: UpdateInfo): String {
