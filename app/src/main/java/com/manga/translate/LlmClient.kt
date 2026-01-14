@@ -23,8 +23,9 @@ class LlmClient(context: Context) {
         promptAsset: String = PROMPT_CONFIG_ASSET
     ): LlmTranslationResult? =
         withContext(Dispatchers.IO) {
-            requestContent(text, glossary, promptAsset, useJsonPayload = true)
-                ?.let { parseTranslationContent(it) }
+            val content = requestContent(text, glossary, promptAsset, useJsonPayload = true)
+                ?: return@withContext null
+            parseTranslationContent(content)
     }
 
     suspend fun extractGlossary(
@@ -178,14 +179,14 @@ class LlmClient(context: Context) {
         }
     }
 
-    private fun parseTranslationContent(content: String): LlmTranslationResult? {
+    private fun parseTranslationContent(content: String): LlmTranslationResult {
+        val cleaned = stripCodeFence(content)
         return try {
-            val cleaned = stripCodeFence(content)
             val json = JSONObject(cleaned)
             val translation = json.optString("translation")?.trim().orEmpty()
             if (translation.isBlank()) {
                 AppLogger.log("LlmClient", "Missing translation field in response")
-                return null
+                throw LlmResponseException("MISSING_TRANSLATION", content)
             }
             val glossary = mutableMapOf<String, String>()
             val glossaryJson = json.optJSONObject("glossary_used")
@@ -198,8 +199,10 @@ class LlmClient(context: Context) {
                 }
             }
             LlmTranslationResult(translation, glossary)
+        } catch (e: LlmResponseException) {
+            throw e
         } catch (e: Exception) {
-            LlmTranslationResult(content, emptyMap())
+            throw LlmResponseException("INVALID_FORMAT", content, e)
         }
     }
 
@@ -358,6 +361,12 @@ class LlmRequestException(
     val errorCode: String,
     val responseBody: String? = null
 ) : Exception("LLM request failed: $errorCode")
+
+class LlmResponseException(
+    val errorCode: String,
+    val responseContent: String,
+    cause: Throwable? = null
+) : Exception("LLM response invalid: $errorCode", cause)
 
 data class LlmTranslationResult(
     val translation: String,

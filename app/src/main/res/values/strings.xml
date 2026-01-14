@@ -77,6 +77,8 @@
     <string name="translation_failed">翻译失败</string>
     <string name="api_request_failed_title">API 调用失败</string>
     <string name="api_request_failed_message">请求失败（%1$s），翻译已终止。</string>
+    <string name="model_response_failed_title">模型返回异常</string>
+    <string name="model_response_failed_message">模型返回有问题的结果，翻译已终止：\n%1$s</string>
     <string name="translation_keepalive_channel">后台翻译</string>
     <string name="translation_keepalive_title">翻译进行中</string>
     <string name="translation_keepalive_message">保持后台运行，请勿关闭应用</string>

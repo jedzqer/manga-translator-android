@@ -487,6 +487,11 @@ class LibraryFragment : Fragment() {
                         showApiErrorDialog(e.errorCode)
                         failed = true
                         break
+                    } catch (e: LlmResponseException) {
+                        AppLogger.log("Library", "Invalid model response for ${image.name}", e)
+                        showModelErrorDialog(e.responseContent)
+                        failed = true
+                        break
                     } catch (e: Exception) {
                         AppLogger.log("Library", "Translation failed for ${image.name}", e)
                         null
@@ -603,6 +608,7 @@ class LibraryFragment : Fragment() {
                 val semaphore = Semaphore(maxConcurrency)
                 val translatedCount = AtomicInteger(0)
                 val hasFailures = AtomicBoolean(false)
+                val reportedModelError = AtomicBoolean(false)
                 setFolderStatus(getString(R.string.translation_preparing))
                 coroutineScope {
                     val tasks = ocrResults.map { page ->
@@ -614,6 +620,19 @@ class LibraryFragment : Fragment() {
                                         glossary,
                                         "llm_prompts_FullTrans.json"
                                     ) { }
+                                } catch (e: LlmResponseException) {
+                                    AppLogger.log(
+                                        "Library",
+                                        "Invalid model response for ${page.imageFile.name}",
+                                        e
+                                    )
+                                    hasFailures.set(true)
+                                    if (reportedModelError.compareAndSet(false, true)) {
+                                        withContext(Dispatchers.Main) {
+                                            showModelErrorDialog(e.responseContent)
+                                        }
+                                    }
+                                    null
                                 } catch (e: LlmRequestException) {
                                     throw e
                                 } catch (e: Exception) {
@@ -674,6 +693,14 @@ class LibraryFragment : Fragment() {
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.api_request_failed_title)
             .setMessage(getString(R.string.api_request_failed_message, errorCode))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showModelErrorDialog(responseContent: String) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.model_response_failed_title)
+            .setMessage(getString(R.string.model_response_failed_message, responseContent))
             .setPositiveButton(android.R.string.ok, null)
             .show()
     }
