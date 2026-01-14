@@ -2,10 +2,15 @@ package com.manga.translate
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.RectF
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.max
+import kotlin.math.min
 
 class TranslationPipeline(context: Context) {
     private val appContext = context.applicationContext
@@ -14,6 +19,7 @@ class TranslationPipeline(context: Context) {
     private val ocrStore = OcrStore()
     private var detector: BubbleDetector? = null
     private var ocr: MangaOcr? = null
+    private var textDetector: TextDetector? = null
 
     suspend fun translateImage(
         imageFile: File,
@@ -75,6 +81,7 @@ class TranslationPipeline(context: Context) {
         }
         val detector = getDetector() ?: return@withContext null
         val ocr = getOcr() ?: return@withContext null
+        val textDetector = getTextDetector()
         val bitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
             ?: run {
                 AppLogger.log("Pipeline", "Failed to decode ${imageFile.name}")
@@ -83,21 +90,31 @@ class TranslationPipeline(context: Context) {
         onProgress(appContext.getString(R.string.detecting_bubbles))
         val detections = detector.detect(bitmap)
         AppLogger.log("Pipeline", "Detected ${detections.size} bubbles in ${imageFile.name}")
-        if (detections.isEmpty()) {
-            val emptyResult = PageOcrResult(
-                imageFile,
-                bitmap.width,
-                bitmap.height,
-                emptyList()
-            )
+        val bubbleRects = detections.map { it.rect }
+        val textRects = textDetector?.let { detectorInstance ->
+            val masked = maskDetections(bitmap, bubbleRects)
+            val rawTextRects = detectorInstance.detect(masked)
+            filterOverlapping(rawTextRects, bubbleRects, TEXT_IOU_THRESHOLD)
+        } ?: emptyList()
+        if (bubbleRects.isEmpty() && textRects.isEmpty()) {
+            val emptyResult = PageOcrResult(imageFile, bitmap.width, bitmap.height, emptyList())
             ocrStore.save(imageFile, emptyResult)
             return@withContext emptyResult
         }
-        val bubbles = ArrayList<OcrBubble>(detections.size)
-        for ((bubbleId, det) in detections.withIndex()) {
-            val crop = cropBitmap(bitmap, det.rect) ?: continue
+        if (textRects.isNotEmpty()) {
+            AppLogger.log(
+                "Pipeline",
+                "Supplemented ${textRects.size} text boxes in ${imageFile.name}"
+            )
+        }
+        val allRects = ArrayList<RectF>(bubbleRects.size + textRects.size)
+        allRects.addAll(bubbleRects)
+        allRects.addAll(textRects)
+        val bubbles = ArrayList<OcrBubble>(allRects.size)
+        for ((bubbleId, rect) in allRects.withIndex()) {
+            val crop = cropBitmap(bitmap, rect) ?: continue
             val text = ocr.recognize(crop).trim()
-            bubbles.add(OcrBubble(bubbleId, det.rect, text))
+            bubbles.add(OcrBubble(bubbleId, rect, text))
         }
         val result = PageOcrResult(imageFile, bitmap.width, bitmap.height, bubbles)
         ocrStore.save(imageFile, result)
@@ -186,6 +203,17 @@ class TranslationPipeline(context: Context) {
         }
     }
 
+    private fun getTextDetector(): TextDetector? {
+        if (textDetector != null) return textDetector
+        return try {
+            textDetector = TextDetector(appContext)
+            textDetector
+        } catch (e: Exception) {
+            AppLogger.log("Pipeline", "Failed to init text detector", e)
+            null
+        }
+    }
+
     private fun cropBitmap(source: Bitmap, rect: RectF): Bitmap? {
         val left = rect.left.toInt().coerceIn(0, source.width - 1)
         val top = rect.top.toInt().coerceIn(0, source.height - 1)
@@ -195,6 +223,78 @@ class TranslationPipeline(context: Context) {
         val height = bottom - top
         if (width <= 0 || height <= 0) return null
         return Bitmap.createBitmap(source, left, top, width, height)
+    }
+
+    private fun maskDetections(source: Bitmap, rects: List<RectF>): Bitmap {
+        if (rects.isEmpty()) return source
+        val copy = source.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(copy)
+        val paint = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        }
+        for (rect in rects) {
+            val padded = padRect(rect, source.width, source.height, MASK_EXPAND_RATIO, MASK_EXPAND_MIN)
+            canvas.drawRect(padded, paint)
+        }
+        return copy
+    }
+
+    private fun padRect(rect: RectF, width: Int, height: Int, ratio: Float, minPad: Float): RectF {
+        val h = max(1f, rect.height())
+        val pad = max(minPad, ratio * h)
+        val left = (rect.left - pad).coerceIn(0f, width.toFloat())
+        val top = (rect.top - pad).coerceIn(0f, height.toFloat())
+        val right = (rect.right + pad).coerceIn(0f, width.toFloat())
+        val bottom = (rect.bottom + pad).coerceIn(0f, height.toFloat())
+        return RectF(left, top, right, bottom)
+    }
+
+    private fun filterOverlapping(
+        textRects: List<RectF>,
+        bubbleRects: List<RectF>,
+        threshold: Float
+    ): List<RectF> {
+        if (bubbleRects.isEmpty()) return textRects
+        val filtered = ArrayList<RectF>(textRects.size)
+        for (rect in textRects) {
+            var overlapped = false
+            for (bubble in bubbleRects) {
+                if (iou(rect, bubble) >= threshold || contains(bubble, rect)) {
+                    overlapped = true
+                    break
+                }
+            }
+            if (!overlapped) {
+                filtered.add(rect)
+            }
+        }
+        return filtered
+    }
+
+    private fun iou(a: RectF, b: RectF): Float {
+        val left = max(a.left, b.left)
+        val top = max(a.top, b.top)
+        val right = min(a.right, b.right)
+        val bottom = min(a.bottom, b.bottom)
+        val inter = max(0f, right - left) * max(0f, bottom - top)
+        val areaA = max(0f, a.width()) * max(0f, a.height())
+        val areaB = max(0f, b.width()) * max(0f, b.height())
+        val union = areaA + areaB - inter
+        return if (union <= 0f) 0f else inter / union
+    }
+
+    private fun contains(outer: RectF, inner: RectF): Boolean {
+        return outer.left <= inner.left &&
+            outer.top <= inner.top &&
+            outer.right >= inner.right &&
+            outer.bottom >= inner.bottom
+    }
+
+    companion object {
+        private const val TEXT_IOU_THRESHOLD = 0.2f
+        private const val MASK_EXPAND_RATIO = 0.1f
+        private const val MASK_EXPAND_MIN = 4f
     }
 
     private fun extractTaggedSegments(text: String, fallback: List<String>): List<String> {
