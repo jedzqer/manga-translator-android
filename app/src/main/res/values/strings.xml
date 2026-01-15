@@ -11,6 +11,13 @@
     <string name="model_name_hint">模型名称</string>
     <string name="max_concurrency_hint">最大并发数 (1–50)</string>
     <string name="text_layout_horizontal">漫画使用横向排版</string>
+    <string name="theme_setting_button">主题设置</string>
+    <string name="theme_setting_title">主题设置</string>
+    <string name="theme_setting_format">主题设置：%1$s</string>
+    <string name="theme_follow_system">跟随系统</string>
+    <string name="theme_dark">暗色</string>
+    <string name="theme_light">白色</string>
+    <string name="theme_pink">粉色</string>
     <string name="save_settings">保存设置</string>
     <string name="fetch_models">获取模型列表</string>
     <string name="fetch_models_title">模型列表</string>

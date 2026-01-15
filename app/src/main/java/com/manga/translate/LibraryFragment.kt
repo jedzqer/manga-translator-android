@@ -47,7 +47,8 @@ class LibraryFragment : Fragment() {
     )
     private val imageAdapter = FolderImageAdapter(
         onSelectionChanged = { updateSelectionActions() },
-        onItemLongPress = { enterSelectionMode(it.file) }
+        onItemLongPress = { enterSelectionMode(it.file) },
+        onItemClick = { openImageInReader(it.file) }
     )
     private var currentFolder: File? = null
     private var imageSelectionMode = false
@@ -723,6 +724,21 @@ class LibraryFragment : Fragment() {
         }
         AppLogger.log("Library", "Start reading ${folder.name}, ${images.size} images")
         val startIndex = readingProgressStore.load(folder)
+        readingSessionViewModel.setFolder(folder, images, startIndex)
+        (activity as? MainActivity)?.switchToTab(MainPagerAdapter.READING_INDEX)
+    }
+
+    private fun openImageInReader(imageFile: File) {
+        val folder = currentFolder ?: return
+        if (imageSelectionMode) return
+        val images = repository.listImages(folder)
+        if (images.isEmpty()) {
+            setFolderStatus(getString(R.string.folder_images_empty))
+            return
+        }
+        val startIndex = images.indexOfFirst { it.absolutePath == imageFile.absolutePath }
+        if (startIndex < 0) return
+        AppLogger.log("Library", "Open image ${imageFile.name} at index $startIndex in ${folder.name}")
         readingSessionViewModel.setFolder(folder, images, startIndex)
         (activity as? MainActivity)?.switchToTab(MainPagerAdapter.READING_INDEX)
     }

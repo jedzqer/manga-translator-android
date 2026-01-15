@@ -9,7 +9,8 @@ import java.io.File
 
 class FolderImageAdapter(
     private val onSelectionChanged: () -> Unit,
-    private val onItemLongPress: (ImageItem) -> Unit
+    private val onItemLongPress: (ImageItem) -> Unit,
+    private val onItemClick: (ImageItem) -> Unit
 ) : RecyclerView.Adapter<FolderImageAdapter.ImageViewHolder>() {
     private val items = ArrayList<ImageItem>()
     private val selectedPaths = LinkedHashSet<String>()
@@ -85,7 +86,7 @@ class FolderImageAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ImageViewHolder {
         val binding = ItemFolderImageBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        return ImageViewHolder(binding, ::onToggleSelection, onItemLongPress)
+        return ImageViewHolder(binding, ::onToggleSelection, onItemLongPress, onItemClick)
     }
 
     override fun onBindViewHolder(holder: ImageViewHolder, position: Int) {
@@ -98,7 +99,8 @@ class FolderImageAdapter(
     class ImageViewHolder(
         private val binding: ItemFolderImageBinding,
         private val onToggleSelection: (ImageItem) -> Unit,
-        private val onItemLongPress: (ImageItem) -> Unit
+        private val onItemLongPress: (ImageItem) -> Unit,
+        private val onItemClick: (ImageItem) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: ImageItem, selectionMode: Boolean, selected: Boolean) {
             binding.imageName.text = item.file.name
@@ -121,6 +123,8 @@ class FolderImageAdapter(
             binding.root.setOnClickListener {
                 if (selectionMode) {
                     binding.imageCheck.toggle()
+                } else {
+                    onItemClick(item)
                 }
             }
         }

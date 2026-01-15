@@ -52,6 +52,17 @@ class SettingsStore(context: Context) {
             .apply()
     }
 
+    fun loadThemeMode(): ThemeMode {
+        val saved = prefs.getString(KEY_THEME_MODE, ThemeMode.FOLLOW_SYSTEM.prefValue)
+        return ThemeMode.fromPref(saved)
+    }
+
+    fun saveThemeMode(mode: ThemeMode) {
+        prefs.edit()
+            .putString(KEY_THEME_MODE, mode.prefValue)
+            .apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "manga_translate_settings"
         private const val KEY_API_URL = "api_url"
@@ -59,6 +70,7 @@ class SettingsStore(context: Context) {
         private const val KEY_MODEL_NAME = "model_name"
         private const val KEY_HORIZONTAL_TEXT = "horizontal_text_layout"
         private const val KEY_MAX_CONCURRENCY = "max_concurrency"
+        private const val KEY_THEME_MODE = "theme_mode"
         private const val DEFAULT_MODEL = "gpt-3.5-turbo"
         private const val DEFAULT_MAX_CONCURRENCY = 3
         private const val MIN_MAX_CONCURRENCY = 1

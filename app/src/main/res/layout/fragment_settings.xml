@@ -1,148 +1,164 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<androidx.core.widget.NestedScrollView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="24dp">
+    android:fillViewport="true">
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/api_url_layout"
-        android:layout_width="0dp"
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="@string/api_url_hint"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        android:padding="24dp">
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/api_url_input"
-            android:layout_width="match_parent"
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/api_url_layout"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:inputType="textUri" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:hint="@string/api_url_hint"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/api_key_layout"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:hint="@string/api_key_hint"
-        app:layout_constraintTop_toBottomOf="@id/api_url_layout"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/api_url_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textUri" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/api_key_input"
-            android:layout_width="match_parent"
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/api_key_layout"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:inputType="textPassword" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:hint="@string/api_key_hint"
+            app:layout_constraintTop_toBottomOf="@id/api_url_layout"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="16dp">
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/model_name_layout"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:hint="@string/model_name_hint"
-        app:layout_constraintTop_toBottomOf="@id/api_key_layout"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/api_key_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textPassword" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/model_name_input"
-            android:layout_width="match_parent"
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/model_name_layout"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:inputType="text" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:hint="@string/model_name_hint"
+            app:layout_constraintTop_toBottomOf="@id/api_key_layout"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="16dp">
 
-    <Button
-        android:id="@+id/fetch_models_button"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/fetch_models"
-        app:layout_constraintTop_toBottomOf="@id/model_name_layout"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="12dp" />
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/model_name_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/max_concurrency_layout"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:hint="@string/max_concurrency_hint"
-        app:layout_constraintTop_toBottomOf="@id/fetch_models_button"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/max_concurrency_input"
-            android:layout_width="match_parent"
+        <Button
+            android:id="@+id/fetch_models_button"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:inputType="number" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:text="@string/fetch_models"
+            app:layout_constraintTop_toBottomOf="@id/model_name_layout"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="12dp" />
 
-    <androidx.appcompat.widget.SwitchCompat
-        android:id="@+id/text_layout_switch"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/text_layout_horizontal"
-        app:layout_constraintTop_toBottomOf="@id/max_concurrency_layout"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/max_concurrency_layout"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:hint="@string/max_concurrency_hint"
+            app:layout_constraintTop_toBottomOf="@id/fetch_models_button"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="16dp">
 
-    <Button
-        android:id="@+id/save_button"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/save_settings"
-        app:layout_constraintTop_toBottomOf="@id/text_layout_switch"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="20dp" />
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/max_concurrency_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-    <Button
-        android:id="@+id/view_logs_button"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/view_logs"
-        app:layout_constraintTop_toBottomOf="@id/save_button"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="12dp" />
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/text_layout_switch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/text_layout_horizontal"
+            app:layout_constraintTop_toBottomOf="@id/max_concurrency_layout"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="16dp" />
 
-    <Button
-        android:id="@+id/open_logs_folder_button"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/share_logs"
-        app:layout_constraintTop_toBottomOf="@id/view_logs_button"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="12dp" />
+        <Button
+            android:id="@+id/theme_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/theme_setting_button"
+            app:layout_constraintTop_toBottomOf="@id/text_layout_switch"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="16dp" />
 
-    <TextView
-        android:id="@+id/settings_hint"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/api_settings_note"
-        android:textSize="12sp"
-        app:layout_constraintTop_toBottomOf="@id/open_logs_folder_button"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="12dp" />
+        <Button
+            android:id="@+id/save_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/save_settings"
+            app:layout_constraintTop_toBottomOf="@id/theme_button"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="20dp" />
 
-    <Button
-        android:id="@+id/about_button"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/about_button"
-        app:layout_constraintTop_toBottomOf="@id/settings_hint"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginTop="20dp" />
+        <Button
+            android:id="@+id/view_logs_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/view_logs"
+            app:layout_constraintTop_toBottomOf="@id/save_button"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="12dp" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+        <Button
+            android:id="@+id/open_logs_folder_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/share_logs"
+            app:layout_constraintTop_toBottomOf="@id/view_logs_button"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="12dp" />
+
+        <TextView
+            android:id="@+id/settings_hint"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/api_settings_note"
+            android:textSize="12sp"
+            app:layout_constraintTop_toBottomOf="@id/open_logs_folder_button"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="12dp" />
+
+        <Button
+            android:id="@+id/about_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/about_button"
+            app:layout_constraintTop_toBottomOf="@id/settings_hint"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            android:layout_marginTop="20dp" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.core.widget.NestedScrollView>

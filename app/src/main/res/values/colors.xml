@@ -2,4 +2,13 @@
     <color name="purple_500">#6200EE</color>
     <color name="purple_700">#3700B3</color>
     <color name="teal_200">#03DAC5</color>
+    <color name="pink_base">#FFECF2</color>
+    <color name="pink_accent">#2D5DA5</color>
+    <color name="pink_decor">#FFD4C4</color>
+    <color name="light_base">#FFFFFF</color>
+    <color name="light_accent">#000000</color>
+    <color name="light_decor">#000000</color>
+    <color name="dark_base">#000000</color>
+    <color name="dark_accent">#FFFFFF</color>
+    <color name="dark_decor">#FFFFFF</color>
 </resources>

@@ -11,6 +11,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -43,9 +44,14 @@ class SettingsFragment : Fragment() {
         binding.modelNameInput.setText(settings.modelName)
         binding.maxConcurrencyInput.setText(settingsStore.loadMaxConcurrency().toString())
         binding.textLayoutSwitch.isChecked = settingsStore.loadUseHorizontalText()
+        val themeMode = settingsStore.loadThemeMode()
+        updateThemeButton(themeMode)
         binding.textLayoutSwitch.setOnCheckedChangeListener { _, isChecked ->
             settingsStore.saveUseHorizontalText(isChecked)
             AppLogger.log("Settings", "Text layout set to ${if (isChecked) "horizontal" else "vertical"}")
+        }
+        binding.themeButton.setOnClickListener {
+            showThemeDialog()
         }
 
         binding.saveButton.setOnClickListener {
@@ -155,6 +161,35 @@ class SettingsFragment : Fragment() {
                 Toast.makeText(requireContext(), R.string.copy_logs, Toast.LENGTH_SHORT).show()
             }
             .show()
+    }
+
+    private fun showThemeDialog() {
+        val modes = ThemeMode.entries
+        val labels = modes.map { getString(it.labelRes) }.toTypedArray()
+        val currentMode = settingsStore.loadThemeMode()
+        val checkedIndex = modes.indexOf(currentMode).coerceAtLeast(0)
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.theme_setting_title)
+            .setSingleChoiceItems(labels, checkedIndex) { dialog, which ->
+                val selected = modes[which]
+                settingsStore.saveThemeMode(selected)
+                updateThemeButton(selected)
+                applyThemeSelection(selected)
+                AppLogger.log("Settings", "Theme set to ${selected.prefValue}")
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun applyThemeSelection(mode: ThemeMode) {
+        AppCompatDelegate.setDefaultNightMode(mode.nightMode)
+        activity?.recreate()
+    }
+
+    private fun updateThemeButton(mode: ThemeMode) {
+        val label = getString(mode.labelRes)
+        binding.themeButton.text = getString(R.string.theme_setting_format, label)
     }
 
     private fun showAboutDialog() {
