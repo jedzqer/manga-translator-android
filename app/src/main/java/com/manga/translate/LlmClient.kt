@@ -77,21 +77,27 @@ class LlmClient(context: Context) {
                 }
                 val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
                 if (code !in 200..299) {
-                    AppLogger.log("LlmClient", "HTTP $code: $body")
+                    AppLogger.log(
+                        "LlmClient",
+                        "HTTP $code on $endpoint: ${summarizeBody(body)}"
+                    )
                     lastErrorCode = "HTTP $code"
                     lastErrorBody = body
                     null
                 } else {
                     val content = parseResponseContent(body)
                     if (content == null) {
-                        AppLogger.log("LlmClient", "Empty or invalid response content")
+                        AppLogger.log(
+                            "LlmClient",
+                            "Empty or invalid response content from $endpoint"
+                        )
                         lastErrorCode = "INVALID_RESPONSE"
                         lastErrorBody = body
                     }
                     content
                 }
             } catch (e: Exception) {
-                AppLogger.log("LlmClient", "Request failed (attempt $attempt)", e)
+                AppLogger.log("LlmClient", "Request failed on $endpoint (attempt $attempt)", e)
                 lastErrorCode = "NETWORK_ERROR"
                 null
             } finally {
@@ -102,6 +108,10 @@ class LlmClient(context: Context) {
                     return result
                 }
                 if (lastErrorCode != null) {
+                    AppLogger.log(
+                        "LlmClient",
+                        "Request failed on $endpoint: $lastErrorCode, body=${summarizeBody(lastErrorBody)}"
+                    )
                     throw LlmRequestException(lastErrorCode, lastErrorBody)
                 }
                 return null
@@ -202,6 +212,11 @@ class LlmClient(context: Context) {
         } catch (e: LlmResponseException) {
             throw e
         } catch (e: Exception) {
+            AppLogger.log(
+                "LlmClient",
+                "Invalid translation response format: ${summarizeBody(content)}",
+                e
+            )
             throw LlmResponseException("INVALID_FORMAT", content, e)
         }
     }
@@ -251,7 +266,10 @@ class LlmClient(context: Context) {
                 }
                 val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
                 if (code !in 200..299) {
-                    AppLogger.log("LlmClient", "Model list HTTP $code: $body")
+                    AppLogger.log(
+                        "LlmClient",
+                        "Model list HTTP $code on $endpoint: ${summarizeBody(body)}"
+                    )
                     lastErrorCode = "HTTP $code"
                     lastErrorBody = body
                     null
@@ -264,7 +282,11 @@ class LlmClient(context: Context) {
                     models
                 }
             } catch (e: Exception) {
-                AppLogger.log("LlmClient", "Model list request failed (attempt $attempt)", e)
+                AppLogger.log(
+                    "LlmClient",
+                    "Model list request failed on $endpoint (attempt $attempt)",
+                    e
+                )
                 lastErrorCode = "NETWORK_ERROR"
                 null
             } finally {
@@ -275,6 +297,10 @@ class LlmClient(context: Context) {
                     return result
                 }
                 if (lastErrorCode != null) {
+                    AppLogger.log(
+                        "LlmClient",
+                        "Model list failed on $endpoint: $lastErrorCode, body=${summarizeBody(lastErrorBody)}"
+                    )
                     throw LlmRequestException(lastErrorCode, lastErrorBody)
                 }
                 return emptyList()
@@ -347,6 +373,12 @@ class LlmClient(context: Context) {
             inner = inner.removePrefix("json").trim()
         }
         return inner
+    }
+
+    private fun summarizeBody(body: String?, limit: Int = 600): String {
+        if (body.isNullOrBlank()) return "(empty)"
+        val normalized = body.replace("\n", " ").replace("\r", " ").trim()
+        return if (normalized.length <= limit) normalized else normalized.take(limit) + "...(truncated)"
     }
 
     companion object {

@@ -33,12 +33,13 @@ object AppLogger {
     fun log(tag: String, message: String, throwable: Throwable? = null) {
         val file = logFile ?: return
         val time = formatter.format(Date())
+        val separator = "  "
         val line = buildString {
-            append("[ info ] ")
-            append(time)
-            append(" [")
+            append('[')
             append(tag)
             append("] ")
+            append(time)
+            append(separator)
             append(message)
             if (throwable != null) {
                 append(" | ")
@@ -50,7 +51,7 @@ object AppLogger {
         }
         synchronized(this) {
             if (file.exists() && file.length() > MAX_LOG_BYTES) {
-                file.writeText("[ info ] $time [AppLogger] Log rotated\n")
+                file.writeText("[AppLogger] $time${separator}Log rotated\n")
             }
             file.appendText(line)
         }
