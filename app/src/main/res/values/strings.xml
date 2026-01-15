@@ -91,6 +91,7 @@
     <string name="update_dialog_message_default">发现新版本，是否下载更新？</string>
     <string name="update_dialog_cancel">取消</string>
     <string name="update_dialog_download">下载</string>
+    <string name="update_dialog_ignore">忽略此版本</string>
     <string name="update_dialog_open_release">跳转项目链接</string>
     <string name="update_download_title">正在下载更新 %1$s</string>
     <string name="update_download_description">下载完成后可在通知栏安装（%1$s）</string>

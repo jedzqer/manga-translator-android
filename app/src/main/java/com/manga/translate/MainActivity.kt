@@ -1,7 +1,6 @@
 package com.manga.translate
 
 import android.app.DownloadManager
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -21,6 +20,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var pagerAdapter: MainPagerAdapter
     private lateinit var crashStateStore: CrashStateStore
+    private lateinit var updateIgnoreStore: UpdateIgnoreStore
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (!granted) {
@@ -34,6 +34,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         crashStateStore = CrashStateStore(this)
+        updateIgnoreStore = UpdateIgnoreStore(this)
 
         pagerAdapter = MainPagerAdapter(this)
         binding.mainPager.adapter = pagerAdapter
@@ -72,6 +73,7 @@ class MainActivity : AppCompatActivity() {
                     "remote version=${updateInfo.versionName} (${updateInfo.versionCode})"
             )
             if (!isNewerVersion(updateInfo)) return@launch
+            if (updateIgnoreStore.isIgnored(updateInfo.versionCode)) return@launch
             if (isFinishing || isDestroyed) return@launch
             showUpdateDialog(updateInfo)
         }
@@ -91,8 +93,8 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.update_dialog_download) { _, _ ->
                 startDownload(updateInfo)
             }
-            .setNeutralButton(R.string.update_dialog_open_release) { _, _ ->
-                openUrl(RELEASES_URL)
+            .setNeutralButton(R.string.update_dialog_ignore) { _, _ ->
+                updateIgnoreStore.saveIgnoredVersionCode(updateInfo.versionCode)
             }
             .show()
     }
@@ -115,15 +117,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
         downloadManager.enqueue(request)
-    }
-
-    private fun openUrl(url: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        try {
-            startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            AppLogger.log("MainActivity", "No activity to open url: $url", e)
-        }
     }
 
     private fun maybeShowCrashDialog() {
@@ -166,7 +159,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val RELEASES_URL = "https://github.com/jedzqer/manga-translator/releases"
         private var hasCheckedUpdate = false
     }
 
