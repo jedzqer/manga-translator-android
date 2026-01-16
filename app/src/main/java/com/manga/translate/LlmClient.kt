@@ -57,6 +57,7 @@ class LlmClient(context: Context) {
         if (!settings.isValid()) return null
         val endpoint = buildEndpoint(settings.apiUrl)
         val payload = buildPayload(text, glossary, settings.modelName, promptAsset, useJsonPayload)
+        val timeoutMs = settingsStore.loadApiTimeoutMs()
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
         for (attempt in 1..RETRY_COUNT) {
@@ -65,8 +66,8 @@ class LlmClient(context: Context) {
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
-                connectTimeout = TIMEOUT_MS
-                readTimeout = TIMEOUT_MS
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
                 doOutput = true
             }
             val result = try {
@@ -251,6 +252,7 @@ class LlmClient(context: Context) {
             throw LlmRequestException("MISSING_URL")
         }
         val endpoint = buildModelsEndpoint(apiUrl)
+        val timeoutMs = settingsStore.loadApiTimeoutMs()
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
         for (attempt in 1..RETRY_COUNT) {
@@ -261,8 +263,8 @@ class LlmClient(context: Context) {
                 if (apiKey.isNotBlank()) {
                     setRequestProperty("Authorization", "Bearer $apiKey")
                 }
-                connectTimeout = MODEL_LIST_TIMEOUT_MS
-                readTimeout = MODEL_LIST_TIMEOUT_MS
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
             }
             val result = try {
                 val code = connection.responseCode
@@ -391,8 +393,6 @@ class LlmClient(context: Context) {
     }
 
     companion object {
-        private const val TIMEOUT_MS = 360_000
-        private const val MODEL_LIST_TIMEOUT_MS = 60_000
         private const val PROMPT_CONFIG_ASSET = "llm_prompts.json"
         private const val RETRY_COUNT = 3
     }

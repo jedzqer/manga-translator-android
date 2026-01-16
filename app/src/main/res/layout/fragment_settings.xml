@@ -61,12 +61,29 @@
                 android:inputType="text" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/api_timeout_layout"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:hint="@string/api_timeout_hint"
+            app:layout_constraintTop_toBottomOf="@id/model_name_layout"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="16dp">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/api_timeout_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number" />
+        </com.google.android.material.textfield.TextInputLayout>
+
         <Button
             android:id="@+id/fetch_models_button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:text="@string/fetch_models"
-            app:layout_constraintTop_toBottomOf="@id/model_name_layout"
+            app:layout_constraintTop_toBottomOf="@id/api_timeout_layout"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginTop="12dp" />

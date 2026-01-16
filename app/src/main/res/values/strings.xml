@@ -9,6 +9,7 @@
     <string name="api_url_hint">OpenAI 兼容 API 地址</string>
     <string name="api_key_hint">API Key</string>
     <string name="model_name_hint">模型名称</string>
+    <string name="api_timeout_hint">API 超时 (秒, 30-1200)</string>
     <string name="max_concurrency_hint">最大并发数 (1–50)</string>
     <string name="text_layout_horizontal">漫画使用横向排版</string>
     <string name="theme_setting_button">主题设置</string>

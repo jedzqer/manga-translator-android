@@ -42,6 +42,7 @@ class SettingsFragment : Fragment() {
         binding.apiUrlInput.setText(settings.apiUrl)
         binding.apiKeyInput.setText(settings.apiKey)
         binding.modelNameInput.setText(settings.modelName)
+        binding.apiTimeoutInput.setText(settingsStore.loadApiTimeoutSeconds().toString())
         binding.maxConcurrencyInput.setText(settingsStore.loadMaxConcurrency().toString())
         binding.textLayoutSwitch.isChecked = settingsStore.loadUseHorizontalText()
         val themeMode = settingsStore.loadThemeMode()
@@ -64,6 +65,13 @@ class SettingsFragment : Fragment() {
             val key = binding.apiKeyInput.text?.toString()?.trim().orEmpty()
             val model = binding.modelNameInput.text?.toString()?.trim().orEmpty()
             settingsStore.save(ApiSettings(url, key, model))
+            val timeoutInput = binding.apiTimeoutInput.text?.toString()?.trim()
+            val timeoutSeconds = timeoutInput?.toIntOrNull() ?: settingsStore.loadApiTimeoutSeconds()
+            settingsStore.saveApiTimeoutSeconds(timeoutSeconds)
+            val normalizedTimeout = settingsStore.loadApiTimeoutSeconds()
+            if (normalizedTimeout.toString() != timeoutInput) {
+                binding.apiTimeoutInput.setText(normalizedTimeout.toString())
+            }
             val concurrencyInput = binding.maxConcurrencyInput.text?.toString()?.trim()
             val maxConcurrency = concurrencyInput?.toIntOrNull() ?: settingsStore.loadMaxConcurrency()
             val normalized = maxConcurrency.coerceIn(1, 50)

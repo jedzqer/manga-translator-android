@@ -34,34 +34,47 @@ class TranslationPipeline(context: Context) {
         }
         val page = ocrImage(imageFile, forceOcr, onProgress) ?: return@withContext null
         AppLogger.log("Pipeline", "Translate image ${imageFile.name}")
-        if (page.bubbles.isEmpty()) {
+        val translatable = page.bubbles.filter { it.text.isNotBlank() }
+        if (translatable.isEmpty()) {
+            val emptyTranslations = page.bubbles.map {
+                BubbleTranslation(it.id, it.rect, "")
+            }
             return@withContext TranslationResult(
                 imageFile.name,
                 page.width,
                 page.height,
-                emptyList()
+                emptyTranslations
             )
         }
-        val bubbles = ArrayList<BubbleTranslation>(page.bubbles.size)
-        val total = page.bubbles.size.coerceAtLeast(1)
-        var index = 0
-        for (bubble in page.bubbles) {
-            val text = bubble.text.trim()
-            if (text.isBlank()) {
-                bubbles.add(BubbleTranslation(bubble.id, bubble.rect, ""))
-                continue
+        onProgress(appContext.getString(R.string.translating_bubbles))
+        val pageText = translatable.joinToString("\n") { "<b>${it.text}</b>" }
+        val translated = llmClient.translate(pageText, glossary)
+        if (translated == null) {
+            val fallback = page.bubbles.map { bubble ->
+                val text = bubble.text.trim()
+                BubbleTranslation(bubble.id, bubble.rect, if (text.isBlank()) "" else text)
             }
-            index += 1
-            onProgress(appContext.getString(R.string.translating_progress, index, total))
-            val translated = llmClient.translate(text, glossary)
-            if (translated != null) {
-                if (translated.glossaryUsed.isNotEmpty()) {
-                    glossary.putAll(translated.glossaryUsed)
-                }
-                bubbles.add(BubbleTranslation(bubble.id, bubble.rect, translated.translation))
-            } else {
-                bubbles.add(BubbleTranslation(bubble.id, bubble.rect, text))
-            }
+            return@withContext TranslationResult(
+                imageFile.name,
+                page.width,
+                page.height,
+                fallback
+            )
+        }
+        if (translated.glossaryUsed.isNotEmpty()) {
+            glossary.putAll(translated.glossaryUsed)
+        }
+        val translatedSegments = extractTaggedSegments(
+            translated.translation,
+            translatable.map { it.text }
+        )
+        val translationMap = HashMap<Int, String>(translatable.size)
+        for (i in translatable.indices) {
+            translationMap[translatable[i].id] = translatedSegments[i]
+        }
+        val bubbles = page.bubbles.map { bubble ->
+            val text = translationMap[bubble.id] ?: ""
+            BubbleTranslation(bubble.id, bubble.rect, text)
         }
         AppLogger.log("Pipeline", "Translation finished for ${imageFile.name}")
         TranslationResult(imageFile.name, page.width, page.height, bubbles)

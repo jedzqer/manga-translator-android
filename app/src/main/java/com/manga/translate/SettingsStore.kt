@@ -52,6 +52,22 @@ class SettingsStore(context: Context) {
             .apply()
     }
 
+    fun loadApiTimeoutSeconds(): Int {
+        val saved = prefs.getInt(KEY_API_TIMEOUT_SECONDS, DEFAULT_API_TIMEOUT_SECONDS)
+        return saved.coerceIn(MIN_API_TIMEOUT_SECONDS, MAX_API_TIMEOUT_SECONDS)
+    }
+
+    fun loadApiTimeoutMs(): Int {
+        return loadApiTimeoutSeconds() * 1000
+    }
+
+    fun saveApiTimeoutSeconds(value: Int) {
+        val normalized = value.coerceIn(MIN_API_TIMEOUT_SECONDS, MAX_API_TIMEOUT_SECONDS)
+        prefs.edit()
+            .putInt(KEY_API_TIMEOUT_SECONDS, normalized)
+            .apply()
+    }
+
     fun loadThemeMode(): ThemeMode {
         val saved = prefs.getString(KEY_THEME_MODE, ThemeMode.FOLLOW_SYSTEM.prefValue)
         return ThemeMode.fromPref(saved)
@@ -81,11 +97,15 @@ class SettingsStore(context: Context) {
         private const val KEY_MODEL_NAME = "model_name"
         private const val KEY_HORIZONTAL_TEXT = "horizontal_text_layout"
         private const val KEY_MAX_CONCURRENCY = "max_concurrency"
+        private const val KEY_API_TIMEOUT_SECONDS = "api_timeout_seconds"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_READING_DISPLAY_MODE = "reading_display_mode"
         private const val DEFAULT_MODEL = "gpt-3.5-turbo"
         private const val DEFAULT_MAX_CONCURRENCY = 3
         private const val MIN_MAX_CONCURRENCY = 1
         private const val MAX_MAX_CONCURRENCY = 50
+        private const val DEFAULT_API_TIMEOUT_SECONDS = 360
+        private const val MIN_API_TIMEOUT_SECONDS = 30
+        private const val MAX_API_TIMEOUT_SECONDS = 1200
     }
 }
