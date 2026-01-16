@@ -391,7 +391,7 @@ class LlmClient(context: Context) {
     }
 
     companion object {
-        private const val TIMEOUT_MS = 30_000
+        private const val TIMEOUT_MS = 360_000
         private const val MODEL_LIST_TIMEOUT_MS = 60_000
         private const val PROMPT_CONFIG_ASSET = "llm_prompts.json"
         private const val RETRY_COUNT = 3
