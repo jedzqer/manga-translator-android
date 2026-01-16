@@ -39,6 +39,7 @@ class LibraryFragment : Fragment() {
     private lateinit var translationPipeline: TranslationPipeline
     private val translationStore = TranslationStore()
     private val glossaryStore = GlossaryStore()
+    private val extractStateStore = ExtractStateStore()
     private val ocrStore = OcrStore()
     private lateinit var readingProgressStore: ReadingProgressStore
     private val folderAdapter = LibraryFolderAdapter(
@@ -564,6 +565,7 @@ class LibraryFragment : Fragment() {
             var failed = false
             try {
                 val glossary = glossaryStore.load(folder).toMutableMap()
+                val extractState = extractStateStore.load(folder)
                 val ocrResults = ArrayList<PageOcrResult>(pendingImages.size)
                 var ocrCount = 0
                 setFolderStatus(getString(R.string.translation_preparing))
@@ -584,6 +586,7 @@ class LibraryFragment : Fragment() {
                 }
                 val glossaryPages = ocrResults.filterNot {
                     translationStore.translationFileFor(it.imageFile).exists()
+                        || extractState.contains(it.imageFile.name)
                 }
                 val glossaryText = buildGlossaryText(glossaryPages)
                 if (glossaryText.isNotBlank()) {
@@ -596,13 +599,19 @@ class LibraryFragment : Fragment() {
                         glossary,
                         "llm_prompts_abstract.json"
                     )
-                    if (!extracted.isNullOrEmpty()) {
-                        for ((key, value) in extracted) {
-                            if (!glossary.containsKey(key)) {
-                                glossary[key] = value
+                    if (extracted != null) {
+                        if (extracted.isNotEmpty()) {
+                            for ((key, value) in extracted) {
+                                if (!glossary.containsKey(key)) {
+                                    glossary[key] = value
+                                }
                             }
+                            glossaryStore.save(folder, glossary)
                         }
-                        glossaryStore.save(folder, glossary)
+                        for (page in glossaryPages) {
+                            extractState.add(page.imageFile.name)
+                        }
+                        extractStateStore.save(folder, extractState)
                     }
                 }
                 val maxConcurrency = SettingsStore(requireContext()).loadMaxConcurrency()
