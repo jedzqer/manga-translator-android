@@ -152,6 +152,7 @@ class LlmClient(context: Context) {
         promptAsset: String,
         useJsonPayload: Boolean
     ): JSONObject {
+        val llmParams = settingsStore.loadLlmParameters()
         val config = getPromptConfig(promptAsset)
         val messages = JSONArray()
         messages.put(
@@ -178,10 +179,16 @@ class LlmClient(context: Context) {
                     }
                 )
         )
-        return JSONObject()
+        val payload = JSONObject()
             .put("model", modelName)
-            .put("temperature", 0.3)
             .put("messages", messages)
+        llmParams.temperature?.let { payload.put("temperature", it) }
+        llmParams.topP?.let { payload.put("top_p", it) }
+        llmParams.topK?.let { payload.put("top_k", it) }
+        llmParams.maxOutputTokens?.let { payload.put("max_output_tokens", it) }
+        llmParams.frequencyPenalty?.let { payload.put("frequency_penalty", it) }
+        llmParams.presencePenalty?.let { payload.put("presence_penalty", it) }
+        return payload
     }
 
     private fun parseResponseContent(body: String): String? {

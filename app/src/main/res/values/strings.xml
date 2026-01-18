@@ -31,6 +31,17 @@
     <string name="fetch_models_failed_title">获取模型列表失败</string>
     <string name="fetch_models_failed_message">请求失败（%1$s）</string>
     <string name="settings_saved">设置已保存</string>
+    <string name="llm_params_button">AI 参数设置</string>
+    <string name="llm_params_title">AI 参数设置</string>
+    <string name="llm_params_clear">全部留空</string>
+    <string name="llm_params_invalid">参数格式有误，已忽略无效项</string>
+    <string name="llm_params_note">留空将不发送该字段</string>
+    <string name="llm_param_temperature">temperature</string>
+    <string name="llm_param_top_p">top_p</string>
+    <string name="llm_param_top_k">top_k</string>
+    <string name="llm_param_max_output_tokens">max_output_tokens</string>
+    <string name="llm_param_frequency_penalty">frequency_penalty</string>
+    <string name="llm_param_presence_penalty">presence_penalty</string>
     <string name="api_settings_note">示例URL：https://api.openai.com/v1</string>
     <string name="api_url_required">请先填写 API 地址</string>
     <string name="missing_api_settings">请先在设置中填写 API 地址与 Key</string>

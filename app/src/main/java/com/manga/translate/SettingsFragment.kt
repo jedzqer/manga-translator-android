@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.manga.translate.databinding.DialogLlmParamsBinding
 import com.manga.translate.databinding.FragmentSettingsBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -85,6 +86,10 @@ class SettingsFragment : Fragment() {
 
         binding.fetchModelsButton.setOnClickListener {
             fetchModelList()
+        }
+
+        binding.llmParamsButton.setOnClickListener {
+            showLlmParamsDialog()
         }
 
         binding.viewLogsButton.setOnClickListener {
@@ -243,6 +248,72 @@ class SettingsFragment : Fragment() {
             .show()
     }
 
+    private fun showLlmParamsDialog() {
+        val currentParams = settingsStore.loadLlmParameters()
+        val dialogBinding = DialogLlmParamsBinding.inflate(layoutInflater)
+        dialogBinding.temperatureInput.setText(currentParams.temperature?.toString().orEmpty())
+        dialogBinding.topPInput.setText(currentParams.topP?.toString().orEmpty())
+        dialogBinding.topKInput.setText(currentParams.topK?.toString().orEmpty())
+        dialogBinding.maxOutputTokensInput.setText(currentParams.maxOutputTokens?.toString().orEmpty())
+        dialogBinding.frequencyPenaltyInput.setText(currentParams.frequencyPenalty?.toString().orEmpty())
+        dialogBinding.presencePenaltyInput.setText(currentParams.presencePenalty?.toString().orEmpty())
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.llm_params_title)
+            .setView(dialogBinding.root)
+            .setPositiveButton(R.string.save_settings) { _, _ ->
+                val parsed = parseLlmParams(dialogBinding)
+                settingsStore.saveLlmParameters(parsed.params)
+                if (parsed.hasInvalid) {
+                    Toast.makeText(
+                        requireContext(),
+                        R.string.llm_params_invalid,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                AppLogger.log("Settings", "LLM params updated")
+            }
+            .setNeutralButton(R.string.llm_params_clear) { _, _ ->
+                settingsStore.saveLlmParameters(
+                    LlmParameterSettings(
+                        temperature = null,
+                        topP = null,
+                        topK = null,
+                        maxOutputTokens = null,
+                        frequencyPenalty = null,
+                        presencePenalty = null
+                    )
+                )
+                AppLogger.log("Settings", "LLM params cleared")
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun parseLlmParams(
+        dialogBinding: DialogLlmParamsBinding
+    ): ParsedLlmParams {
+        var hasInvalid = false
+        fun parseDouble(text: String?): Double? {
+            val trimmed = text?.trim().orEmpty()
+            if (trimmed.isBlank()) return null
+            return trimmed.toDoubleOrNull().also { if (it == null) hasInvalid = true }
+        }
+        fun parseInt(text: String?): Int? {
+            val trimmed = text?.trim().orEmpty()
+            if (trimmed.isBlank()) return null
+            return trimmed.toIntOrNull().also { if (it == null) hasInvalid = true }
+        }
+        val params = LlmParameterSettings(
+            temperature = parseDouble(dialogBinding.temperatureInput.text?.toString()),
+            topP = parseDouble(dialogBinding.topPInput.text?.toString()),
+            topK = parseInt(dialogBinding.topKInput.text?.toString()),
+            maxOutputTokens = parseInt(dialogBinding.maxOutputTokensInput.text?.toString()),
+            frequencyPenalty = parseDouble(dialogBinding.frequencyPenaltyInput.text?.toString()),
+            presencePenalty = parseDouble(dialogBinding.presencePenaltyInput.text?.toString())
+        )
+        return ParsedLlmParams(params, hasInvalid)
+    }
+
     private fun fetchModelList() {
         val apiUrl = binding.apiUrlInput.text?.toString()?.trim().orEmpty()
         val apiKey = binding.apiKeyInput.text?.toString()?.trim().orEmpty()
@@ -319,4 +390,9 @@ class SettingsFragment : Fragment() {
         private const val PROJECT_URL = "https://github.com/jedzqer/manga-translator"
         private const val RELEASES_URL = "https://github.com/jedzqer/manga-translator/releases"
     }
+
+    private data class ParsedLlmParams(
+        val params: LlmParameterSettings,
+        val hasInvalid: Boolean
+    )
 }

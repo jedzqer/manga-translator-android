@@ -1,6 +1,6 @@
 {
-  "versionCode": 13,
-  "versionName": "1.3.2",
-  "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/1.3.2/app-release.apk",
-  "changelog": "添加API超时设置，将普通翻译也改为整页翻译"
+  "versionCode": 14,
+  "versionName": "1.3.3",
+  "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/1.3.3/app-release.apk",
+  "changelog": "添加了一些可供调整的API参数，以改善翻译质量"
 }

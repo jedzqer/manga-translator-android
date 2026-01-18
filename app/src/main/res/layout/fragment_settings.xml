@@ -88,12 +88,22 @@
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginTop="12dp" />
 
+        <Button
+            android:id="@+id/llm_params_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/llm_params_button"
+            app:layout_constraintTop_toBottomOf="@id/fetch_models_button"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="12dp" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/max_concurrency_layout"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:hint="@string/max_concurrency_hint"
-            app:layout_constraintTop_toBottomOf="@id/fetch_models_button"
+            app:layout_constraintTop_toBottomOf="@id/llm_params_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginTop="16dp">
