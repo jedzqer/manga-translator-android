@@ -530,7 +530,9 @@ class LibraryFragment : Fragment() {
                 )
                 loadImages(folder)
             } finally {
-                binding.folderTranslate.isEnabled = true
+                _binding?.let { binding ->
+                    binding.folderTranslate.isEnabled = true
+                }
                 TranslationKeepAliveService.stop(requireContext())
             }
         }
@@ -701,7 +703,9 @@ class LibraryFragment : Fragment() {
                 showApiErrorDialog(e.errorCode)
                 setFolderStatus(getString(R.string.translation_failed))
             } finally {
-                binding.folderTranslate.isEnabled = true
+                _binding?.let { binding ->
+                    binding.folderTranslate.isEnabled = true
+                }
                 TranslationKeepAliveService.stop(requireContext())
             }
         }
@@ -845,8 +849,10 @@ class LibraryFragment : Fragment() {
     }
 
     private fun setFolderStatus(left: String, right: String = "") {
-        binding.folderProgressLeft.text = left
-        binding.folderProgressRight.text = right
+        _binding?.let { binding ->
+            binding.folderProgressLeft.text = left
+            binding.folderProgressRight.text = right
+        }
     }
 
     private fun clearFolderStatus() {
