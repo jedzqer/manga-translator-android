@@ -62,26 +62,7 @@ class SettingsFragment : Fragment() {
         }
 
         binding.saveButton.setOnClickListener {
-            val url = binding.apiUrlInput.text?.toString()?.trim().orEmpty()
-            val key = binding.apiKeyInput.text?.toString()?.trim().orEmpty()
-            val model = binding.modelNameInput.text?.toString()?.trim().orEmpty()
-            settingsStore.save(ApiSettings(url, key, model))
-            val timeoutInput = binding.apiTimeoutInput.text?.toString()?.trim()
-            val timeoutSeconds = timeoutInput?.toIntOrNull() ?: settingsStore.loadApiTimeoutSeconds()
-            settingsStore.saveApiTimeoutSeconds(timeoutSeconds)
-            val normalizedTimeout = settingsStore.loadApiTimeoutSeconds()
-            if (normalizedTimeout.toString() != timeoutInput) {
-                binding.apiTimeoutInput.setText(normalizedTimeout.toString())
-            }
-            val concurrencyInput = binding.maxConcurrencyInput.text?.toString()?.trim()
-            val maxConcurrency = concurrencyInput?.toIntOrNull() ?: settingsStore.loadMaxConcurrency()
-            val normalized = maxConcurrency.coerceIn(1, 50)
-            settingsStore.saveMaxConcurrency(normalized)
-            if (normalized.toString() != concurrencyInput) {
-                binding.maxConcurrencyInput.setText(normalized.toString())
-            }
-            AppLogger.log("Settings", "API settings saved")
-            Toast.makeText(requireContext(), R.string.settings_saved, Toast.LENGTH_SHORT).show()
+            persistSettings(showToast = true)
         }
 
         binding.fetchModelsButton.setOnClickListener {
@@ -110,6 +91,38 @@ class SettingsFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (_binding != null) {
+            persistSettings(showToast = false)
+        }
+    }
+
+    private fun persistSettings(showToast: Boolean) {
+        val url = binding.apiUrlInput.text?.toString()?.trim().orEmpty()
+        val key = binding.apiKeyInput.text?.toString()?.trim().orEmpty()
+        val model = binding.modelNameInput.text?.toString()?.trim().orEmpty()
+        settingsStore.save(ApiSettings(url, key, model))
+        val timeoutInput = binding.apiTimeoutInput.text?.toString()?.trim()
+        val timeoutSeconds = timeoutInput?.toIntOrNull() ?: settingsStore.loadApiTimeoutSeconds()
+        settingsStore.saveApiTimeoutSeconds(timeoutSeconds)
+        val normalizedTimeout = settingsStore.loadApiTimeoutSeconds()
+        if (normalizedTimeout.toString() != timeoutInput) {
+            binding.apiTimeoutInput.setText(normalizedTimeout.toString())
+        }
+        val concurrencyInput = binding.maxConcurrencyInput.text?.toString()?.trim()
+        val maxConcurrency = concurrencyInput?.toIntOrNull() ?: settingsStore.loadMaxConcurrency()
+        val normalized = maxConcurrency.coerceIn(1, 50)
+        settingsStore.saveMaxConcurrency(normalized)
+        if (normalized.toString() != concurrencyInput) {
+            binding.maxConcurrencyInput.setText(normalized.toString())
+        }
+        AppLogger.log("Settings", "API settings saved")
+        if (showToast) {
+            Toast.makeText(requireContext(), R.string.settings_saved, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun showLogsDialog() {
