@@ -146,6 +146,17 @@
                     android:contentDescription="@string/folder_full_translate_info_desc"
                     android:src="@android:drawable/ic_dialog_alert" />
             </LinearLayout>
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/folder_language_setting"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textAllCaps="false"
+                android:gravity="start|center_vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="@string/folder_language_setting" />
         </LinearLayout>
 
         <LinearLayout

@@ -13,15 +13,16 @@ import java.nio.FloatBuffer
 import java.nio.LongBuffer
 import kotlin.math.max
 
-class MangaOcr(private val context: Context) {
+class MangaOcr(private val context: Context) : OcrEngine {
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val encoderSession: OrtSession = createSession("encoder_model.onnx")
     private val decoderSession: OrtSession = createSession("decoder_model.onnx")
     private val generationConfig = loadGenerationConfig()
     private val imageConfig = loadImageConfig()
     private val tokenizer = loadTokenizer()
+    private val settingsStore = SettingsStore(context.applicationContext)
 
-    fun recognize(bitmap: Bitmap): String {
+    override fun recognize(bitmap: Bitmap): String {
         val imageTensor = preprocess(bitmap)
         val encoderOutputs = encoderSession.run(mapOf(encoderInputName() to imageTensor))
         val encoderHidden = encoderOutputs[0] as? OnnxTensor ?: run {
@@ -72,7 +73,11 @@ class MangaOcr(private val context: Context) {
         encoderOutputs.close()
         imageTensor.close()
 
-        return tokenizer.decode(ids)
+        val text = tokenizer.decode(ids)
+        if (settingsStore.loadModelIoLogging()) {
+            AppLogger.log("MangaOcr", "Input ${bitmap.width}x${bitmap.height}, output: $text")
+        }
+        return text
     }
 
     private fun preprocess(bitmap: Bitmap): OnnxTensor {

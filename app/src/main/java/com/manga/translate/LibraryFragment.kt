@@ -58,6 +58,7 @@ class LibraryFragment : Fragment() {
     }
     private val ehViewerTreeKey = "ehviewer_tree_uri"
     private val fullTranslateKeyPrefix = "full_translate_enabled_"
+    private val languageKeyPrefix = "translation_language_"
     private val tutorialUrl =
         "https://github.com/jedzqer/manga-translator/blob/main/Tutorial/简中教程.md"
 
@@ -108,6 +109,7 @@ class LibraryFragment : Fragment() {
         binding.folderCancelSelection.setOnClickListener { exitSelectionMode() }
         binding.folderRetranslateSelected.setOnClickListener { retranslateSelectedImages() }
         binding.folderFullTranslateInfo.setOnClickListener { showFullTranslateInfo() }
+        binding.folderLanguageSetting.setOnClickListener { showLanguageSettingDialog() }
         binding.folderFullTranslateSwitch.setOnCheckedChangeListener { _, isChecked ->
             currentFolder?.let { setFullTranslateEnabled(it, isChecked) }
         }
@@ -156,6 +158,7 @@ class LibraryFragment : Fragment() {
         currentFolder = folder
         binding.folderTitle.text = folder.name
         binding.folderFullTranslateSwitch.isChecked = isFullTranslateEnabled(folder)
+        updateLanguageSettingButton(folder)
         binding.libraryListContainer.visibility = View.GONE
         binding.folderDetailContainer.visibility = View.VISIBLE
         binding.addFolderFab.visibility = View.GONE
@@ -479,11 +482,12 @@ class LibraryFragment : Fragment() {
             var failed = false
             try {
                 val glossary = glossaryStore.load(folder)
+                val language = getTranslationLanguage(folder)
                 var translatedCount = 0
                 setFolderStatus(getString(R.string.translation_preparing))
                 for (image in pendingImages) {
                     val result = try {
-                        translationPipeline.translateImage(image, glossary, force) { }
+                        translationPipeline.translateImage(image, glossary, force, language) { }
                     } catch (e: LlmRequestException) {
                         AppLogger.log("Library", "Translation aborted for ${image.name}", e)
                         showApiErrorDialog(e.errorCode)
@@ -567,13 +571,14 @@ class LibraryFragment : Fragment() {
             var failed = false
             try {
                 val glossary = glossaryStore.load(folder).toMutableMap()
+                val language = getTranslationLanguage(folder)
                 val extractState = extractStateStore.load(folder)
                 val ocrResults = ArrayList<PageOcrResult>(pendingImages.size)
                 var ocrCount = 0
                 setFolderStatus(getString(R.string.translation_preparing))
                 for (image in pendingImages) {
                     val result = try {
-                        translationPipeline.ocrImage(image, force) { }
+                        translationPipeline.ocrImage(image, force, language) { }
                     } catch (e: Exception) {
                         AppLogger.log("Library", "OCR failed for ${image.name}", e)
                         null
@@ -596,10 +601,14 @@ class LibraryFragment : Fragment() {
                         getString(R.string.translation_preparing),
                         getString(R.string.folder_glossary_progress)
                     )
+                    val abstractPromptAsset = when (language) {
+                        TranslationLanguage.EN_TO_ZH -> "en-zh-llm_prompts_abstract.json"
+                        TranslationLanguage.JA_TO_ZH -> "llm_prompts_abstract.json"
+                    }
                     val extracted = llmClient.extractGlossary(
                         glossaryText,
                         glossary,
-                        "llm_prompts_abstract.json"
+                        abstractPromptAsset
                     )
                     if (extracted != null) {
                         if (extracted.isNotEmpty()) {
@@ -630,11 +639,16 @@ class LibraryFragment : Fragment() {
                                 if (requestFailed.get()) {
                                     return@withPermit
                                 }
+                                val fullTransPromptAsset = when (language) {
+                                    TranslationLanguage.EN_TO_ZH -> "en-zh-llm_prompts_FullTrans.json"
+                                    TranslationLanguage.JA_TO_ZH -> "llm_prompts_FullTrans.json"
+                                }
                                 val result = try {
                                     translationPipeline.translateFullPage(
                                         page,
                                         glossary,
-                                        "llm_prompts_FullTrans.json"
+                                        fullTransPromptAsset,
+                                        language
                                     ) { }
                                 } catch (e: LlmResponseException) {
                                     AppLogger.log(
@@ -873,6 +887,41 @@ class LibraryFragment : Fragment() {
 
     private fun setFullTranslateEnabled(folder: File, enabled: Boolean) {
         prefs.edit().putBoolean(fullTranslateKeyPrefix + folder.absolutePath, enabled).apply()
+    }
+
+    private fun getTranslationLanguage(folder: File): TranslationLanguage {
+        val value = prefs.getString(languageKeyPrefix + folder.absolutePath, null)
+        return TranslationLanguage.fromString(value)
+    }
+
+    private fun setTranslationLanguage(folder: File, language: TranslationLanguage) {
+        prefs.edit().putString(languageKeyPrefix + folder.absolutePath, language.name).apply()
+        updateLanguageSettingButton(folder)
+    }
+
+    private fun updateLanguageSettingButton(folder: File) {
+        val language = getTranslationLanguage(folder)
+        val displayName = getString(language.displayNameResId)
+        binding.folderLanguageSetting.text = getString(R.string.folder_language_setting, displayName)
+    }
+
+    private fun showLanguageSettingDialog() {
+        val folder = currentFolder ?: return
+        val currentLanguage = getTranslationLanguage(folder)
+        val languages = TranslationLanguage.values()
+        val languageNames = languages.map { getString(it.displayNameResId) }.toTypedArray()
+        val currentIndex = languages.indexOf(currentLanguage)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.folder_language_setting_title)
+            .setSingleChoiceItems(languageNames, currentIndex) { dialog, which ->
+                val selectedLanguage = languages[which]
+                setTranslationLanguage(folder, selectedLanguage)
+                AppLogger.log("Library", "Set language for ${folder.name}: ${selectedLanguage.name}")
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun buildGlossaryText(pages: List<PageOcrResult>): String {

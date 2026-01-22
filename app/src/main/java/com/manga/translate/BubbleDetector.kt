@@ -26,6 +26,7 @@ class BubbleDetector(
     private val session: OrtSession = createSession()
     private val inputName: String
     private val inputShape: LongArray
+    private val settingsStore = SettingsStore(context.applicationContext)
 
     init {
         val input = session.inputInfo.entries.first()
@@ -63,7 +64,7 @@ class BubbleDetector(
                 val output = outputs[0]
                 val outputShape = (output.info as TensorInfo).shape
                 val detections = parseDetections(output.value, outputShape)
-                return filterByNms(
+                val filtered = filterByNms(
                     detections,
                     0.25f,
                     0.5f,
@@ -72,6 +73,13 @@ class BubbleDetector(
                     inputWidth,
                     inputHeight
                 )
+                if (settingsStore.loadModelIoLogging()) {
+                    AppLogger.log(
+                        "BubbleDetector",
+                        "Input ${bitmap.width}x${bitmap.height}, output ${filtered.size} boxes: ${describeDetections(filtered)}"
+                    )
+                }
+                return filtered
             }
         }
     }
@@ -223,6 +231,15 @@ class BubbleDetector(
             }
         }
         return env.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
+    }
+
+    private fun describeDetections(detections: List<BubbleDetection>, limit: Int = 3): String {
+        if (detections.isEmpty()) return "[]"
+        val preview = detections.take(limit).joinToString(prefix = "[", postfix = "]") { det ->
+            val r = det.rect
+            "(${r.left.toInt()},${r.top.toInt()},${r.right.toInt()},${r.bottom.toInt()},c=${"%.2f".format(det.confidence)})"
+        }
+        return if (detections.size > limit) "$preview..." else preview
     }
 }
 

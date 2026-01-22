@@ -12,6 +12,7 @@
     <string name="api_timeout_hint">API 超时 (秒, 30-1200)</string>
     <string name="max_concurrency_hint">最大并发数 (1–50)</string>
     <string name="text_layout_horizontal">漫画使用横向排版</string>
+    <string name="model_io_logging">打印 AI 模型输入输出</string>
     <string name="theme_setting_button">主题设置</string>
     <string name="theme_setting_title">主题设置</string>
     <string name="theme_setting_format">主题设置：%1$s</string>
@@ -66,6 +67,10 @@
     <string name="folder_read">开始阅读</string>
     <string name="folder_back">返回</string>
     <string name="folder_translation_settings">翻译设置</string>
+    <string name="folder_language_setting">语言设置：%1$s</string>
+    <string name="folder_language_setting_title">选择翻译语言</string>
+    <string name="folder_language_ja_to_zh">日文 → 中文</string>
+    <string name="folder_language_en_to_zh">英文 → 中文</string>
     <string name="folder_full_translate">全文速译</string>
     <string name="folder_full_translate_info_title">全文速译说明</string>
     <string name="folder_full_translate_info">开启后会先识别全部图片文本并提取译名，再按整页翻译气泡内容。开启后第一张图片的翻译速度视图片总数而定。如果翻译出现错误，可以关闭此开关，然后长按错误翻译的图片进行重译</string>

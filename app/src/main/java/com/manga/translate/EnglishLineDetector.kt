@@ -15,7 +15,7 @@ import java.nio.FloatBuffer
 import kotlin.math.max
 import kotlin.math.min
 
-class TextDetector(
+class EnglishLineDetector(
     private val context: Context,
     private val modelAssetName: String = "Multilingual_PP-OCRv3_det_infer.onnx"
 ) {
@@ -34,7 +34,7 @@ class TextDetector(
         inputWidth = (shape.getOrNull(3) ?: 960L).toInt().coerceAtLeast(1)
     }
 
-    fun detect(bitmap: Bitmap): List<RectF> {
+    fun detectLines(bitmap: Bitmap): List<RectF> {
         val preprocessed = preprocess(bitmap)
         val tensor = preprocessed.tensor
         tensor.use {
@@ -42,21 +42,15 @@ class TextDetector(
                 val output = outputs[0]
                 val outputShape = (output.info as TensorInfo).shape
                 val probMap = extractProbMap(output.value, outputShape) ?: return emptyList()
-                val mask = buildMask(probMap, preprocessed.outputWidth, preprocessed.outputHeight, PROB_THRESHOLD)
-                val maskToUse = if (USE_DILATION) {
-                    dilateMask(mask, preprocessed.outputWidth, preprocessed.outputHeight)
-                } else {
-                    mask
-                }
-                val boxes = extractBoxesFromMask(maskToUse, probMap, preprocessed)
-                val expanded = boxes.map { expandRect(it, OUTPUT_EXPAND_RATIO, OUTPUT_EXPAND_MIN, bitmap) }
+                val rects = extractLineRects(probMap, preprocessed)
+                val sorted = sortBoxesReadingOrder(rects)
                 if (settingsStore.loadModelIoLogging()) {
                     AppLogger.log(
-                        "TextDetector",
-                        "Input ${bitmap.width}x${bitmap.height}, output ${expanded.size} boxes: ${describeRects(expanded)}"
+                        "EnglishLineDetector",
+                        "Input ${bitmap.width}x${bitmap.height}, lines ${sorted.size}: ${describeRects(sorted)}"
                     )
                 }
-                return expanded
+                return sorted
             }
         }
     }
@@ -139,45 +133,18 @@ class TextDetector(
         return prob
     }
 
-    private fun buildMask(prob: FloatArray, width: Int, height: Int, threshold: Float): BooleanArray {
-        val total = width * height
-        val mask = BooleanArray(total)
-        for (i in 0 until total) {
-            mask[i] = prob[i] > threshold
-        }
-        return mask
-    }
-
-    private fun dilateMask(mask: BooleanArray, width: Int, height: Int): BooleanArray {
-        val out = mask.clone()
-        for (y in 0 until height) {
-            val rowOffset = y * width
-            for (x in 0 until width) {
-                if (!mask[rowOffset + x]) continue
-                if (x + 1 < width) out[rowOffset + x + 1] = true
-                if (y + 1 < height) out[rowOffset + width + x] = true
-                if (x + 1 < width && y + 1 < height) out[rowOffset + width + x + 1] = true
-            }
-        }
-        return out
-    }
-
-    private fun extractBoxesFromMask(
-        mask: BooleanArray,
-        prob: FloatArray,
-        pre: PreprocessResult
-    ): List<RectF> {
+    private fun extractLineRects(prob: FloatArray, pre: PreprocessResult): List<RectF> {
         val width = pre.outputWidth
         val height = pre.outputHeight
         if (width <= 0 || height <= 0) return emptyList()
         val total = width * height
-        if (mask.size < total || prob.size < total) return emptyList()
+        if (prob.size < total) return emptyList()
         val visited = BooleanArray(total)
         val stack = IntArray(total)
         val results = ArrayList<RectF>()
 
         for (i in 0 until total) {
-            if (visited[i] || !mask[i]) continue
+            if (visited[i] || prob[i] <= PROB_THRESHOLD) continue
             var minX = width
             var minY = height
             var maxX = 0
@@ -205,7 +172,7 @@ class TextDetector(
                     for (nx in x - 1..x + 1) {
                         if (nx < 0 || nx >= width) continue
                         val nidx = rowOffset + nx
-                        if (!visited[nidx] && mask[nidx]) {
+                        if (!visited[nidx] && prob[nidx] > PROB_THRESHOLD) {
                             visited[nidx] = true
                             stack[sp++] = nidx
                         }
@@ -213,15 +180,14 @@ class TextDetector(
                 }
             }
 
-            val boxW = maxX - minX + 1
-            val boxH = maxY - minY + 1
-            if (count < MIN_COMPONENT_PIXELS || min(boxW, boxH) < MIN_SIZE) continue
+            if (count < MIN_COMPONENT_PIXELS) continue
             val score = sum / count
             if (score < BOX_THRESHOLD) continue
+            val boxW = maxX - minX + 1
+            val boxH = maxY - minY + 1
+            if (boxW < MIN_SIZE || boxH < MIN_SIZE) continue
 
-            val perimeter = 2f * (boxW + boxH)
-            val area = boxW * boxH.toFloat()
-            val distance = if (perimeter <= 0f) 0f else (area * UNCLIP_RATIO / perimeter)
+            val distance = (boxW * boxH) / (2f * (boxW + boxH)) * UNCLIP_RATIO
             val left = (minX - distance).coerceIn(0f, width.toFloat())
             val top = (minY - distance).coerceIn(0f, height.toFloat())
             val right = (maxX + 1 + distance).coerceIn(0f, width.toFloat())
@@ -239,22 +205,28 @@ class TextDetector(
         return results
     }
 
+    private fun sortBoxesReadingOrder(rects: List<RectF>): List<RectF> {
+        if (rects.isEmpty()) return emptyList()
+        val yCoords = rects.map { it.top }
+        val indices = yCoords.indices.sortedWith(compareBy({ yCoords[it] }, { it }))
+        val ySorted = indices.map { yCoords[it] }
+        val lineIds = IntArray(indices.size)
+        for (i in 1 until indices.size) {
+            val dy = ySorted[i] - ySorted[i - 1]
+            lineIds[i] = lineIds[i - 1] + if (dy >= BOX_SORT_Y_THRESHOLD) 1 else 0
+        }
+        return indices
+            .withIndex()
+            .sortedWith(compareBy({ lineIds[it.index] }, { rects[it.value].left }))
+            .map { rects[it.value] }
+    }
+
     private fun describeRects(rects: List<RectF>, limit: Int = 3): String {
         if (rects.isEmpty()) return "[]"
         val preview = rects.take(limit).joinToString(prefix = "[", postfix = "]") { rect ->
             "(${rect.left.toInt()},${rect.top.toInt()},${rect.right.toInt()},${rect.bottom.toInt()})"
         }
         return if (rects.size > limit) "$preview..." else preview
-    }
-
-    private fun expandRect(rect: RectF, ratio: Float, minExpand: Float, bitmap: Bitmap): RectF {
-        val h = max(1f, rect.height())
-        val pad = max(minExpand, ratio * h)
-        val left = (rect.left - pad).coerceIn(0f, bitmap.width.toFloat())
-        val top = (rect.top - pad).coerceIn(0f, bitmap.height.toFloat())
-        val right = (rect.right + pad).coerceIn(0f, bitmap.width.toFloat())
-        val bottom = (rect.bottom + pad).coerceIn(0f, bitmap.height.toFloat())
-        return RectF(left, top, right, bottom)
     }
 
     private fun createSession(): OrtSession {
@@ -286,12 +258,10 @@ class TextDetector(
         private val STD = floatArrayOf(0.5f, 0.5f, 0.5f)
         private const val PROB_THRESHOLD = 0.3f
         private const val BOX_THRESHOLD = 0.5f
-        private const val UNCLIP_RATIO = 1.2f
+        private const val UNCLIP_RATIO = 1.6f
         private const val MIN_COMPONENT_PIXELS = 3
         private const val MIN_SIZE = 3
         private const val MIN_ORIGINAL_SIZE = 3f
-        private const val USE_DILATION = false
-        private const val OUTPUT_EXPAND_RATIO = 0.08f
-        private const val OUTPUT_EXPAND_MIN = 1.0f
+        private const val BOX_SORT_Y_THRESHOLD = 10f
     }
 }

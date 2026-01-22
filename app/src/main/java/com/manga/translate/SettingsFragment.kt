@@ -46,6 +46,7 @@ class SettingsFragment : Fragment() {
         binding.apiTimeoutInput.setText(settingsStore.loadApiTimeoutSeconds().toString())
         binding.maxConcurrencyInput.setText(settingsStore.loadMaxConcurrency().toString())
         binding.textLayoutSwitch.isChecked = settingsStore.loadUseHorizontalText()
+        binding.modelIoLoggingSwitch.isChecked = settingsStore.loadModelIoLogging()
         val themeMode = settingsStore.loadThemeMode()
         updateThemeButton(themeMode)
         val readingMode = settingsStore.loadReadingDisplayMode()
@@ -53,6 +54,13 @@ class SettingsFragment : Fragment() {
         binding.textLayoutSwitch.setOnCheckedChangeListener { _, isChecked ->
             settingsStore.saveUseHorizontalText(isChecked)
             AppLogger.log("Settings", "Text layout set to ${if (isChecked) "horizontal" else "vertical"}")
+        }
+        binding.modelIoLoggingSwitch.setOnCheckedChangeListener { _, isChecked ->
+            settingsStore.saveModelIoLogging(isChecked)
+            AppLogger.log(
+                "Settings",
+                "Model I/O logging ${if (isChecked) "enabled" else "disabled"}"
+            )
         }
         binding.themeButton.setOnClickListener {
             showThemeDialog()

@@ -57,6 +57,10 @@ class LlmClient(context: Context) {
         if (!settings.isValid()) return null
         val endpoint = buildEndpoint(settings.apiUrl)
         val payload = buildPayload(text, glossary, settings.modelName, promptAsset, useJsonPayload)
+        val logModelIo = settingsStore.loadModelIoLogging()
+        if (logModelIo) {
+            AppLogger.log("LlmClient", "Model input ($promptAsset): $payload")
+        }
         val timeoutMs = settingsStore.loadApiTimeoutMs()
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
@@ -98,6 +102,8 @@ class LlmClient(context: Context) {
                         )
                         lastErrorCode = "INVALID_RESPONSE"
                         lastErrorBody = body
+                    } else if (logModelIo) {
+                        AppLogger.log("LlmClient", "Model output: $content")
                     }
                     content
                 }

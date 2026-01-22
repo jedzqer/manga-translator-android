@@ -27,15 +27,26 @@
                 android:inputType="textUri" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <TextView
+            android:id="@+id/api_url_hint_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/api_settings_note"
+            android:textSize="12sp"
+            app:layout_constraintTop_toBottomOf="@id/api_url_layout"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="6dp" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/api_key_layout"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:hint="@string/api_key_hint"
-            app:layout_constraintTop_toBottomOf="@id/api_url_layout"
+            app:layout_constraintTop_toBottomOf="@id/api_url_hint_text"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="16dp">
+            android:layout_marginTop="12dp">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/api_key_input"
@@ -156,11 +167,21 @@
             android:layout_marginTop="20dp" />
 
         <Button
+            android:id="@+id/about_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/about_button"
+            app:layout_constraintTop_toBottomOf="@id/save_button"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="12dp" />
+
+        <Button
             android:id="@+id/view_logs_button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:text="@string/view_logs"
-            app:layout_constraintTop_toBottomOf="@id/save_button"
+            app:layout_constraintTop_toBottomOf="@id/about_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginTop="12dp" />
@@ -175,27 +196,16 @@
             app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginTop="12dp" />
 
-        <TextView
-            android:id="@+id/settings_hint"
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/model_io_logging_switch"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="@string/api_settings_note"
-            android:textSize="12sp"
+            android:text="@string/model_io_logging"
             app:layout_constraintTop_toBottomOf="@id/open_logs_folder_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="12dp" />
-
-        <Button
-            android:id="@+id/about_button"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:text="@string/about_button"
-            app:layout_constraintTop_toBottomOf="@id/settings_hint"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
-            android:layout_marginTop="20dp" />
+            android:layout_marginTop="16dp" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.core.widget.NestedScrollView>

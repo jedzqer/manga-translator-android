@@ -19,12 +19,15 @@ class TranslationPipeline(context: Context) {
     private val ocrStore = OcrStore()
     private var detector: BubbleDetector? = null
     private var ocr: MangaOcr? = null
+    private var englishOcr: EnglishOcr? = null
     private var textDetector: TextDetector? = null
+    private var englishLineDetector: EnglishLineDetector? = null
 
     suspend fun translateImage(
         imageFile: File,
         glossary: MutableMap<String, String>,
         forceOcr: Boolean,
+        language: TranslationLanguage = TranslationLanguage.JA_TO_ZH,
         onProgress: (String) -> Unit
     ): TranslationResult? = withContext(Dispatchers.Default) {
         if (!llmClient.isConfigured()) {
@@ -32,7 +35,7 @@ class TranslationPipeline(context: Context) {
             AppLogger.log("Pipeline", "Missing API settings")
             return@withContext null
         }
-        val page = ocrImage(imageFile, forceOcr, onProgress) ?: return@withContext null
+        val page = ocrImage(imageFile, forceOcr, language, onProgress) ?: return@withContext null
         AppLogger.log("Pipeline", "Translate image ${imageFile.name}")
         val translatable = page.bubbles.filter { it.text.isNotBlank() }
         if (translatable.isEmpty()) {
@@ -48,7 +51,11 @@ class TranslationPipeline(context: Context) {
         }
         onProgress(appContext.getString(R.string.translating_bubbles))
         val pageText = translatable.joinToString("\n") { "<b>${it.text}</b>" }
-        val translated = llmClient.translate(pageText, glossary)
+        val promptAsset = when (language) {
+            TranslationLanguage.EN_TO_ZH -> "en-zh-llm_prompts.json"
+            TranslationLanguage.JA_TO_ZH -> "llm_prompts.json"
+        }
+        val translated = llmClient.translate(pageText, glossary, promptAsset)
         if (translated == null) {
             val fallback = page.bubbles.map { bubble ->
                 val text = bubble.text.trim()
@@ -83,6 +90,7 @@ class TranslationPipeline(context: Context) {
     suspend fun ocrImage(
         imageFile: File,
         forceOcr: Boolean,
+        language: TranslationLanguage = TranslationLanguage.JA_TO_ZH,
         onProgress: (String) -> Unit
     ): PageOcrResult? = withContext(Dispatchers.Default) {
         if (!forceOcr) {
@@ -93,7 +101,10 @@ class TranslationPipeline(context: Context) {
             }
         }
         val detector = getDetector() ?: return@withContext null
-        val ocr = getOcr() ?: return@withContext null
+        val ocrEngine: OcrEngine = when (language) {
+            TranslationLanguage.EN_TO_ZH -> getEnglishOcr()
+            TranslationLanguage.JA_TO_ZH -> getOcr()
+        } ?: return@withContext null
         val textDetector = getTextDetector()
         val bitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
             ?: run {
@@ -104,6 +115,32 @@ class TranslationPipeline(context: Context) {
         val detections = detector.detect(bitmap)
         AppLogger.log("Pipeline", "Detected ${detections.size} bubbles in ${imageFile.name}")
         val bubbleRects = detections.map { it.rect }
+        if (language == TranslationLanguage.EN_TO_ZH && ocrEngine is EnglishOcr) {
+            val lineDetector = getEnglishLineDetector()
+            val bubbles = ArrayList<OcrBubble>(bubbleRects.size)
+            if (bubbleRects.isEmpty()) {
+                val lineRects = lineDetector?.detectLines(bitmap).orEmpty()
+                val lines = recognizeEnglishLines(bitmap, lineRects, ocrEngine)
+                for ((index, line) in lines.withIndex()) {
+                    bubbles.add(OcrBubble(index, line.rect, line.text))
+                }
+            } else {
+                for ((bubbleId, rect) in bubbleRects.withIndex()) {
+                    val crop = cropBitmap(bitmap, rect) ?: continue
+                    val lineRects = lineDetector?.detectLines(crop).orEmpty()
+                    val lines = recognizeEnglishLines(crop, lineRects, ocrEngine)
+                    val text = if (lines.isEmpty()) {
+                        ocrEngine.recognize(crop).trim()
+                    } else {
+                        lines.joinToString("\n") { it.text }
+                    }
+                    bubbles.add(OcrBubble(bubbleId, rect, text))
+                }
+            }
+            val result = PageOcrResult(imageFile, bitmap.width, bitmap.height, bubbles)
+            ocrStore.save(imageFile, result)
+            return@withContext result
+        }
         val textRects = textDetector?.let { detectorInstance ->
             val masked = maskDetections(bitmap, bubbleRects)
             val rawTextRects = detectorInstance.detect(masked)
@@ -126,7 +163,7 @@ class TranslationPipeline(context: Context) {
         val bubbles = ArrayList<OcrBubble>(allRects.size)
         for ((bubbleId, rect) in allRects.withIndex()) {
             val crop = cropBitmap(bitmap, rect) ?: continue
-            val text = ocr.recognize(crop).trim()
+            val text = ocrEngine.recognize(crop).trim()
             bubbles.add(OcrBubble(bubbleId, rect, text))
         }
         val result = PageOcrResult(imageFile, bitmap.width, bitmap.height, bubbles)
@@ -138,6 +175,7 @@ class TranslationPipeline(context: Context) {
         page: PageOcrResult,
         glossary: Map<String, String>,
         promptAsset: String,
+        language: TranslationLanguage = TranslationLanguage.JA_TO_ZH,
         onProgress: (String) -> Unit
     ): TranslationResult? = withContext(Dispatchers.Default) {
         val translatable = page.bubbles.filter { it.text.isNotBlank() }
@@ -216,6 +254,17 @@ class TranslationPipeline(context: Context) {
         }
     }
 
+    private fun getEnglishOcr(): EnglishOcr? {
+        if (englishOcr != null) return englishOcr
+        return try {
+            englishOcr = EnglishOcr(appContext)
+            englishOcr
+        } catch (e: Exception) {
+            AppLogger.log("Pipeline", "Failed to init English OCR", e)
+            null
+        }
+    }
+
     private fun getTextDetector(): TextDetector? {
         if (textDetector != null) return textDetector
         return try {
@@ -223,6 +272,17 @@ class TranslationPipeline(context: Context) {
             textDetector
         } catch (e: Exception) {
             AppLogger.log("Pipeline", "Failed to init text detector", e)
+            null
+        }
+    }
+
+    private fun getEnglishLineDetector(): EnglishLineDetector? {
+        if (englishLineDetector != null) return englishLineDetector
+        return try {
+            englishLineDetector = EnglishLineDetector(appContext)
+            englishLineDetector
+        } catch (e: Exception) {
+            AppLogger.log("Pipeline", "Failed to init English line detector", e)
             null
         }
     }
@@ -308,6 +368,29 @@ class TranslationPipeline(context: Context) {
         private const val TEXT_IOU_THRESHOLD = 0.2f
         private const val MASK_EXPAND_RATIO = 0.1f
         private const val MASK_EXPAND_MIN = 4f
+        private const val EN_MIN_LINE_SCORE = 0.5f
+    }
+
+    private data class EnglishLine(
+        val rect: RectF,
+        val text: String
+    )
+
+    private fun recognizeEnglishLines(
+        source: Bitmap,
+        lineRects: List<RectF>,
+        ocrEngine: EnglishOcr
+    ): List<EnglishLine> {
+        if (lineRects.isEmpty()) return emptyList()
+        val results = ArrayList<EnglishLine>(lineRects.size)
+        for (rect in lineRects) {
+            val crop = cropBitmap(source, rect) ?: continue
+            val decoded = ocrEngine.recognizeWithScore(crop)
+            val text = decoded.text.trim()
+            if (decoded.score < EN_MIN_LINE_SCORE || text.isBlank()) continue
+            results.add(EnglishLine(rect, text))
+        }
+        return results
     }
 
     private fun extractTaggedSegments(text: String, fallback: List<String>): List<String> {
