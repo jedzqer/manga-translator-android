@@ -1,6 +1,7 @@
 # Manga Translator 📖
 
 面向安卓的漫画翻译 App：本地气泡检测与 OCR，结合 OpenAI 兼容接口完成翻译，并在原图上覆盖显示可拖动的翻译气泡。
+使用教程：https://github.com/jedzqer/manga-translator/blob/main/Tutorial/简中教程.md
 
 ## 主要功能 ✨
 - 漫画库管理：新建文件夹、批量导入图片、EhViewer 导入
