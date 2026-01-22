@@ -63,6 +63,7 @@
     <string name="folder_empty">暂无漫画文件夹</string>
     <string name="folder_images_empty">该文件夹暂无图片</string>
     <string name="folder_add_images">批量上传图片</string>
+    <string name="folder_export">导出漫画</string>
     <string name="folder_translate">翻译文件夹</string>
     <string name="folder_read">开始阅读</string>
     <string name="folder_back">返回</string>
@@ -104,6 +105,12 @@
     <string name="ehviewer_import_done">已导入 %1$d 张图片</string>
     <string name="translation_done">翻译完成</string>
     <string name="translation_failed">翻译失败</string>
+    <string name="exporting_progress">导出中…(%1$d/%2$d)</string>
+    <string name="export_done">导出完成</string>
+    <string name="export_failed">导出失败</string>
+    <string name="export_permission_denied">未授予存储权限，无法导出</string>
+    <string name="export_success_title">导出成功</string>
+    <string name="export_success_message">文件已导出到：%1$s</string>
     <string name="api_request_failed_title">API 调用失败</string>
     <string name="api_request_failed_message">请求失败（%1$s），翻译已终止。</string>
     <string name="model_response_failed_title">模型返回异常</string>

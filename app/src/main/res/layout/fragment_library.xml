@@ -92,6 +92,15 @@
                 android:text="@string/folder_add_images" />
 
             <Button
+                android:id="@+id/folder_export"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="?android:attr/buttonBarButtonStyle"
+                android:text="@string/folder_export"
+                android:layout_marginStart="8dp" />
+
+            <Button
                 android:id="@+id/folder_translate"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"

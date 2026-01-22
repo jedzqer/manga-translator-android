@@ -1,10 +1,16 @@
 package com.manga.translate
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,6 +19,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -28,6 +35,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -42,6 +50,7 @@ class LibraryFragment : Fragment() {
     private val extractStateStore = ExtractStateStore()
     private val ocrStore = OcrStore()
     private lateinit var readingProgressStore: ReadingProgressStore
+    private val settingsStore by lazy { SettingsStore(requireContext()) }
     private val folderAdapter = LibraryFolderAdapter(
         onClick = { openFolder(it.folder) },
         onDelete = { confirmDeleteFolder(it.folder) }
@@ -61,6 +70,23 @@ class LibraryFragment : Fragment() {
     private val languageKeyPrefix = "translation_language_"
     private val tutorialUrl =
         "https://github.com/jedzqer/manga-translator/blob/main/Tutorial/简中教程.md"
+    private var pendingExportAfterPermission = false
+
+    private val requestStoragePermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (pendingExportAfterPermission && granted) {
+            pendingExportAfterPermission = false
+            exportFolderInternal()
+            return@registerForActivityResult
+        }
+        pendingExportAfterPermission = false
+        if (!granted) {
+            val message = getString(R.string.export_permission_denied)
+            setFolderStatus(message)
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     private val pickImages = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -102,6 +128,7 @@ class LibraryFragment : Fragment() {
         binding.tutorialButton.setOnClickListener { openTutorial() }
         binding.folderBackButton.setOnClickListener { showFolderList() }
         binding.folderAddImages.setOnClickListener { pickImages.launch(arrayOf("image/*")) }
+        binding.folderExport.setOnClickListener { exportFolder() }
         binding.folderTranslate.setOnClickListener { translateFolder() }
         binding.folderRead.setOnClickListener { startReading() }
         binding.folderSelectAll.setOnClickListener { toggleSelectAllImages() }
@@ -724,6 +751,217 @@ class LibraryFragment : Fragment() {
             }
         }
     }
+
+    private fun exportFolder() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            val permission = android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            val granted = ContextCompat.checkSelfPermission(
+                requireContext(),
+                permission
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                pendingExportAfterPermission = true
+                requestStoragePermission.launch(permission)
+                return
+            }
+        }
+        exportFolderInternal()
+    }
+
+    private fun exportFolderInternal() {
+        val folder = currentFolder ?: return
+        exitSelectionMode()
+        val images = repository.listImages(folder)
+        if (images.isEmpty()) {
+            setFolderStatus(getString(R.string.folder_images_empty))
+            return
+        }
+        val appContext = requireContext().applicationContext
+        val renderer = BubbleRenderer(appContext)
+        val verticalLayoutEnabled = !settingsStore.loadUseHorizontalText()
+        binding.folderExport.isEnabled = false
+        viewLifecycleOwner.lifecycleScope.launch {
+            var exported = 0
+            var failed = false
+            try {
+                setFolderStatus(getString(R.string.exporting_progress, exported, images.size))
+                for (image in images) {
+                    val success = withContext(Dispatchers.IO) {
+                        exportImageWithBubbles(
+                            appContext,
+                            renderer,
+                            image,
+                            folder.name,
+                            verticalLayoutEnabled
+                        )
+                    }
+                    if (!success) {
+                        failed = true
+                    }
+                    exported += 1
+                    setFolderStatus(getString(R.string.exporting_progress, exported, images.size))
+                }
+                setFolderStatus(
+                    if (failed) getString(R.string.export_failed) else getString(R.string.export_done)
+                )
+                if (!failed && isAdded) {
+                    val path = "/Pictures/manga-translate/${folder.name}"
+                    AlertDialog.Builder(requireContext())
+                        .setTitle(R.string.export_success_title)
+                        .setMessage(getString(R.string.export_success_message, path))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                }
+                AppLogger.log(
+                    "Library",
+                    "Export ${if (failed) "completed with failures" else "completed"}: ${folder.name}"
+                )
+            } finally {
+                _binding?.let { binding ->
+                    binding.folderExport.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private fun exportImageWithBubbles(
+        context: Context,
+        renderer: BubbleRenderer,
+        imageFile: File,
+        folderName: String,
+        verticalLayoutEnabled: Boolean
+    ): Boolean {
+        val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return false
+        val translation = translationStore.load(imageFile)
+        val output = if (translation != null && translation.bubbles.any { it.text.isNotBlank() }) {
+            renderer.render(bitmap, translation, verticalLayoutEnabled)
+        } else {
+            bitmap
+        }
+        val spec = resolveExportSpec(imageFile.name)
+        val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            saveBitmapToMediaStore(context, output, spec, folderName)
+        } else {
+            saveBitmapToLegacyStorage(output, spec, folderName)
+        }
+        if (output !== bitmap) {
+            output.recycle()
+        }
+        bitmap.recycle()
+        if (!success) {
+            AppLogger.log("Library", "Export failed for ${imageFile.name}")
+        }
+        return success
+    }
+
+    private fun saveBitmapToMediaStore(
+        context: Context,
+        bitmap: Bitmap,
+        spec: ExportSpec,
+        folderName: String
+    ): Boolean {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, spec.displayName)
+            put(MediaStore.Images.Media.MIME_TYPE, spec.mimeType)
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/manga-translate/$folderName")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: return false
+        val success = try {
+            resolver.openOutputStream(uri)?.use { output ->
+                bitmap.compress(spec.format, spec.quality, output)
+            } ?: false
+        } catch (e: Exception) {
+            AppLogger.log("Library", "Export write failed: ${spec.displayName}", e)
+            false
+        }
+        values.clear()
+        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+        resolver.update(uri, values, null, null)
+        if (!success) {
+            resolver.delete(uri, null, null)
+        }
+        return success
+    }
+
+    private fun saveBitmapToLegacyStorage(
+        bitmap: Bitmap,
+        spec: ExportSpec,
+        folderName: String
+    ): Boolean {
+        val root = Environment.getExternalStorageDirectory()
+        val exportDir = File(root, "Pictures/manga-translate/$folderName")
+        if (!exportDir.exists() && !exportDir.mkdirs()) {
+            AppLogger.log("Library", "Export directory create failed: ${exportDir.absolutePath}")
+            return false
+        }
+        val target = resolveUniqueFile(exportDir, spec.displayName)
+        return try {
+            FileOutputStream(target).use { output ->
+                bitmap.compress(spec.format, spec.quality, output)
+            }
+        } catch (e: Exception) {
+            AppLogger.log("Library", "Export write failed: ${target.name}", e)
+            false
+        }
+    }
+
+    private fun resolveExportSpec(fileName: String): ExportSpec {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        val baseName = fileName.substringBeforeLast('.', fileName)
+        val format = when (ext) {
+            "png" -> Bitmap.CompressFormat.PNG
+            "webp" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Bitmap.CompressFormat.WEBP_LOSSLESS
+            } else {
+                Bitmap.CompressFormat.WEBP
+            }
+            "jpg", "jpeg" -> Bitmap.CompressFormat.JPEG
+            else -> Bitmap.CompressFormat.JPEG
+        }
+        val mimeType = when (ext) {
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "jpg", "jpeg" -> "image/jpeg"
+            else -> "image/jpeg"
+        }
+        val normalizedExt = when (ext) {
+            "png", "webp", "jpg", "jpeg" -> ext
+            else -> "jpg"
+        }
+        val displayName = if (ext == normalizedExt && ext.isNotEmpty()) {
+            fileName
+        } else {
+            "$baseName.$normalizedExt"
+        }
+        val quality = when (format) {
+            Bitmap.CompressFormat.PNG -> 100
+            else -> 95
+        }
+        return ExportSpec(displayName, mimeType, format, quality)
+    }
+
+    private fun resolveUniqueFile(folder: File, fileName: String): File {
+        val base = fileName.substringBeforeLast('.', fileName)
+        val ext = fileName.substringAfterLast('.', "")
+        var candidate = File(folder, fileName)
+        var index = 1
+        while (candidate.exists()) {
+            val suffix = if (ext.isEmpty()) "" else ".$ext"
+            candidate = File(folder, "${base}_$index$suffix")
+            index += 1
+        }
+        return candidate
+    }
+
+    private data class ExportSpec(
+        val displayName: String,
+        val mimeType: String,
+        val format: Bitmap.CompressFormat,
+        val quality: Int
+    )
 
     private fun showApiErrorDialog(errorCode: String) {
         AlertDialog.Builder(requireContext())
