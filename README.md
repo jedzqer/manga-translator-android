@@ -4,9 +4,10 @@
 使用教程：https://github.com/jedzqer/manga-translator/blob/main/Tutorial/简中教程.md
 
 ## 主要功能 ✨
+- 日译中，英译中
 - 漫画库管理：新建文件夹、批量导入图片、EhViewer 导入
 - 翻译流程：气泡检测 + OCR + LLM 翻译，支持标准模式与全文速译
-- 阅读体验：翻译覆盖层、气泡位置可拖动、阅读进度自动保存
+- 阅读体验：翻译覆盖层、翻译位置可拖动、阅读进度自动保存
 - 译名表与缓存：按文件夹维护 glossary.json，自动累积固定译名
 - 更新与日志：启动检查更新，翻译期间前台服务与日志查看
 
@@ -17,12 +18,20 @@
 4. 回到漫画库，选择文件夹并点击“翻译文件夹”
 5. 翻译完成后点击“开始阅读”，在阅读页可拖动气泡位置
 
-全文速译建议：页数较多时分批上传翻译，或在设置中提高 API 超时。
+*全文速译建议：页数较多时分批上传翻译，或在设置中提高 API 超时。*
 
 ## 常见问题 ❓
 - 翻译失败或结果为空：确认 API 地址以 `/v1` 结尾，模型名与供应商一致，且网络可达
 - 翻译顺序错乱：请先对图片按阅读顺序重命名
 - 译名不生效：译名只会补充缺失项，不会覆盖已有词条
+
+## 交流
+QQ群：1080302768
+
+## Star History
+** 喜欢的话可以点个Star哦 **
+[![Star History Chart](https://api.star-history.com/svg?repos=jedzqer/manga-translator&type=date&legend=top-left)](https://www.star-history.com/#jedzqer/manga-translator&type=date&legend=top-left)
+
 
 ## 数据与文件说明 🗂️
 - 漫画库存储：`/Android/data/<package>/files/manga_library/`
@@ -55,11 +64,8 @@
 
 提示词与 OCR 配置位于 `assets/`，名称需与代码保持一致。
 
-### 发版版本号同步
+### 发布版本号同步
 需同时修改：
 - `app/src/main/java/com/manga/translate/VersionInfo.kt`
 - `app/build.gradle.kts`
 - `update.json`
-
-## 交流
-QQ群：1080302768
