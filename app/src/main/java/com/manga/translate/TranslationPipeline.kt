@@ -147,7 +147,8 @@ class TranslationPipeline(context: Context) {
         val textRects = textDetector?.let { detectorInstance ->
             val masked = maskDetections(bitmap, bubbleRects)
             val rawTextRects = detectorInstance.detect(masked)
-            filterOverlapping(rawTextRects, bubbleRects, TEXT_IOU_THRESHOLD)
+            val filtered = filterOverlapping(rawTextRects, bubbleRects, TEXT_IOU_THRESHOLD)
+            mergeSupplementRects(filtered, bitmap.width, bitmap.height)
         } ?: emptyList()
         if (bubbleRects.isEmpty() && textRects.isEmpty()) {
             val emptyResult = PageOcrResult(imageFile, bitmap.width, bitmap.height, emptyList())
@@ -370,11 +371,86 @@ class TranslationPipeline(context: Context) {
             outer.bottom >= inner.bottom
     }
 
+    private fun mergeSupplementRects(
+        textRects: List<RectF>,
+        imageWidth: Int,
+        imageHeight: Int
+    ): List<RectF> {
+        if (textRects.size <= 1) return textRects
+        val imageArea = (imageWidth.toFloat() * imageHeight.toFloat()).coerceAtLeast(1f)
+        val rects = textRects.map { RectF(it) }.toMutableList()
+        var merged = true
+        while (merged) {
+            merged = false
+            for (i in 0 until rects.size) {
+                var j = i + 1
+                while (j < rects.size) {
+                    if (shouldMergeRects(rects[i], rects[j], imageArea)) {
+                        rects[i] = unionRects(rects[i], rects[j])
+                        rects.removeAt(j)
+                        merged = true
+                    } else {
+                        j++
+                    }
+                }
+            }
+        }
+        return rects
+    }
+
+    private fun shouldMergeRects(a: RectF, b: RectF, imageArea: Float): Boolean {
+        val areaA = max(0f, a.width()) * max(0f, a.height())
+        val areaB = max(0f, b.width()) * max(0f, b.height())
+        if (areaA <= 0f || areaB <= 0f) return false
+        val minArea = min(areaA, areaB)
+
+        val sizeT = kotlin.math.sqrt((minArea / imageArea) / MERGE_SIZE_REF_AREA)
+            .coerceIn(0f, 1f)
+        val pad = lerp(MERGE_PAD_MAX, MERGE_PAD_MIN, sizeT)
+        val iouThreshold = lerp(MERGE_IOU_SMALL, MERGE_IOU_LARGE, sizeT)
+
+        val union = unionRects(a, b)
+        val unionArea = max(0f, union.width()) * max(0f, union.height())
+        if (unionArea / imageArea >= MERGE_MAX_UNION_FRACTION) return false
+
+        val centerAY = (a.top + a.bottom) * 0.5f
+        val centerBY = (b.top + b.bottom) * 0.5f
+        val yGap = kotlin.math.abs(centerAY - centerBY)
+        val yGapLimit = lerp(MERGE_Y_GAP_MAX, MERGE_Y_GAP_MIN, sizeT)
+        if (yGap > yGapLimit) return false
+
+        if (iou(a, b) >= iouThreshold) return true
+        val expandedA = RectF(a.left - pad, a.top - pad, a.right + pad, a.bottom + pad)
+        val expandedB = RectF(b.left - pad, b.top - pad, b.right + pad, b.bottom + pad)
+        return RectF.intersects(expandedA, b) || RectF.intersects(expandedB, a)
+    }
+
+    private fun unionRects(a: RectF, b: RectF): RectF {
+        return RectF(
+            min(a.left, b.left),
+            min(a.top, b.top),
+            max(a.right, b.right),
+            max(a.bottom, b.bottom)
+        )
+    }
+
+    private fun lerp(start: Float, end: Float, t: Float): Float {
+        return start + (end - start) * t.coerceIn(0f, 1f)
+    }
+
     companion object {
         private const val TEXT_IOU_THRESHOLD = 0.2f
         private const val MASK_EXPAND_RATIO = 0.1f
         private const val MASK_EXPAND_MIN = 4f
         private const val EN_MIN_LINE_SCORE = 0.5f
+        private const val MERGE_PAD_MAX = 32f
+        private const val MERGE_PAD_MIN = 6f
+        private const val MERGE_SIZE_REF_AREA = 0.02f
+        private const val MERGE_IOU_SMALL = 0.1f
+        private const val MERGE_IOU_LARGE = 0.35f
+        private const val MERGE_MAX_UNION_FRACTION = 0.12f
+        private const val MERGE_Y_GAP_MAX = 140f
+        private const val MERGE_Y_GAP_MIN = 36f
     }
 
     private data class EnglishLine(

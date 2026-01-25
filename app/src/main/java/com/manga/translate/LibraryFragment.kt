@@ -865,10 +865,10 @@ class LibraryFragment : Fragment() {
     private fun ensureNoMediaFile(context: Context, folderName: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = context.contentResolver
-            val relativePath = "Documents/manga-translate/$folderName"
+            val relativePath = "Documents/manga-translate/$folderName/"
             val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
             val selection = "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?"
-            val selectionArgs = arrayOf("$relativePath/", ".nomedia")
+            val selectionArgs = arrayOf(relativePath, ".nomedia")
             val exists = resolver.query(
                 collection,
                 arrayOf(MediaStore.MediaColumns._ID),
@@ -882,10 +882,10 @@ class LibraryFragment : Fragment() {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, ".nomedia")
                 put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
-            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
-        val uri = resolver.insert(collection, values) ?: return
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(collection, values) ?: return
             try {
                 resolver.openOutputStream(uri)?.use { }
             } catch (e: Exception) {
