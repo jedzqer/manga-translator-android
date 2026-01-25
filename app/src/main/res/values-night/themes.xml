@@ -4,7 +4,8 @@
         <item name="colorPrimaryDark">@color/dark_decor</item>
         <item name="colorAccent">@color/dark_accent</item>
         <item name="android:windowBackground">@color/dark_base</item>
-        <item name="android:statusBarColor">@color/dark_decor</item>
+        <item name="android:statusBarColor">@color/dark_accent</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 
     <style name="Theme.MangaTranslator.Pink" parent="Theme.MangaTranslator">
@@ -12,6 +13,7 @@
         <item name="colorPrimaryDark">@color/pink_decor</item>
         <item name="colorAccent">@color/pink_accent</item>
         <item name="android:windowBackground">@color/pink_base</item>
-        <item name="android:statusBarColor">@color/pink_decor</item>
+        <item name="android:statusBarColor">@color/pink_accent</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>
