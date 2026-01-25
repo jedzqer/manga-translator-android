@@ -16,6 +16,7 @@ import android.widget.ImageView
 import android.widget.EditText
 import android.content.Context
 import android.content.SharedPreferences
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -61,6 +62,8 @@ class ReadingFragment : Fragment() {
     private var resizeUpdatingHeightInput = false
     private var resizeUpdatingWidthSlider = false
     private var resizeUpdatingHeightSlider = false
+    private var resizeWidthPercent = 100
+    private var resizeHeightPercent = 100
     private val resizeMinPercent = 50
     private val resizeMaxPercent = 500
     private val glossaryStore = GlossaryStore()
@@ -145,7 +148,8 @@ class ReadingFragment : Fragment() {
                 binding.readingResizeWidthInput.setText(percent.toString())
                 binding.readingResizeWidthInput.setSelection(binding.readingResizeWidthInput.text?.length ?: 0)
                 resizeUpdatingWidthInput = false
-                applyResizePercent(percent, null)
+                resizeWidthPercent = percent
+                applyResizePercent(resizeWidthPercent, resizeHeightPercent)
             }
 
             override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) = Unit
@@ -162,7 +166,8 @@ class ReadingFragment : Fragment() {
                 binding.readingResizeHeightInput.setText(percent.toString())
                 binding.readingResizeHeightInput.setSelection(binding.readingResizeHeightInput.text?.length ?: 0)
                 resizeUpdatingHeightInput = false
-                applyResizePercent(null, percent)
+                resizeHeightPercent = percent
+                applyResizePercent(resizeWidthPercent, resizeHeightPercent)
             }
 
             override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) = Unit
@@ -189,7 +194,8 @@ class ReadingFragment : Fragment() {
                 resizeUpdatingWidthSlider = true
                 binding.readingResizeWidthSlider.progress = progress
                 resizeUpdatingWidthSlider = false
-                applyResizePercent(clamped, null)
+                resizeWidthPercent = clamped
+                applyResizePercent(resizeWidthPercent, resizeHeightPercent)
                 saveCurrentTranslation()
             }
         })
@@ -211,7 +217,8 @@ class ReadingFragment : Fragment() {
                 resizeUpdatingHeightSlider = true
                 binding.readingResizeHeightSlider.progress = progress
                 resizeUpdatingHeightSlider = false
-                applyResizePercent(null, clamped)
+                resizeHeightPercent = clamped
+                applyResizePercent(resizeWidthPercent, resizeHeightPercent)
                 saveCurrentTranslation()
             }
         })
@@ -674,6 +681,8 @@ class ReadingFragment : Fragment() {
         resizeTargetId = bubbleId
         resizeBaseRect = RectF(bubble.rect)
         val percent = 100
+        resizeWidthPercent = percent
+        resizeHeightPercent = percent
         resizeUpdatingWidthSlider = true
         binding.readingResizeWidthSlider.progress = percent - resizeMinPercent
         resizeUpdatingWidthSlider = false
@@ -776,7 +785,9 @@ class ReadingFragment : Fragment() {
         val folder = readingSessionViewModel.currentFolder.value ?: return
         val targets = translation.bubbles.filter { it.text.isBlank() }
         if (targets.isEmpty()) return
+        Toast.makeText(requireContext(), R.string.reading_empty_bubble_translating, Toast.LENGTH_SHORT).show()
         emptyBubbleJob?.cancel()
+        val baseTranslation = translation
         emptyBubbleJob = viewLifecycleOwner.lifecycleScope.launch {
             val language = getTranslationLanguage(folder)
             val glossary = glossaryStore.load(folder)
@@ -794,14 +805,16 @@ class ReadingFragment : Fragment() {
                 }
                 ProcessingResult(removedIds, candidates)
             } ?: return@launch
-            if (currentImageFile?.absolutePath != imageFile.absolutePath) return@launch
-            val refreshed = currentTranslation ?: return@launch
-            val remainingBubbles = refreshed.bubbles.filterNot { result.removedIds.contains(it.id) }
+            val remainingBubbles = baseTranslation.bubbles.filterNot { result.removedIds.contains(it.id) }
             if (result.ocrCandidates.isEmpty()) {
-                val updated = refreshed.copy(bubbles = remainingBubbles)
-                currentTranslation = updated
-                binding.translationOverlay.setTranslations(updated)
-                saveCurrentTranslation()
+                val updated = baseTranslation.copy(bubbles = remainingBubbles)
+                withContext(Dispatchers.IO) {
+                    translationStore.save(imageFile, updated)
+                }
+                if (currentImageFile?.absolutePath == imageFile.absolutePath) {
+                    currentTranslation = updated
+                    binding.translationOverlay.setTranslations(updated)
+                }
                 return@launch
             }
             val translated = translateOcrBubbles(
@@ -831,10 +844,19 @@ class ReadingFragment : Fragment() {
                         else -> bubble
                     }
                 }
-                val updated = refreshed.copy(bubbles = merged)
-                currentTranslation = updated
-                binding.translationOverlay.setTranslations(updated)
-                saveCurrentTranslation()
+                val updated = baseTranslation.copy(bubbles = merged)
+                withContext(Dispatchers.IO) {
+                    translationStore.save(imageFile, updated)
+                }
+                if (currentImageFile?.absolutePath == imageFile.absolutePath) {
+                    currentTranslation = updated
+                    binding.translationOverlay.setTranslations(updated)
+                    Toast.makeText(
+                        requireContext(),
+                        R.string.reading_empty_bubble_translated,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             } else {
                 val fallbackMap = result.ocrCandidates.associate { it.id to it.text }
                 val merged = remainingBubbles.mapNotNull { bubble ->
@@ -845,10 +867,14 @@ class ReadingFragment : Fragment() {
                         else -> bubble
                     }
                 }
-                val updated = refreshed.copy(bubbles = merged)
-                currentTranslation = updated
-                binding.translationOverlay.setTranslations(updated)
-                saveCurrentTranslation()
+                val updated = baseTranslation.copy(bubbles = merged)
+                withContext(Dispatchers.IO) {
+                    translationStore.save(imageFile, updated)
+                }
+                if (currentImageFile?.absolutePath == imageFile.absolutePath) {
+                    currentTranslation = updated
+                    binding.translationOverlay.setTranslations(updated)
+                }
             }
         }
     }

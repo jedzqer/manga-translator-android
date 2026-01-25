@@ -128,6 +128,8 @@
     <string name="reading_bubble_height_hint">高%</string>
     <string name="reading_add_bubble">添加气泡</string>
     <string name="reading_empty_bubble_hint">留空则软件会自动在对应区域识别文字。</string>
+    <string name="reading_empty_bubble_translating">正在翻译气泡…</string>
+    <string name="reading_empty_bubble_translated">气泡翻译完成</string>
     <string name="reading_bubble_resize_done">确认</string>
     <string name="image_translated">已翻译</string>
     <string name="image_not_translated">未翻译</string>
