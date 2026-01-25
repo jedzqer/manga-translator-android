@@ -16,6 +16,7 @@ data class UpdateInfo(
 
 data class UpdateHistoryEntry(
     val versionName: String,
+    val releasedAt: String,
     val changelog: String
 )
 
@@ -79,9 +80,10 @@ object UpdateChecker {
         for (i in 0 until historyArray.length()) {
             val entry = historyArray.optJSONObject(i) ?: continue
             val versionName = entry.optString("versionName").trim()
+            val releasedAt = entry.optString("releasedAt").trim()
             val changelog = entry.optString("changelog").trim()
             if (versionName.isBlank() || changelog.isBlank()) continue
-            items.add(UpdateHistoryEntry(versionName, changelog))
+            items.add(UpdateHistoryEntry(versionName, releasedAt, changelog))
         }
         return items
     }

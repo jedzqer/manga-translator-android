@@ -6,38 +6,47 @@
   "history": [
     {
       "versionName": "1.3.4",
+      "releasedAt": "2026-01-19",
       "changelog": "修复了边翻译边阅读时的闪退bug。"
     },
     {
       "versionName": "1.3.3",
+      "releasedAt": "2026-01-18",
       "changelog": "添加了一些可供调整的API参数，以改善翻译质量。"
     },
     {
       "versionName": "1.3.2",
+      "releasedAt": "2026-01-16",
       "changelog": "添加API超时设置，将普通翻译也改为整页翻译。"
     },
     {
       "versionName": "1.3.1",
+      "releasedAt": "2026-01-16",
       "changelog": "全文速译会跳过已经提取译名的图片，支持漫画图片缩放与等高显示，更新了软件图标。"
     },
     {
       "versionName": "1.3.0",
+      "releasedAt": "2026-01-15",
       "changelog": "优化性能，修复若干bug，添加主题系统，添加点击图片文件名跳转阅读功能。"
     },
     {
       "versionName": "1.2.1",
+      "releasedAt": "2026-01-14",
       "changelog": "真正修复了总是提示更新的错误，建议更新。修复了分享日志闪退的bug。"
     },
     {
       "versionName": "1.2.0",
+      "releasedAt": "2026-01-14",
       "changelog": "修复了总是提示更新的错误，尝试修复了不翻译的问题，完善了翻译效果，可以翻译非文字气泡内容，加强了翻译时的后台保活和进度保存。"
     },
     {
       "versionName": "1.1.0",
+      "releasedAt": "2026-01-12",
       "changelog": "支持HTTP，添加教程页面，优化了体验细节。"
     },
     {
       "versionName": "1.0.0",
+      "releasedAt": "2026-01-11",
       "changelog": "正式版更新，添加通知显示，新增全文速译、重译功能，新增并发翻译，添加从EhViewer的下载目录中导入漫画的功能（其实也可以从其它可访问目录导入）"
     }
   ]

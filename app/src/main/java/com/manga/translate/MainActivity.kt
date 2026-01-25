@@ -6,6 +6,10 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.os.Build
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.widget.Toast
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -86,13 +90,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun showUpdateDialog(updateInfo: UpdateInfo, showIgnoreButton: Boolean = true) {
+    fun showUpdateDialog(
+        updateInfo: UpdateInfo,
+        showIgnoreButton: Boolean = true,
+        titleOverride: String? = null
+    ) {
         val versionLabel = buildVersionLabel(updateInfo)
-        val message = buildUpdateDialogMessage(updateInfo, versionLabel)
         val dialogView = layoutInflater.inflate(R.layout.dialog_update, null)
-        dialogView.findViewById<TextView>(R.id.update_dialog_content).text = message
+        val contentView = dialogView.findViewById<TextView>(R.id.update_dialog_content)
+        val message = buildUpdateDialogMessage(updateInfo, versionLabel, contentView.currentTextColor)
+        contentView.text = message
         val builder = AlertDialog.Builder(this)
-            .setTitle(getString(R.string.update_dialog_title, versionLabel))
+            .setTitle(titleOverride ?: getString(R.string.update_dialog_title, versionLabel))
             .setView(dialogView)
             .setNegativeButton(R.string.update_dialog_cancel, null)
             .setPositiveButton(R.string.update_dialog_download) { _, _ ->
@@ -187,12 +196,20 @@ class MainActivity : AppCompatActivity() {
         return if (updateInfo.versionCode > 0) updateInfo.versionCode.toString() else "unknown"
     }
 
-    private fun buildUpdateDialogMessage(updateInfo: UpdateInfo, versionLabel: String): String {
+    fun isRemoteNewer(updateInfo: UpdateInfo): Boolean {
+        return isNewerVersion(updateInfo)
+    }
+
+    private fun buildUpdateDialogMessage(
+        updateInfo: UpdateInfo,
+        versionLabel: String,
+        textColor: Int
+    ): CharSequence {
         val latestChangelog = updateInfo.changelog.trim()
         if (latestChangelog.isBlank() && updateInfo.history.isEmpty()) {
             return getString(R.string.update_dialog_message_default)
         }
-        val builder = StringBuilder()
+        val builder = SpannableStringBuilder()
         builder.append(getString(R.string.update_dialog_latest_header, versionLabel)).append('\n')
         if (latestChangelog.isNotBlank()) {
             builder.append(latestChangelog).append('\n')
@@ -210,12 +227,43 @@ class MainActivity : AppCompatActivity() {
             history.forEach { entry ->
                 builder.append('\n')
                     .append(entry.versionName)
-                    .append('\n')
+                if (entry.releasedAt.isNotBlank()) {
+                    builder.append(' ')
+                    appendDimmedText(builder, entry.releasedAt, textColor)
+                }
+                builder.append('\n')
                     .append(entry.changelog.trim())
                     .append('\n')
             }
         }
-        return builder.toString().trim()
+        return builder
+    }
+
+    private fun appendDimmedText(
+        builder: SpannableStringBuilder,
+        text: String,
+        textColor: Int
+    ) {
+        val start = builder.length
+        builder.append(text)
+        val end = builder.length
+        builder.setSpan(
+            ForegroundColorSpan(adjustAlpha(textColor, 0.6f)),
+            start,
+            end,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        builder.setSpan(
+            RelativeSizeSpan(0.85f),
+            start,
+            end,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+    }
+
+    private fun adjustAlpha(color: Int, factor: Float): Int {
+        val alpha = (android.graphics.Color.alpha(color) * factor).toInt().coerceIn(0, 255)
+        return (color and 0x00FFFFFF) or (alpha shl 24)
     }
 
     private fun extractVersionFromUrl(url: String): String? {

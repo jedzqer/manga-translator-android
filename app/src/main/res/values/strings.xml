@@ -135,7 +135,8 @@
     <string name="update_dialog_message_default">发现新版本，是否下载更新？</string>
     <string name="update_dialog_latest_header">最新版本 %1$s</string>
     <string name="update_dialog_history_header">历史更新</string>
-    <string name="update_dialog_tutorial_tip">温馨提示：有时记得查看教程是否有最新玩法。</string>
+    <string name="update_dialog_tutorial_tip">Tip：偶尔记得去查看教程看看有没有最新玩法。</string>
+    <string name="update_dialog_no_update_title">暂无新版本</string>
     <string name="update_dialog_load_failed">更新信息获取失败，请稍后重试。</string>
     <string name="update_dialog_cancel">取消</string>
     <string name="update_dialog_download">下载</string>

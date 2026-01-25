@@ -290,7 +290,16 @@ class SettingsFragment : Fragment() {
                     return@launch
                 }
                 if (hostActivity.isFinishing || hostActivity.isDestroyed) return@launch
-                hostActivity.showUpdateDialog(updateInfo, showIgnoreButton = false)
+                val title = if (hostActivity.isRemoteNewer(updateInfo)) {
+                    null
+                } else {
+                    getString(R.string.update_dialog_no_update_title)
+                }
+                hostActivity.showUpdateDialog(
+                    updateInfo,
+                    showIgnoreButton = false,
+                    titleOverride = title
+                )
             } finally {
                 if (loadingDialog.isShowing) {
                     loadingDialog.dismiss()
