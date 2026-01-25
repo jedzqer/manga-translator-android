@@ -19,11 +19,19 @@ class TranslationKeepAliveService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         acquireWakeLock()
+        val title = intent?.getStringExtra(EXTRA_TITLE)
+            ?: getString(R.string.translation_keepalive_title)
+        val message = intent?.getStringExtra(EXTRA_MESSAGE)
+            ?: getString(R.string.translation_keepalive_message)
+        val content = intent?.getStringExtra(EXTRA_CONTENT)
+            ?: getString(R.string.translation_preparing)
         startForeground(
             NOTIFICATION_ID,
             buildNotification(
                 this,
-                getString(R.string.translation_preparing),
+                title,
+                message,
+                content,
                 null,
                 null
             )
@@ -63,9 +71,25 @@ class TranslationKeepAliveService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_REQUEST_CODE = 0
         private const val WAKELOCK_TIMEOUT_MS = 60 * 60 * 1000L
+        private const val EXTRA_TITLE = "extra_title"
+        private const val EXTRA_MESSAGE = "extra_message"
+        private const val EXTRA_CONTENT = "extra_content"
 
         fun start(context: Context) {
             val intent = Intent(context, TranslationKeepAliveService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun start(context: Context, title: String, message: String, content: String) {
+            val intent = Intent(context, TranslationKeepAliveService::class.java).apply {
+                putExtra(EXTRA_TITLE, title)
+                putExtra(EXTRA_MESSAGE, message)
+                putExtra(EXTRA_CONTENT, content)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -79,27 +103,60 @@ class TranslationKeepAliveService : Service() {
         }
 
         fun updateStatus(context: Context, status: String) {
-            notifyProgress(context, status, null, null)
+            notifyProgress(
+                context,
+                context.getString(R.string.translation_keepalive_title),
+                context.getString(R.string.translation_keepalive_message),
+                status,
+                null,
+                null
+            )
+        }
+
+        fun updateStatus(context: Context, status: String, title: String, message: String) {
+            notifyProgress(context, title, message, status, null, null)
         }
 
         fun updateProgress(context: Context, progress: Int, total: Int) {
-            notifyProgress(context, "$progress/$total", progress, total)
+            notifyProgress(
+                context,
+                context.getString(R.string.translation_keepalive_title),
+                context.getString(R.string.translation_keepalive_message),
+                "$progress/$total",
+                progress,
+                total
+            )
+        }
+
+        fun updateProgress(
+            context: Context,
+            progress: Int,
+            total: Int,
+            content: String,
+            title: String,
+            message: String
+        ) {
+            notifyProgress(context, title, message, content, progress, total)
         }
 
         private fun notifyProgress(
             context: Context,
+            title: String,
+            message: String,
             content: String,
             progress: Int?,
             total: Int?
         ) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             ensureChannel(context, manager)
-            val notification = buildNotification(context, content, progress, total)
+            val notification = buildNotification(context, title, message, content, progress, total)
             manager.notify(NOTIFICATION_ID, notification)
         }
 
         private fun buildNotification(
             context: Context,
+            title: String,
+            message: String,
             content: String,
             progress: Int?,
             total: Int?
@@ -113,9 +170,9 @@ class TranslationKeepAliveService : Service() {
             )
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_menu_upload)
-                .setContentTitle(context.getString(R.string.translation_keepalive_title))
+                .setContentTitle(title)
                 .setContentText(content)
-                .setSubText(context.getString(R.string.translation_keepalive_message))
+                .setSubText(message)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
             if (progress != null && total != null && total > 0) {

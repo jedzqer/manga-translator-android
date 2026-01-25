@@ -118,6 +118,7 @@
     <string name="translation_keepalive_channel">后台翻译</string>
     <string name="translation_keepalive_title">翻译进行中</string>
     <string name="translation_keepalive_message">保持后台运行，请勿关闭应用</string>
+    <string name="export_keepalive_title">导出进行中</string>
     <string name="reading_empty">请选择一个文件夹开始阅读</string>
     <string name="reading_page_info">%1$s  (%2$d/%3$d)</string>
     <string name="reading_edit_bubbles">编辑气泡</string>

@@ -777,30 +777,67 @@ class LibraryFragment : Fragment() {
             return
         }
         val appContext = requireContext().applicationContext
-        val renderer = BubbleRenderer(appContext)
         val verticalLayoutEnabled = !settingsStore.loadUseHorizontalText()
         binding.folderExport.isEnabled = false
+        TranslationKeepAliveService.start(
+            requireContext(),
+            getString(R.string.export_keepalive_title),
+            getString(R.string.translation_keepalive_message),
+            getString(R.string.exporting_progress, 0, images.size)
+        )
+        TranslationKeepAliveService.updateStatus(
+            requireContext(),
+            getString(R.string.exporting_progress, 0, images.size),
+            getString(R.string.export_keepalive_title),
+            getString(R.string.translation_keepalive_message)
+        )
         viewLifecycleOwner.lifecycleScope.launch {
             var exported = 0
             var failed = false
             try {
-                setFolderStatus(getString(R.string.exporting_progress, exported, images.size))
-                for (image in images) {
-                    val success = withContext(Dispatchers.IO) {
-                        exportImageWithBubbles(
-                            appContext,
-                            renderer,
-                            image,
-                            folder.name,
-                            verticalLayoutEnabled
-                        )
-                    }
-                    if (!success) {
-                        failed = true
-                    }
-                    exported += 1
-                    setFolderStatus(getString(R.string.exporting_progress, exported, images.size))
+                withContext(Dispatchers.IO) {
+                    ensureNoMediaFile(appContext, folder.name)
                 }
+                setFolderStatus(getString(R.string.exporting_progress, exported, images.size))
+                val semaphore = Semaphore(2)
+                val exportedCount = AtomicInteger(0)
+                val hasFailures = AtomicBoolean(false)
+                coroutineScope {
+                    val tasks = images.map { image ->
+                        async(Dispatchers.IO) {
+                            semaphore.withPermit {
+                                val renderer = BubbleRenderer(appContext)
+                                val success = exportImageWithBubbles(
+                                    appContext,
+                                    renderer,
+                                    image,
+                                    folder.name,
+                                    verticalLayoutEnabled
+                                )
+                                if (!success) {
+                                    hasFailures.set(true)
+                                }
+                                val count = exportedCount.incrementAndGet()
+                                withContext(Dispatchers.Main) {
+                                    setFolderStatus(
+                                        getString(R.string.exporting_progress, count, images.size)
+                                    )
+                                    TranslationKeepAliveService.updateProgress(
+                                        requireContext(),
+                                        count,
+                                        images.size,
+                                        getString(R.string.exporting_progress, count, images.size),
+                                        getString(R.string.export_keepalive_title),
+                                        getString(R.string.translation_keepalive_message)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    tasks.awaitAll()
+                }
+                exported = exportedCount.get()
+                failed = failed || hasFailures.get()
                 setFolderStatus(
                     if (failed) getString(R.string.export_failed) else getString(R.string.export_done)
                 )
@@ -819,6 +856,58 @@ class LibraryFragment : Fragment() {
             } finally {
                 _binding?.let { binding ->
                     binding.folderExport.isEnabled = true
+                }
+                TranslationKeepAliveService.stop(requireContext())
+            }
+        }
+    }
+
+    private fun ensureNoMediaFile(context: Context, folderName: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val relativePath = "Pictures/manga-translate/$folderName"
+            val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            val selection = "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?"
+            val selectionArgs = arrayOf("$relativePath/", ".nomedia")
+            val exists = resolver.query(
+                collection,
+                arrayOf(MediaStore.MediaColumns._ID),
+                selection,
+                selectionArgs,
+                null
+            )?.use { it.moveToFirst() } == true
+            if (exists) {
+                return
+            }
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, ".nomedia")
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(collection, values) ?: return
+            try {
+                resolver.openOutputStream(uri)?.use { }
+            } catch (e: Exception) {
+                AppLogger.log("Library", "Create .nomedia failed: $relativePath", e)
+                resolver.delete(uri, null, null)
+                return
+            }
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } else {
+            val root = Environment.getExternalStorageDirectory()
+            val exportDir = File(root, "Pictures/manga-translate/$folderName")
+            if (!exportDir.exists() && !exportDir.mkdirs()) {
+                return
+            }
+            val noMedia = File(exportDir, ".nomedia")
+            if (!noMedia.exists()) {
+                try {
+                    noMedia.createNewFile()
+                } catch (e: Exception) {
+                    AppLogger.log("Library", "Create .nomedia failed: ${noMedia.absolutePath}", e)
                 }
             }
         }
