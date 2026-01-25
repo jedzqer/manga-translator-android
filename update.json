@@ -1,9 +1,14 @@
 {
-  "versionCode": 17,
-  "versionName": "2.0.0",
-  "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/2.0.0/app-release.apk",
-  "changelog": "新增英文支持。新增气泡编辑功能，用户可以通过创建空白气泡，重新识别翻译没能识别的区域（具体方法查看软件教程）。新增漫画导出功能。",
+  "versionCode": 18,
+  "versionName": "2.1.0",
+  "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/2.1.0/app-release.apk",
+  "changelog": "大更新，优化编辑模式气泡交互体验，增加导出速度，优化了大量体验细节。",
   "history": [
+    {
+      "versionName": "2.0.0",
+      "releasedAt": "2026-01-22",
+      "changelog": "新增英文支持。新增气泡编辑功能，用户可以通过创建空白气泡，重新识别翻译没能识别的区域（具体方法查看软件教程）。新增漫画导出功能。"
+    },
     {
       "versionName": "1.3.4",
       "releasedAt": "2026-01-19",

@@ -8,6 +8,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.AttributeSet
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -66,7 +67,16 @@ class FloatingTranslationView @JvmOverloads constructor(
     private var activeId: Int? = null
     private var verticalLayoutEnabled = true
     private var swipeTriggered = false
+    private var longPressTriggered = false
     private var editMode = false
+    private val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
+    private val longPressRunnable = Runnable {
+        val id = activeId ?: return@Runnable
+        if (!editMode || dragging) return@Runnable
+        longPressTriggered = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        onBubbleLongPress?.invoke(id)
+    }
 
     var onOffsetChanged: ((Float, Float) -> Unit)? = null
     var onTap: ((Float) -> Unit)? = null
@@ -75,6 +85,7 @@ class FloatingTranslationView @JvmOverloads constructor(
     var onBubbleRemove: ((Int) -> Unit)? = null
     var onBubbleTap: ((Int) -> Unit)? = null
     var onBubbleResizeTap: ((Int) -> Unit)? = null
+    var onBubbleLongPress: ((Int) -> Unit)? = null
 
     init {
         isClickable = true
@@ -111,6 +122,8 @@ class FloatingTranslationView @JvmOverloads constructor(
         editMode = enabled
         dragging = false
         activeId = null
+        longPressTriggered = false
+        removeCallbacks(longPressRunnable)
         invalidate()
     }
 
@@ -145,6 +158,8 @@ class FloatingTranslationView @JvmOverloads constructor(
             ) {
                 dragging = false
                 activeId = null
+                longPressTriggered = false
+                removeCallbacks(longPressRunnable)
             }
             swipeTriggered = true
             return true
@@ -158,6 +173,11 @@ class FloatingTranslationView @JvmOverloads constructor(
                 activeId = if (editMode) findBubbleAt(event.x, event.y) else null
                 dragging = false
                 swipeTriggered = false
+                longPressTriggered = false
+                removeCallbacks(longPressRunnable)
+                if (editMode && activeId != null) {
+                    postDelayed(longPressRunnable, longPressTimeout)
+                }
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -166,6 +186,7 @@ class FloatingTranslationView @JvmOverloads constructor(
                     val dy = event.y - downY
                     if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
                         dragging = true
+                        removeCallbacks(longPressRunnable)
                     }
                     if (dragging) {
                         updateOffset(dx, dy)
@@ -183,6 +204,12 @@ class FloatingTranslationView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                removeCallbacks(longPressRunnable)
+                if (longPressTriggered) {
+                    dragging = false
+                    activeId = null
+                    return true
+                }
                 if (!dragging && !swipeTriggered) {
                     if (editMode) {
                         val removeId = findRemoveTarget(event.x, event.y)
@@ -214,6 +241,7 @@ class FloatingTranslationView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(longPressRunnable)
                 dragging = false
                 activeId = null
                 return true
@@ -309,12 +337,12 @@ class FloatingTranslationView @JvmOverloads constructor(
 
     private fun drawBubble(canvas: Canvas, text: String, rect: RectF) {
         if (rect.width() <= 0f || rect.height() <= 0f) return
-        val padded = RectF(rect)
         val pad = (min(rect.width(), rect.height()) * 0.08f).coerceAtLeast(6f)
-        padded.inset(pad, pad)
-        canvas.drawRoundRect(padded, 6f, 6f, fillPaint)
-        canvas.drawRoundRect(padded, 6f, 6f, strokePaint)
-        drawTextInRect(canvas, text, padded)
+        val textRect = RectF(rect)
+        textRect.inset(pad, pad)
+        canvas.drawRoundRect(rect, 6f, 6f, fillPaint)
+        canvas.drawRoundRect(rect, 6f, 6f, strokePaint)
+        drawTextInRect(canvas, text, textRect)
     }
 
     private fun drawDeleteIcon(canvas: Canvas, rect: RectF) {

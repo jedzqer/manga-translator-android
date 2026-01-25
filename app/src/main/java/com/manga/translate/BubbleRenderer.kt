@@ -58,12 +58,12 @@ class BubbleRenderer(context: Context) {
 
     private fun drawBubble(canvas: Canvas, text: String, rect: RectF, verticalLayoutEnabled: Boolean) {
         if (rect.width() <= 0f || rect.height() <= 0f) return
-        val padded = RectF(rect)
         val pad = (min(rect.width(), rect.height()) * 0.08f).coerceAtLeast(6f)
-        padded.inset(pad, pad)
-        canvas.drawRoundRect(padded, 6f, 6f, fillPaint)
-        canvas.drawRoundRect(padded, 6f, 6f, strokePaint)
-        drawTextInRect(canvas, text, padded, verticalLayoutEnabled)
+        val textRect = RectF(rect)
+        textRect.inset(pad, pad)
+        canvas.drawRoundRect(rect, 6f, 6f, fillPaint)
+        canvas.drawRoundRect(rect, 6f, 6f, strokePaint)
+        drawTextInRect(canvas, text, textRect, verticalLayoutEnabled)
     }
 
     private fun drawTextInRect(

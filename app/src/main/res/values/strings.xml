@@ -131,6 +131,8 @@
     <string name="reading_empty_bubble_translating">正在翻译气泡…</string>
     <string name="reading_empty_bubble_translated">气泡翻译完成</string>
     <string name="reading_bubble_resize_done">确认</string>
+    <string name="reading_bubble_action_resize">调整气泡大小</string>
+    <string name="reading_bubble_action_delete">删除气泡</string>
     <string name="image_translated">已翻译</string>
     <string name="image_not_translated">未翻译</string>
     <string name="update_dialog_title">发现新版本 %1$s</string>

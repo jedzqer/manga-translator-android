@@ -132,6 +132,9 @@ class ReadingFragment : Fragment() {
         binding.translationOverlay.onBubbleResizeTap = { bubbleId ->
             showResizePanel(bubbleId)
         }
+        binding.translationOverlay.onBubbleLongPress = { bubbleId ->
+            showBubbleActionDialog(bubbleId)
+        }
         binding.readingEditButton.setOnClickListener {
             toggleEditMode()
         }
@@ -671,6 +674,26 @@ class ReadingFragment : Fragment() {
                 }
             }
             .show()
+    }
+
+    private fun showBubbleActionDialog(bubbleId: Int) {
+        if (!isEditMode) return
+        val dialogView = layoutInflater.inflate(R.layout.dialog_bubble_actions, null)
+        val resizeButton = dialogView.findViewById<android.widget.Button>(R.id.bubbleActionResize)
+        val deleteButton = dialogView.findViewById<android.widget.Button>(R.id.bubbleActionDelete)
+        val dialog = AlertDialog.Builder(requireContext())
+            .setView(dialogView)
+            .setCancelable(true)
+            .create()
+        resizeButton.setOnClickListener {
+            dialog.dismiss()
+            showResizePanel(bubbleId)
+        }
+        deleteButton.setOnClickListener {
+            dialog.dismiss()
+            handleBubbleRemove(bubbleId)
+        }
+        dialog.show()
     }
 
     private fun showResizePanel(bubbleId: Int) {
