@@ -1,5 +1,6 @@
 package com.manga.translate
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -950,17 +951,38 @@ class LibraryFragment : Fragment() {
         folderName: String
     ): Boolean {
         val resolver = context.contentResolver
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, spec.displayName)
-            put(MediaStore.MediaColumns.MIME_TYPE, spec.mimeType)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/manga-translate/$folderName")
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val relativePathWithSlash = "Documents/manga-translate/$folderName/"
+        val relativePathNoSlash = "Documents/manga-translate/$folderName"
+        val selection =
+            "${MediaStore.MediaColumns.RELATIVE_PATH} IN (?, ?) AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?"
+        val selectionArgs = arrayOf(relativePathWithSlash, relativePathNoSlash, spec.displayName)
+        val existingUri = resolver.query(
+            collection,
+            arrayOf(MediaStore.MediaColumns._ID),
+            selection,
+            selectionArgs,
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val id = cursor.getLong(0)
+                ContentUris.withAppendedId(collection, id)
+            } else {
+                null
+            }
         }
-        val uri = resolver.insert(
-            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL),
-            values
-        )
-            ?: return false
+        val values = ContentValues()
+        val (uri, createdNew) = if (existingUri != null) {
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1)
+            resolver.update(existingUri, values, null, null)
+            existingUri to false
+        } else {
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, spec.displayName)
+            values.put(MediaStore.MediaColumns.MIME_TYPE, spec.mimeType)
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, relativePathWithSlash)
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1)
+            (resolver.insert(collection, values) ?: return false) to true
+        }
         val success = try {
             resolver.openOutputStream(uri)?.use { output ->
                 bitmap.compress(spec.format, spec.quality, output)
@@ -972,7 +994,7 @@ class LibraryFragment : Fragment() {
         values.clear()
         values.put(MediaStore.MediaColumns.IS_PENDING, 0)
         resolver.update(uri, values, null, null)
-        if (!success) {
+        if (!success && createdNew) {
             resolver.delete(uri, null, null)
         }
         return success
