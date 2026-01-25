@@ -1,7 +1,4 @@
 <resources>
-    <color name="purple_500">#6200EE</color>
-    <color name="purple_700">#3700B3</color>
-    <color name="teal_200">#03DAC5</color>
     <color name="pink_base">#FFECF2</color>
     <color name="pink_accent">#2D5DA5</color>
     <color name="pink_decor">#FFD4C4</color>

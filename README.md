@@ -42,10 +42,10 @@ QQ群：1080302768
 ## 从源码构建 🧩
 
 ### 环境要求
-- JDK 17.0.16+（推荐 17.0.17）
+- JDK 17.0.17+
 - Kotlin 2.0.0+
-- Gradle 8.10+
-- Android SDK: platform 34, build-tools 35.0.0
+- Gradle 8.11.1+
+- Android SDK: platform 35, build-tools 35.0.0
 
 ### 构建命令
 ```bash

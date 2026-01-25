@@ -842,7 +842,7 @@ class LibraryFragment : Fragment() {
                     if (failed) getString(R.string.export_failed) else getString(R.string.export_done)
                 )
                 if (!failed && isAdded) {
-                    val path = "/Pictures/manga-translate/${folder.name}"
+                    val path = "/Documents/manga-translate/${folder.name}"
                     AlertDialog.Builder(requireContext())
                         .setTitle(R.string.export_success_title)
                         .setMessage(getString(R.string.export_success_message, path))
@@ -865,7 +865,7 @@ class LibraryFragment : Fragment() {
     private fun ensureNoMediaFile(context: Context, folderName: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = context.contentResolver
-            val relativePath = "Pictures/manga-translate/$folderName"
+            val relativePath = "Documents/manga-translate/$folderName"
             val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
             val selection = "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?"
             val selectionArgs = arrayOf("$relativePath/", ".nomedia")
@@ -882,10 +882,10 @@ class LibraryFragment : Fragment() {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, ".nomedia")
                 put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }
-            val uri = resolver.insert(collection, values) ?: return
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(collection, values) ?: return
             try {
                 resolver.openOutputStream(uri)?.use { }
             } catch (e: Exception) {
@@ -897,8 +897,8 @@ class LibraryFragment : Fragment() {
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
         } else {
-            val root = Environment.getExternalStorageDirectory()
-            val exportDir = File(root, "Pictures/manga-translate/$folderName")
+            val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+            val exportDir = File(root, "manga-translate/$folderName")
             if (!exportDir.exists() && !exportDir.mkdirs()) {
                 return
             }
@@ -951,12 +951,15 @@ class LibraryFragment : Fragment() {
     ): Boolean {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, spec.displayName)
-            put(MediaStore.Images.Media.MIME_TYPE, spec.mimeType)
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/manga-translate/$folderName")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, spec.displayName)
+            put(MediaStore.MediaColumns.MIME_TYPE, spec.mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/manga-translate/$folderName")
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        val uri = resolver.insert(
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL),
+            values
+        )
             ?: return false
         val success = try {
             resolver.openOutputStream(uri)?.use { output ->
@@ -967,7 +970,7 @@ class LibraryFragment : Fragment() {
             false
         }
         values.clear()
-        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
         resolver.update(uri, values, null, null)
         if (!success) {
             resolver.delete(uri, null, null)
@@ -980,8 +983,8 @@ class LibraryFragment : Fragment() {
         spec: ExportSpec,
         folderName: String
     ): Boolean {
-        val root = Environment.getExternalStorageDirectory()
-        val exportDir = File(root, "Pictures/manga-translate/$folderName")
+        val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        val exportDir = File(root, "manga-translate/$folderName")
         if (!exportDir.exists() && !exportDir.mkdirs()) {
             AppLogger.log("Library", "Export directory create failed: ${exportDir.absolutePath}")
             return false

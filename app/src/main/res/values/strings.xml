@@ -2,14 +2,13 @@
     <string name="preview_image">检测预览</string>
     <string name="detecting_bubbles">气泡检测中…</string>
     <string name="translating_bubbles">翻译中…</string>
-    <string name="translating_progress">翻译中…(%1$d/%2$d)</string>
     <string name="tab_library">漫画库</string>
     <string name="tab_reading">阅读</string>
     <string name="tab_settings">设置</string>
     <string name="api_url_hint">OpenAI 兼容 API 地址</string>
     <string name="api_key_hint">API Key</string>
     <string name="model_name_hint">模型名称</string>
-    <string name="api_timeout_hint">API 超时 (秒, 30-1200)</string>
+    <string name="api_timeout_hint">API 超时 (秒, 30–1200)</string>
     <string name="max_concurrency_hint">最大并发数 (1–50)</string>
     <string name="text_layout_horizontal">漫画使用横向排版</string>
     <string name="model_io_logging">打印 AI 模型输入输出</string>
@@ -134,7 +133,6 @@
     <string name="image_translated">已翻译</string>
     <string name="image_not_translated">未翻译</string>
     <string name="update_dialog_title">发现新版本 %1$s</string>
-    <string name="update_dialog_message">更新内容：\n%1$s</string>
     <string name="update_dialog_message_default">发现新版本，是否下载更新？</string>
     <string name="update_dialog_latest_header">最新版本 %1$s</string>
     <string name="update_dialog_history_header">历史更新</string>
@@ -144,7 +142,6 @@
     <string name="update_dialog_cancel">取消</string>
     <string name="update_dialog_download">下载</string>
     <string name="update_dialog_ignore">忽略此版本</string>
-    <string name="update_dialog_open_release">跳转项目链接</string>
     <string name="update_download_title">正在下载更新 %1$s</string>
     <string name="update_download_description">下载完成后可在通知栏安装（%1$s）</string>
     <string name="about_button">关于软件</string>
