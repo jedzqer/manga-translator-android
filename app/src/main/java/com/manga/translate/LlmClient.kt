@@ -10,6 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicLong
 
 class LlmClient(context: Context) {
     private val appContext = context.applicationContext
@@ -56,10 +57,12 @@ class LlmClient(context: Context) {
         val settings = settingsStore.load()
         if (!settings.isValid()) return null
         val endpoint = buildEndpoint(settings.apiUrl)
-        val payload = buildPayload(text, glossary, settings.modelName, promptAsset, useJsonPayload)
+        val selectedModel = selectModelForRequest(settings.modelName)
+        val payload = buildPayload(text, glossary, selectedModel, promptAsset, useJsonPayload)
         val logModelIo = settingsStore.loadModelIoLogging()
         if (logModelIo) {
             AppLogger.log("LlmClient", "Model input ($promptAsset): $payload")
+            AppLogger.log("LlmClient", "Selected model: $selectedModel")
         }
         val timeoutMs = settingsStore.loadApiTimeoutMs()
         var lastErrorCode: String? = null
@@ -195,6 +198,19 @@ class LlmClient(context: Context) {
         llmParams.frequencyPenalty?.let { payload.put("frequency_penalty", it) }
         llmParams.presencePenalty?.let { payload.put("presence_penalty", it) }
         return payload
+    }
+
+    private fun selectModelForRequest(modelConfig: String): String {
+        val models = parseModelCandidates(modelConfig)
+        if (models.isEmpty()) return modelConfig.trim()
+        val index = requestCounter.getAndIncrement().mod(models.size.toLong()).toInt()
+        return models[index]
+    }
+
+    private fun parseModelCandidates(modelConfig: String): List<String> {
+        return modelConfig.split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
     }
 
     private fun parseResponseContent(body: String): String? {
@@ -408,6 +424,7 @@ class LlmClient(context: Context) {
     companion object {
         private const val PROMPT_CONFIG_ASSET = "llm_prompts.json"
         private const val RETRY_COUNT = 3
+        private val requestCounter = AtomicLong(0)
     }
 }
 

@@ -51,7 +51,7 @@
     <string name="logs_title">应用日志</string>
     <string name="logs_folder_title">选择要分享的日志</string>
     <string name="logs_folder_empty">暂无日志文件</string>
-    <string name="share_error_logs">分享错误日志</string>
+    <string name="share_error_logs">一键分享错误日志</string>
     <string name="error_logs_empty">暂无错误日志</string>
     <string name="share_logs_failed">无法分享日志文件</string>
     <string name="copy_logs">复制日志</string>

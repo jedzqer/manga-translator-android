@@ -256,6 +256,7 @@ class FloatingTranslationView @JvmOverloads constructor(
     }
 
     private fun updateOffset(dx: Float, dy: Float) {
+        if (!editMode) return
         val id = activeId ?: return
         if (imageWidth <= 0 || imageHeight <= 0) return
         val bubble = bubbles.firstOrNull { it.id == id } ?: return
