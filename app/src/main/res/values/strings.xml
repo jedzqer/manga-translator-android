@@ -59,8 +59,8 @@
     <string name="library_title">漫画库</string>
     <string name="tutorial_button">使用教程</string>
     <string name="tutorial_picker_title">选择教程链接</string>
-    <string name="tutorial_picker_message">请选择教程来源，推荐国内用户使用 Gitee。</string>
-    <string name="tutorial_option_gitee_recommended">Gitee（推荐国内用户）</string>
+    <string name="tutorial_picker_message">请选择教程来源，推荐国内用户使用镜像站。</string>
+    <string name="tutorial_option_gitee_recommended">镜像站（推荐国内用户）</string>
     <string name="tutorial_option_github">GitHub</string>
     <string name="create_folder">新建文件夹</string>
     <string name="import_ehviewer">从 EhViewer 导入</string>

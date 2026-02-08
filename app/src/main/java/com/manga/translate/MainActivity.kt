@@ -146,7 +146,7 @@ class MainActivity : AppCompatActivity() {
         val giteeUrl = normalizedUrl
             .replace(
                 "https://github.com/jedzqer/manga-translator/releases/download/",
-                "https://gitee.com/jedzqer/manga-translator/releases/download/"
+                "https://gh-proxy.com/https://github.com/jedzqer/manga-translator/releases/download/"
             )
         val source = SettingsStore(this).loadLinkSource()
         return if (source == LinkSource.GITHUB) githubUrl else giteeUrl
