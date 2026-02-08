@@ -9,7 +9,7 @@ enum class LinkSource(
 
     companion object {
         fun fromPref(value: String?): LinkSource {
-            return entries.firstOrNull { it.prefValue == value } ?: GITEE
+            return entries.firstOrNull { it.prefValue == value } ?: GITHUB
         }
     }
 }

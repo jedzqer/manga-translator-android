@@ -101,7 +101,7 @@ class SettingsStore(context: Context) {
     }
 
     fun loadLinkSource(): LinkSource {
-        val saved = prefs.getString(KEY_LINK_SOURCE, LinkSource.GITEE.prefValue)
+        val saved = prefs.getString(KEY_LINK_SOURCE, LinkSource.GITHUB.prefValue)
         return LinkSource.fromPref(saved)
     }
 
