@@ -28,6 +28,7 @@ class LibraryFragment : Fragment() {
     private val glossaryStore = GlossaryStore()
     private val extractStateStore = ExtractStateStore()
     private val ocrStore = OcrStore()
+    private val embeddedStateStore = EmbeddedStateStore()
     private lateinit var readingProgressStore: ReadingProgressStore
     private val settingsStore by lazy { SettingsStore(requireContext()) }
     private val dialogs = LibraryDialogs()
@@ -38,10 +39,12 @@ class LibraryFragment : Fragment() {
 
     private lateinit var preferencesGateway: LibraryPreferencesGateway
     private lateinit var translationCoordinator: FolderTranslationCoordinator
+    private lateinit var embedCoordinator: FolderEmbedCoordinator
     private lateinit var importExportCoordinator: LibraryImportExportCoordinator
     private lateinit var selectionController: LibrarySelectionController
 
     private var currentFolder: File? = null
+    private var embedActionsEnabled: Boolean = true
 
     private val tutorialUrlGithub =
         "https://github.com/jedzqer/manga-translator/blob/main/Tutorial/简中教程.md"
@@ -196,6 +199,13 @@ class LibraryFragment : Fragment() {
             settingsStore = settingsStore,
             ui = uiCallbacks
         )
+        embedCoordinator = FolderEmbedCoordinator(
+            context = requireContext(),
+            translationStore = translationStore,
+            settingsStore = settingsStore,
+            embeddedStateStore = embeddedStateStore,
+            ui = uiCallbacks
+        )
         importExportCoordinator = LibraryImportExportCoordinator(
             context = requireContext(),
             repository = repository,
@@ -236,6 +246,8 @@ class LibraryFragment : Fragment() {
         binding.folderExport.setOnClickListener { exportFolder() }
         binding.folderTranslate.setOnClickListener { translateFolder() }
         binding.folderRead.setOnClickListener { startReading() }
+        binding.folderEmbed.setOnClickListener { embedFolder() }
+        binding.folderUnembed.setOnClickListener { cancelEmbed() }
         binding.folderSelectAll.setOnClickListener { selectionController.toggleSelectAllImages() }
         binding.folderDeleteSelected.setOnClickListener { selectionController.confirmDeleteSelectedImages(currentFolder) }
         binding.folderCancelSelection.setOnClickListener { selectionController.exitSelectionMode() }
@@ -279,6 +291,7 @@ class LibraryFragment : Fragment() {
 
     private fun showFolderList() {
         currentFolder = null
+        embedActionsEnabled = true
         binding.libraryListContainer.visibility = View.VISIBLE
         binding.folderDetailContainer.visibility = View.GONE
         binding.addFolderFab.visibility = View.VISIBLE
@@ -296,6 +309,7 @@ class LibraryFragment : Fragment() {
         binding.folderTitle.text = folder.name
         binding.folderFullTranslateSwitch.isChecked = preferencesGateway.isFullTranslateEnabled(folder)
         updateLanguageSettingButton(folder)
+        updateEmbedButtonState(folder)
         binding.libraryListContainer.visibility = View.GONE
         binding.folderDetailContainer.visibility = View.VISIBLE
         binding.addFolderFab.visibility = View.GONE
@@ -323,6 +337,7 @@ class LibraryFragment : Fragment() {
             ImageItem(file, translationStore.translationFileFor(file).exists())
         }
         imageAdapter.submit(items)
+        updateEmbedButtonState(folder)
         binding.folderImagesEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         if (selectionController.isSelectionMode) {
             selectionController.updateSelectionActions()
@@ -448,33 +463,112 @@ class LibraryFragment : Fragment() {
         }
     }
 
-    private fun startReading() {
+    private fun embedFolder() {
         val folder = currentFolder ?: return
         selectionController.exitSelectionMode()
         val images = repository.listImages(folder)
-        if (images.isEmpty()) {
+        embedCoordinator.embedFolder(
+            scope = viewLifecycleOwner.lifecycleScope,
+            folder = folder,
+            images = images,
+            onSetActionsEnabled = { enabled ->
+                setEmbedActionsEnabled(enabled)
+            }
+        )
+    }
+
+    private fun cancelEmbed() {
+        val folder = currentFolder ?: return
+        selectionController.exitSelectionMode()
+        embedCoordinator.cancelEmbed(
+            scope = viewLifecycleOwner.lifecycleScope,
+            folder = folder,
+            onSetActionsEnabled = { enabled ->
+                setEmbedActionsEnabled(enabled)
+            }
+        )
+    }
+
+    private fun startReading() {
+        val folder = currentFolder ?: return
+        selectionController.exitSelectionMode()
+        val originalImages = repository.listImages(folder)
+        if (originalImages.isEmpty()) {
             uiCallbacks.setFolderStatus(getString(R.string.folder_images_empty))
             return
         }
-        AppLogger.log("Library", "Start reading ${folder.name}, ${images.size} images")
+        val (images, embeddedMode) = resolveReadingImages(folder, originalImages)
+        AppLogger.log(
+            "Library",
+            "Start reading ${folder.name}, ${images.size} images, embedded=$embeddedMode"
+        )
         val startIndex = readingProgressStore.load(folder)
-        readingSessionViewModel.setFolder(folder, images, startIndex)
+        readingSessionViewModel.setFolder(folder, images, startIndex, embeddedMode)
         (activity as? MainActivity)?.switchToTab(MainPagerAdapter.READING_INDEX)
     }
 
     private fun openImageInReader(imageFile: File) {
         val folder = currentFolder ?: return
         if (selectionController.isSelectionMode) return
-        val images = repository.listImages(folder)
-        if (images.isEmpty()) {
+        val originalImages = repository.listImages(folder)
+        if (originalImages.isEmpty()) {
             uiCallbacks.setFolderStatus(getString(R.string.folder_images_empty))
             return
         }
-        val startIndex = images.indexOfFirst { it.absolutePath == imageFile.absolutePath }
-        if (startIndex < 0) return
-        AppLogger.log("Library", "Open image ${imageFile.name} at index $startIndex in ${folder.name}")
-        readingSessionViewModel.setFolder(folder, images, startIndex)
+        val originalIndex = originalImages.indexOfFirst { it.absolutePath == imageFile.absolutePath }
+        if (originalIndex < 0) return
+        val (images, embeddedMode) = resolveReadingImages(folder, originalImages)
+        val startIndex = if (embeddedMode) {
+            originalIndex.coerceIn(0, images.lastIndex.coerceAtLeast(0))
+        } else {
+            val index = images.indexOfFirst { it.absolutePath == imageFile.absolutePath }
+            if (index < 0) return
+            index
+        }
+        AppLogger.log(
+            "Library",
+            "Open image ${imageFile.name} at index $startIndex in ${folder.name}, embedded=$embeddedMode"
+        )
+        readingSessionViewModel.setFolder(folder, images, startIndex, embeddedMode)
         (activity as? MainActivity)?.switchToTab(MainPagerAdapter.READING_INDEX)
+    }
+
+    private fun resolveReadingImages(folder: File, originalImages: List<File>): Pair<List<File>, Boolean> {
+        if (!embeddedStateStore.isEmbedded(folder)) {
+            return originalImages to false
+        }
+        val embeddedImages = embeddedStateStore.listEmbeddedImages(folder)
+        if (embeddedImages.isEmpty()) {
+            return originalImages to false
+        }
+        val embeddedByName = embeddedImages.associateBy { it.name }
+        val ordered = ArrayList<File>(originalImages.size)
+        for (image in originalImages) {
+            val embedded = embeddedByName[image.name]
+            if (embedded == null) {
+                AppLogger.log("Library", "Embedded image missing for ${image.name} in ${folder.name}")
+                return originalImages to false
+            }
+            ordered.add(embedded)
+        }
+        return ordered to true
+    }
+
+    private fun setEmbedActionsEnabled(enabled: Boolean) {
+        embedActionsEnabled = enabled
+        val folder = currentFolder
+        _binding?.let { view ->
+            view.folderRead.isEnabled = enabled
+            view.folderEmbed.isEnabled = enabled
+            view.folderUnembed.isEnabled = enabled && folder?.let { embeddedStateStore.isEmbedded(it) } == true
+        }
+    }
+
+    private fun updateEmbedButtonState(folder: File) {
+        val embedded = embeddedStateStore.isEmbedded(folder)
+        binding.folderRead.isEnabled = embedActionsEnabled
+        binding.folderEmbed.isEnabled = embedActionsEnabled
+        binding.folderUnembed.isEnabled = embedActionsEnabled && embedded
     }
 
     private fun showFullTranslateInfo() {

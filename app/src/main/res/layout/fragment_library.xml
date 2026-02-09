@@ -120,6 +120,31 @@
         </LinearLayout>
 
         <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            style="?android:attr/buttonBarStyle">
+
+            <Button
+                android:id="@+id/folder_embed"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="?android:attr/buttonBarButtonStyle"
+                android:text="@string/folder_embed" />
+
+            <Button
+                android:id="@+id/folder_unembed"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="?android:attr/buttonBarButtonStyle"
+                android:text="@string/folder_unembed"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/folder_translation_settings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

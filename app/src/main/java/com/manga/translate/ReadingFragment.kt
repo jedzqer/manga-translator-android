@@ -37,6 +37,7 @@ class ReadingFragment : Fragment() {
     private lateinit var imageTransformController: ReadingImageTransformController
     private var readingDisplayMode = ReadingDisplayMode.FIT_WIDTH
     private var isEditMode = false
+    private var isEmbeddedMode = false
     private var resizeTargetId: Int? = null
     private var resizeBaseRect: RectF? = null
     private var resizeUpdatingWidthInput = false
@@ -212,6 +213,13 @@ class ReadingFragment : Fragment() {
             loadCurrentImage()
             persistReadingProgress()
         }
+        readingSessionViewModel.isEmbedded.observe(viewLifecycleOwner) { embedded ->
+            isEmbeddedMode = embedded
+            if (embedded) {
+                setEditMode(false)
+            }
+            loadCurrentImage()
+        }
         binding.readingImage.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
             if (currentBitmap == null) return@addOnLayoutChangeListener
             if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
@@ -242,6 +250,7 @@ class ReadingFragment : Fragment() {
     private fun loadCurrentImage() {
         val images = readingSessionViewModel.images.value.orEmpty()
         val folder = readingSessionViewModel.currentFolder.value
+        isEmbeddedMode = readingSessionViewModel.isEmbedded.value == true
         if (images.isEmpty() || folder == null) {
             binding.readingEmptyHint.visibility = View.VISIBLE
             binding.readingPageInfo.visibility = View.GONE
@@ -258,7 +267,10 @@ class ReadingFragment : Fragment() {
         currentImageFile = imageFile
         binding.readingEmptyHint.visibility = View.GONE
         binding.readingPageInfo.visibility = View.VISIBLE
-        binding.readingEditControls.visibility = View.VISIBLE
+        binding.readingEditControls.visibility = if (isEmbeddedMode) View.GONE else View.VISIBLE
+        if (isEmbeddedMode && isEditMode) {
+            setEditMode(false)
+        }
         updateEditButtonState()
         hideResizePanel()
         binding.readingPageInfo.text = getString(
@@ -269,14 +281,24 @@ class ReadingFragment : Fragment() {
         )
         val targetPath = imageFile.absolutePath
         val targetIndex = index
+        val targetEmbeddedMode = isEmbeddedMode
         viewLifecycleOwner.lifecycleScope.launch {
             val bitmap = loadBitmap(imageFile.absolutePath)
-            val translation = withContext(Dispatchers.IO) {
-                translationStore.load(imageFile)
+            val translation = if (targetEmbeddedMode) {
+                null
+            } else {
+                withContext(Dispatchers.IO) {
+                    translationStore.load(imageFile)
+                }
             }
             val currentImages = readingSessionViewModel.images.value.orEmpty()
             val currentIndex = readingSessionViewModel.index.value ?: 0
-            if (currentIndex != targetIndex || currentImages.getOrNull(currentIndex)?.absolutePath != targetPath) {
+            val currentEmbeddedMode = readingSessionViewModel.isEmbedded.value == true
+            if (
+                currentIndex != targetIndex ||
+                currentImages.getOrNull(currentIndex)?.absolutePath != targetPath ||
+                currentEmbeddedMode != targetEmbeddedMode
+            ) {
                 return@launch
             }
             if (bitmap != null) {
@@ -295,7 +317,7 @@ class ReadingFragment : Fragment() {
                 }
                 updateOverlay(translation, bitmap)
             }
-            if (translation == null && bitmap != null) {
+            if (!targetEmbeddedMode && translation == null && bitmap != null) {
                 startTranslationWatcher(imageFile)
             } else {
                 translationWatchJob?.cancel()
@@ -323,7 +345,7 @@ class ReadingFragment : Fragment() {
         binding.translationOverlay.setDisplayRect(rect)
         binding.translationOverlay.setTranslations(normalized)
         binding.translationOverlay.setOffsets(emptyMap())
-        binding.translationOverlay.setEditMode(isEditMode)
+        binding.translationOverlay.setEditMode(isEditMode && !isEmbeddedMode)
         binding.translationOverlay.visibility = View.VISIBLE
     }
 
@@ -380,6 +402,7 @@ class ReadingFragment : Fragment() {
     }
 
     private fun toggleEditMode() {
+        if (isEmbeddedMode) return
         if (isEditMode) {
             persistCurrentTranslation(forceSave = true)
             setEditMode(false)
@@ -390,16 +413,22 @@ class ReadingFragment : Fragment() {
     }
 
     private fun setEditMode(enabled: Boolean) {
-        if (isEditMode == enabled) return
-        isEditMode = enabled
-        binding.translationOverlay.setEditMode(enabled)
-        if (!enabled) {
+        val nextEnabled = enabled && !isEmbeddedMode
+        if (isEditMode == nextEnabled) return
+        isEditMode = nextEnabled
+        binding.translationOverlay.setEditMode(nextEnabled)
+        if (!nextEnabled) {
             hideResizePanel()
         }
         updateEditButtonState()
     }
 
     private fun updateEditButtonState() {
+        if (isEmbeddedMode) {
+            binding.readingEditControls.visibility = View.GONE
+            binding.readingAddButton.visibility = View.GONE
+            return
+        }
         val button = binding.readingEditButton
         if (isEditMode) {
             button.setImageResource(R.drawable.ic_check)
@@ -415,6 +444,7 @@ class ReadingFragment : Fragment() {
     }
 
     private fun startTranslationWatcher(imageFile: java.io.File) {
+        if (isEmbeddedMode) return
         translationWatchJob?.cancel()
         translationWatchJob = viewLifecycleOwner.lifecycleScope.launch {
             val jsonFile = translationStore.translationFileFor(imageFile)
@@ -450,6 +480,7 @@ class ReadingFragment : Fragment() {
     }
 
     private fun persistCurrentTranslation(forceSave: Boolean = false) {
+        if (isEmbeddedMode) return
         val imageFile = currentImageFile ?: return
         val translation = currentTranslation ?: return
         val offsets = binding.translationOverlay.getOffsets()
@@ -624,12 +655,14 @@ class ReadingFragment : Fragment() {
     }
 
     private fun saveCurrentTranslation() {
+        if (isEmbeddedMode) return
         val imageFile = currentImageFile ?: return
         val translation = currentTranslation ?: return
         translationStore.save(imageFile, translation)
     }
 
     private fun addNewBubble() {
+        if (isEmbeddedMode) return
         if (!isEditMode) return
         val translation = currentTranslation ?: return
         val width = translation.width.toFloat()
@@ -651,6 +684,7 @@ class ReadingFragment : Fragment() {
     }
 
     private fun processEmptyBubbles() {
+        if (isEmbeddedMode) return
         val imageFile = currentImageFile ?: return
         val translation = currentTranslation ?: return
         val folder = readingSessionViewModel.currentFolder.value ?: return
