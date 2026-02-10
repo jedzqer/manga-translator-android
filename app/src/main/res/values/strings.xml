@@ -121,8 +121,12 @@
     <string name="folder_embed_failed_image">嵌字失败：%1$s</string>
     <string name="folder_embed_running">已有嵌字任务在进行中</string>
     <string name="folder_embed_missing_translation">请先翻译后再嵌字，缺少：%1$s</string>
+    <string name="folder_read_force_bubble_unembedded">检测到未嵌字图片，已切换为气泡模式阅读</string>
     <string name="folder_unembed_done">已取消嵌字</string>
     <string name="folder_unembed_failed">取消嵌字失败</string>
+    <string name="embed_options_title">嵌字参数</string>
+    <string name="embed_thread_hint">嵌字线程数 (1-16)</string>
+    <string name="embed_thread_invalid">线程数无效，请输入 1-16</string>
     <string name="exporting_progress">导出中…(%1$d/%2$d)</string>
     <string name="export_done">导出完成</string>
     <string name="export_failed">导出失败</string>
@@ -142,6 +146,7 @@
     <string name="translation_keepalive_channel">后台翻译</string>
     <string name="translation_keepalive_title">翻译进行中</string>
     <string name="translation_keepalive_message">保持后台运行，请勿关闭应用</string>
+    <string name="embed_keepalive_title">嵌字进行中</string>
     <string name="export_keepalive_title">导出进行中</string>
     <string name="reading_empty">请选择一个文件夹开始阅读</string>
     <string name="reading_page_info">%1$s  (%2$d/%3$d)</string>

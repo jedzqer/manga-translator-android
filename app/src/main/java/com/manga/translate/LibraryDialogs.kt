@@ -203,6 +203,54 @@ internal class LibraryDialogs {
             .show()
     }
 
+    fun showEmbedOptionsDialog(
+        context: Context,
+        defaultThreads: Int,
+        onConfirm: (Int) -> Unit
+    ) {
+        val input = EditText(context).apply {
+            hint = context.getString(R.string.embed_thread_hint)
+            setText(defaultThreads.toString())
+            setSelection(text.length)
+            inputType = InputType.TYPE_CLASS_NUMBER
+            imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
+        }
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val side = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                20f,
+                context.resources.displayMetrics
+            ).toInt()
+            val vertical = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                12f,
+                context.resources.displayMetrics
+            ).toInt()
+            setPadding(side, vertical, side, vertical)
+            addView(
+                input,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+        AlertDialog.Builder(context)
+            .setTitle(R.string.embed_options_title)
+            .setView(container)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val threadCount = input.text?.toString()?.toIntOrNull()
+                if (threadCount == null || threadCount !in 1..16) {
+                    Toast.makeText(context, R.string.embed_thread_invalid, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                onConfirm(threadCount)
+            }
+            .show()
+    }
+
     fun confirmDeleteSelectedImages(
         context: Context,
         selectedCount: Int,

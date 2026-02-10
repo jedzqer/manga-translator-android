@@ -203,6 +203,7 @@ class LibraryFragment : Fragment() {
             context = requireContext(),
             translationStore = translationStore,
             settingsStore = settingsStore,
+            prefs = prefs,
             embeddedStateStore = embeddedStateStore,
             ui = uiCallbacks
         )
@@ -467,14 +468,20 @@ class LibraryFragment : Fragment() {
         val folder = currentFolder ?: return
         selectionController.exitSelectionMode()
         val images = repository.listImages(folder)
-        embedCoordinator.embedFolder(
-            scope = viewLifecycleOwner.lifecycleScope,
-            folder = folder,
-            images = images,
-            onSetActionsEnabled = { enabled ->
-                setEmbedActionsEnabled(enabled)
-            }
-        )
+        dialogs.showEmbedOptionsDialog(
+            context = requireContext(),
+            defaultThreads = embedCoordinator.getEmbedThreadCount()
+        ) { embedThreads ->
+            embedCoordinator.embedFolder(
+                scope = viewLifecycleOwner.lifecycleScope,
+                folder = folder,
+                images = images,
+                embedThreads = embedThreads,
+                onSetActionsEnabled = { enabled ->
+                    setEmbedActionsEnabled(enabled)
+                }
+            )
+        }
     }
 
     private fun cancelEmbed() {
@@ -497,7 +504,12 @@ class LibraryFragment : Fragment() {
             uiCallbacks.setFolderStatus(getString(R.string.folder_images_empty))
             return
         }
-        val (images, embeddedMode) = resolveReadingImages(folder, originalImages)
+        val resolution = resolveReadingImages(folder, originalImages)
+        val images = resolution.images
+        val embeddedMode = resolution.embeddedMode
+        if (resolution.forcedBubbleMode) {
+            uiCallbacks.showToast(R.string.folder_read_force_bubble_unembedded)
+        }
         AppLogger.log(
             "Library",
             "Start reading ${folder.name}, ${images.size} images, embedded=$embeddedMode"
@@ -517,7 +529,12 @@ class LibraryFragment : Fragment() {
         }
         val originalIndex = originalImages.indexOfFirst { it.absolutePath == imageFile.absolutePath }
         if (originalIndex < 0) return
-        val (images, embeddedMode) = resolveReadingImages(folder, originalImages)
+        val resolution = resolveReadingImages(folder, originalImages)
+        val images = resolution.images
+        val embeddedMode = resolution.embeddedMode
+        if (resolution.forcedBubbleMode) {
+            uiCallbacks.showToast(R.string.folder_read_force_bubble_unembedded)
+        }
         val startIndex = if (embeddedMode) {
             originalIndex.coerceIn(0, images.lastIndex.coerceAtLeast(0))
         } else {
@@ -533,13 +550,21 @@ class LibraryFragment : Fragment() {
         (activity as? MainActivity)?.switchToTab(MainPagerAdapter.READING_INDEX)
     }
 
-    private fun resolveReadingImages(folder: File, originalImages: List<File>): Pair<List<File>, Boolean> {
+    private fun resolveReadingImages(folder: File, originalImages: List<File>): ReadingImagesResolution {
         if (!embeddedStateStore.isEmbedded(folder)) {
-            return originalImages to false
+            return ReadingImagesResolution(
+                images = originalImages,
+                embeddedMode = false,
+                forcedBubbleMode = false
+            )
         }
         val embeddedImages = embeddedStateStore.listEmbeddedImages(folder)
         if (embeddedImages.isEmpty()) {
-            return originalImages to false
+            return ReadingImagesResolution(
+                images = originalImages,
+                embeddedMode = false,
+                forcedBubbleMode = false
+            )
         }
         val embeddedByName = embeddedImages.associateBy { it.name }
         val ordered = ArrayList<File>(originalImages.size)
@@ -547,11 +572,19 @@ class LibraryFragment : Fragment() {
             val embedded = embeddedByName[image.name]
             if (embedded == null) {
                 AppLogger.log("Library", "Embedded image missing for ${image.name} in ${folder.name}")
-                return originalImages to false
+                return ReadingImagesResolution(
+                    images = originalImages,
+                    embeddedMode = false,
+                    forcedBubbleMode = true
+                )
             }
             ordered.add(embedded)
         }
-        return ordered to true
+        return ReadingImagesResolution(
+            images = ordered,
+            embeddedMode = true,
+            forcedBubbleMode = false
+        )
     }
 
     private fun setEmbedActionsEnabled(enabled: Boolean) {
@@ -590,4 +623,10 @@ class LibraryFragment : Fragment() {
             AppLogger.log("Library", "Set language for ${folder.name}: ${selectedLanguage.name}")
         }
     }
+
+    private data class ReadingImagesResolution(
+        val images: List<File>,
+        val embeddedMode: Boolean,
+        val forcedBubbleMode: Boolean
+    )
 }

@@ -5,29 +5,43 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Build
+import android.content.SharedPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.sqrt
 
 internal class FolderEmbedCoordinator(
     context: Context,
     private val translationStore: TranslationStore,
     private val settingsStore: SettingsStore,
+    private val prefs: SharedPreferences,
     private val embeddedStateStore: EmbeddedStateStore,
     private val ui: LibraryUiCallbacks
 ) {
     private val appContext = context.applicationContext
     private var activeJob: Job? = null
 
+    fun getEmbedThreadCount(): Int {
+        val saved = prefs.getInt(KEY_EMBED_THREADS, DEFAULT_EMBED_THREADS)
+        return normalizeEmbedThreads(saved)
+    }
+
     fun embedFolder(
         scope: CoroutineScope,
         folder: File,
         images: List<File>,
+        embedThreads: Int,
         onSetActionsEnabled: (Boolean) -> Unit
     ) {
         if (activeJob?.isActive == true) {
@@ -39,27 +53,55 @@ internal class FolderEmbedCoordinator(
             return
         }
 
+        val normalizedThreads = normalizeEmbedThreads(embedThreads)
+        prefs.edit().putInt(KEY_EMBED_THREADS, normalizedThreads).apply()
+
         onSetActionsEnabled(false)
+        TranslationKeepAliveService.start(
+            appContext,
+            appContext.getString(R.string.embed_keepalive_title),
+            appContext.getString(R.string.translation_keepalive_message),
+            appContext.getString(R.string.folder_embed_progress, 0, images.size)
+        )
+        TranslationKeepAliveService.updateStatus(
+            appContext,
+            appContext.getString(R.string.folder_embed_progress, 0, images.size),
+            appContext.getString(R.string.embed_keepalive_title),
+            appContext.getString(R.string.translation_keepalive_message)
+        )
         activeJob = scope.launch {
-            val result = embedInternal(folder, images) { done, total ->
-                withContext(Dispatchers.Main) {
-                    ui.setFolderStatus(appContext.getString(R.string.folder_embed_progress, done, total))
+            try {
+                val result = embedInternal(folder, images, normalizedThreads) { done, total ->
+                    withContext(Dispatchers.Main) {
+                        val progressText = appContext.getString(R.string.folder_embed_progress, done, total)
+                        ui.setFolderStatus(progressText)
+                        TranslationKeepAliveService.updateProgress(
+                            appContext,
+                            done,
+                            total,
+                            progressText,
+                            appContext.getString(R.string.embed_keepalive_title),
+                            appContext.getString(R.string.translation_keepalive_message)
+                        )
+                    }
                 }
+                when (result) {
+                    is EmbedResult.Success -> {
+                        ui.setFolderStatus(appContext.getString(R.string.folder_embed_done))
+                        ui.showToast(R.string.folder_embed_done)
+                    }
+                    is EmbedResult.Failure -> {
+                        val message = result.message.ifBlank { appContext.getString(R.string.folder_embed_failed) }
+                        ui.setFolderStatus(appContext.getString(R.string.folder_embed_failed))
+                        ui.showToastMessage(message)
+                    }
+                }
+                ui.refreshImages(folder)
+                ui.refreshFolders()
+            } finally {
+                onSetActionsEnabled(true)
+                TranslationKeepAliveService.stop(appContext)
             }
-            onSetActionsEnabled(true)
-            when (result) {
-                is EmbedResult.Success -> {
-                    ui.setFolderStatus(appContext.getString(R.string.folder_embed_done))
-                    ui.showToast(R.string.folder_embed_done)
-                }
-                is EmbedResult.Failure -> {
-                    val message = result.message.ifBlank { appContext.getString(R.string.folder_embed_failed) }
-                    ui.setFolderStatus(appContext.getString(R.string.folder_embed_failed))
-                    ui.showToastMessage(message)
-                }
-            }
-            ui.refreshImages(folder)
-            ui.refreshFolders()
         }
     }
 
@@ -94,71 +136,116 @@ internal class FolderEmbedCoordinator(
     private suspend fun embedInternal(
         folder: File,
         images: List<File>,
+        embedThreads: Int,
         onProgress: suspend (done: Int, total: Int) -> Unit
     ): EmbedResult = withContext(Dispatchers.IO) {
-        val translations = LinkedHashMap<File, TranslationResult>(images.size)
-        for (image in images) {
-            val translation = translationStore.load(image)
-            if (translation == null) {
-                return@withContext EmbedResult.Failure(
-                    appContext.getString(R.string.folder_embed_missing_translation, image.name)
-                )
-            }
-            translations[image] = translation
-        }
-
         val embeddedDir = embeddedStateStore.embeddedDir(folder)
-        embeddedStateStore.clearEmbeddedState(folder)
         if (!embeddedDir.exists() && !embeddedDir.mkdirs()) {
             return@withContext EmbedResult.Failure(appContext.getString(R.string.folder_embed_failed))
         }
 
-        val detector = try {
-            TextMaskDetector(appContext)
-        } catch (e: Exception) {
-            AppLogger.log("Embed", "Failed to init text mask detector", e)
-            embeddedStateStore.clearEmbeddedState(folder)
-            return@withContext EmbedResult.Failure(appContext.getString(R.string.folder_embed_failed))
-        }
-        val inpainter = try {
-            MiganInpainter(appContext)
-        } catch (e: Exception) {
-            AppLogger.log("Embed", "Failed to init migan inpainter", e)
-            embeddedStateStore.clearEmbeddedState(folder)
-            return@withContext EmbedResult.Failure(appContext.getString(R.string.folder_embed_failed))
-        }
-        val renderer = EmbeddedTextRenderer()
-        val verticalLayoutEnabled = !settingsStore.loadUseHorizontalText()
-
-        for ((index, image) in images.withIndex()) {
-            val translation = translations[image] ?: continue
-            val result = runCatching {
-                processSingleImage(
-                    sourceImage = image,
-                    translation = translation,
-                    detector = detector,
-                    inpainter = inpainter,
-                    renderer = renderer,
-                    verticalLayoutEnabled = verticalLayoutEnabled,
-                    outputDir = embeddedDir
-                )
+        val pending = ArrayList<Pair<File, TranslationResult>>(images.size)
+        for (image in images) {
+            val translation = translationStore.load(image)
+            if (translation == null) {
+                continue
             }
-            if (result.isFailure || result.getOrNull() != true) {
-                val throwable = result.exceptionOrNull()
-                if (throwable != null) {
-                    AppLogger.log("Embed", "Embed failed for ${image.name}", throwable)
-                } else {
-                    AppLogger.log("Embed", "Embed failed for ${image.name}")
+            val target = File(embeddedDir, image.name)
+            if (target.exists()) {
+                continue
+            }
+            pending.add(image to translation)
+        }
+
+        if (pending.isEmpty()) {
+            if (images.all { File(embeddedDir, it.name).exists() }) {
+                embeddedStateStore.writeEmbeddedState(folder, images.size)
+            }
+            return@withContext EmbedResult.Success
+        }
+        val verticalLayoutEnabled = !settingsStore.loadUseHorizontalText()
+        val workerCount = minOf(normalizeEmbedThreads(embedThreads), pending.size).coerceAtLeast(1)
+        val nextIndex = AtomicInteger(0)
+        val doneCount = AtomicInteger(0)
+        val failed = AtomicBoolean(false)
+        val failedImage = AtomicReference<File?>(null)
+        val initFailed = AtomicBoolean(false)
+
+        coroutineScope {
+            val workers = List(workerCount) {
+                async(Dispatchers.IO) {
+                    val detector = try {
+                        TextMaskDetector(appContext)
+                    } catch (e: Exception) {
+                        AppLogger.log("Embed", "Failed to init text mask detector", e)
+                        initFailed.set(true)
+                        failed.set(true)
+                        return@async
+                    }
+                    val inpainter = try {
+                        MiganInpainter(appContext)
+                    } catch (e: Exception) {
+                        AppLogger.log("Embed", "Failed to init migan inpainter", e)
+                        initFailed.set(true)
+                        failed.set(true)
+                        return@async
+                    }
+                    val renderer = EmbeddedTextRenderer()
+
+                    while (!failed.get()) {
+                        val index = nextIndex.getAndIncrement()
+                        if (index >= pending.size) {
+                            return@async
+                        }
+                        val item = pending[index]
+                        val image = item.first
+                        val translation = item.second
+                        val result = runCatching {
+                            processSingleImage(
+                                sourceImage = image,
+                                translation = translation,
+                                detector = detector,
+                                inpainter = inpainter,
+                                renderer = renderer,
+                                verticalLayoutEnabled = verticalLayoutEnabled,
+                                outputDir = embeddedDir
+                            )
+                        }
+                        if (result.isFailure || result.getOrNull() != true) {
+                            val throwable = result.exceptionOrNull()
+                            if (throwable != null) {
+                                AppLogger.log("Embed", "Embed failed for ${image.name}", throwable)
+                            } else {
+                                AppLogger.log("Embed", "Embed failed for ${image.name}")
+                            }
+                            failedImage.compareAndSet(null, image)
+                            failed.set(true)
+                            return@async
+                        }
+                        val done = doneCount.incrementAndGet()
+                        onProgress(done, pending.size)
+                    }
                 }
-                embeddedStateStore.clearEmbeddedState(folder)
+            }
+            workers.awaitAll()
+        }
+
+        if (failed.get()) {
+            if (initFailed.get()) {
+                return@withContext EmbedResult.Failure(appContext.getString(R.string.folder_embed_failed))
+            }
+            val image = failedImage.get()
+            if (image != null) {
                 return@withContext EmbedResult.Failure(
                     appContext.getString(R.string.folder_embed_failed_image, image.name)
                 )
             }
-            onProgress(index + 1, images.size)
+            return@withContext EmbedResult.Failure(appContext.getString(R.string.folder_embed_failed))
         }
 
-        embeddedStateStore.writeEmbeddedState(folder, images.size)
+        if (images.all { File(embeddedDir, it.name).exists() }) {
+            embeddedStateStore.writeEmbeddedState(folder, images.size)
+        }
         EmbedResult.Success
     }
 
@@ -478,5 +565,13 @@ internal class FolderEmbedCoordinator(
         private const val WHITE_BG_MAX_STD = 18.0
         private const val WHITE_BG_MAX_SPREAD = 20.0
         private const val MIN_RING_SAMPLE_PIXELS = 24
+        private const val KEY_EMBED_THREADS = "embed_threads"
+        private const val DEFAULT_EMBED_THREADS = 2
+        private const val MIN_EMBED_THREADS = 1
+        private const val MAX_EMBED_THREADS = 16
+    }
+
+    private fun normalizeEmbedThreads(value: Int): Int {
+        return value.coerceIn(MIN_EMBED_THREADS, MAX_EMBED_THREADS)
     }
 }
