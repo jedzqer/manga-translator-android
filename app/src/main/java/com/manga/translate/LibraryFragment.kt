@@ -335,8 +335,15 @@ class LibraryFragment : Fragment() {
 
     private fun loadImages(folder: File) {
         val images = repository.listImages(folder)
+        val embeddedByName = embeddedStateStore
+            .listEmbeddedImages(folder)
+            .associateBy { it.name }
         val items = images.map { file ->
-            ImageItem(file, translationStore.translationFileFor(file).exists())
+            ImageItem(
+                file = file,
+                translated = translationStore.translationFileFor(file).exists(),
+                embedded = embeddedByName[file.name] != null
+            )
         }
         imageAdapter.submit(items)
         updateEmbedButtonState(folder)

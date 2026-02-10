@@ -224,6 +224,9 @@ internal class LibraryDialogs {
         defaultThreads: Int,
         onConfirm: (Int) -> Unit
     ) {
+        val note = TextView(context).apply {
+            text = context.getString(R.string.embed_thread_note)
+        }
         val input = EditText(context).apply {
             hint = context.getString(R.string.embed_thread_hint)
             setText(defaultThreads.toString())
@@ -244,6 +247,19 @@ internal class LibraryDialogs {
                 context.resources.displayMetrics
             ).toInt()
             setPadding(side, vertical, side, vertical)
+            addView(
+                note,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = TypedValue.applyDimension(
+                        TypedValue.COMPLEX_UNIT_DIP,
+                        8f,
+                        context.resources.displayMetrics
+                    ).toInt()
+                }
+            )
             addView(
                 input,
                 LinearLayout.LayoutParams(

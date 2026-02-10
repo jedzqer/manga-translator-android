@@ -69,7 +69,7 @@
     <string name="folder_images_empty">该文件夹暂无图片</string>
     <string name="folder_add_images">批量上传图片</string>
     <string name="folder_export">导出漫画</string>
-    <string name="folder_translate">翻译文件夹</string>
+    <string name="folder_translate">一键翻译</string>
     <string name="folder_read">开始阅读</string>
     <string name="folder_embed">一键嵌字</string>
     <string name="folder_unembed">取消嵌字</string>
@@ -125,6 +125,7 @@
     <string name="folder_unembed_done">已取消嵌字</string>
     <string name="folder_unembed_failed">取消嵌字失败</string>
     <string name="embed_options_title">嵌字参数</string>
+    <string name="embed_thread_note">该参数用于调整嵌字线程数。</string>
     <string name="embed_thread_hint">嵌字线程数 (1-16)</string>
     <string name="embed_thread_invalid">线程数无效，请输入 1-16</string>
     <string name="exporting_progress">导出中…(%1$d/%2$d)</string>
@@ -163,6 +164,7 @@
     <string name="reading_bubble_resize_done">确认</string>
     <string name="reading_bubble_action_resize">调整气泡大小</string>
     <string name="reading_bubble_action_delete">删除气泡</string>
+    <string name="image_embedded">已嵌字</string>
     <string name="image_translated">已翻译</string>
     <string name="image_not_translated">未翻译</string>
     <string name="update_dialog_title">发现新版本 %1$s</string>
