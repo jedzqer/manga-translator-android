@@ -3,6 +3,11 @@
 面向安卓的漫画翻译 App：本地气泡检测与 OCR，结合 OpenAI 兼容接口完成翻译，并在原图上覆盖显示可拖动的翻译气泡。
 使用教程：https://github.com/jedzqer/manga-translator/blob/main/Tutorial/简中教程.md
 
+| 原图 | 翻译结果 | 嵌入效果 |
+|------|----------|----------|
+| ![原图](https://raw.githubusercontent.com/jedzqer/manga-translator/main/Tutorial/Fire Punch.webp) | ![翻译结果](https://raw.githubusercontent.com/jedzqer/manga-translator/main/Tutorial/translated.jpg) | ![嵌入效果](https://raw.githubusercontent.com/jedzqer/manga-translator/main/Tutorial/embedded.jpg) |
+
+
 ## 主要功能 ✨
 - 日译中，英译中
 - 漫画库管理：新建文件夹、批量导入图片、EhViewer 导入

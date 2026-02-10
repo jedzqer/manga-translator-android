@@ -1,9 +1,14 @@
 {
-  "versionCode": 19,
-  "versionName": "2.2.0",
-  "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/2.2.0/app-release.apk",
-  "changelog": "添加一键分享错误日志，新增CBZ格式导入导出，支持多模型分流，添加国内镜像",
+  "versionCode": 20,
+    "versionName": "2.2.1",
+    "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/2.2.1/app-release.apk",
+    "changelog": "新增嵌字功能，一键嵌字",
   "history": [
+    {
+      "versionName": "2.2.0",
+      "releasedAt": "2026-02-09",
+      "changelog": "添加一键分享错误日志，新增CBZ格式导入导出，支持多模型分流，添加国内镜像"
+    },
     {
       "versionName": "2.1.0",
       "releasedAt": "2026-02-08",

@@ -264,6 +264,8 @@ internal class FolderEmbedCoordinator(
             translation = translation,
             detector = detector,
             includeBubble = { it.source == BubbleSource.BUBBLE_DETECTOR },
+            expandRatio = DEFAULT_BUBBLE_MASK_EXPAND_RATIO,
+            maskGrowRatio = MODEL_BUBBLE_MASK_GROW_RATIO,
             extraDilateIterations = MODEL_BUBBLE_EXTRA_DILATE_ITERATIONS
         )
         val afterModelBubbleWhite = applyDirectWhiteCover(bitmap, modelBubbleMask)
@@ -275,6 +277,8 @@ internal class FolderEmbedCoordinator(
             translation = nonModelTranslation,
             detector = detector,
             includeBubble = { true },
+            expandRatio = DEFAULT_BUBBLE_MASK_EXPAND_RATIO,
+            maskGrowRatio = 0f,
             extraDilateIterations = 0
         )
         val prefill = applyUniformWhiteCover(afterModelBubbleWhite, eraseMask, nonModelTranslation)
@@ -306,6 +310,8 @@ internal class FolderEmbedCoordinator(
         translation: TranslationResult,
         detector: TextMaskDetector,
         includeBubble: (BubbleTranslation) -> Boolean,
+        expandRatio: Float,
+        maskGrowRatio: Float,
         extraDilateIterations: Int
     ): BooleanArray {
         val width = bitmap.width
@@ -314,7 +320,7 @@ internal class FolderEmbedCoordinator(
 
         for (bubble in translation.bubbles) {
             if (!includeBubble(bubble)) continue
-            val expandBase = maxOf(2f, minOf(bubble.rect.width(), bubble.rect.height()) * BUBBLE_MASK_EXPAND_RATIO)
+            val expandBase = maxOf(2f, minOf(bubble.rect.width(), bubble.rect.height()) * expandRatio)
             val left = (bubble.rect.left - expandBase).toInt().coerceIn(0, width - 1)
             val top = (bubble.rect.top - expandBase).toInt().coerceIn(0, height - 1)
             val right = (bubble.rect.right + expandBase).toInt().coerceIn(left + 1, width)
@@ -331,12 +337,20 @@ internal class FolderEmbedCoordinator(
             }
 
             val cropMask = detector.detectMask(crop)
+            val minBubbleSize = minOf(bubble.rect.width(), bubble.rect.height()).coerceAtLeast(1f)
+            val growPixels = (minBubbleSize * maskGrowRatio).toInt()
+                .coerceIn(0, MAX_PER_BUBBLE_MASK_GROW_PIXELS)
+            val expandedCropMask = if (growPixels > 0) {
+                dilateMask(cropMask, cropW, cropH, growPixels)
+            } else {
+                cropMask
+            }
             var hasTextPixel = false
             for (y in 0 until cropH) {
                 val cropRow = y * cropW
                 val fullRow = (top + y) * width + left
                 for (x in 0 until cropW) {
-                    if (!cropMask[cropRow + x]) continue
+                    if (!expandedCropMask[cropRow + x]) continue
                     hasTextPixel = true
                     mask[fullRow + x] = true
                 }
@@ -597,7 +611,9 @@ internal class FolderEmbedCoordinator(
     )
 
     companion object {
-        private const val BUBBLE_MASK_EXPAND_RATIO = 0.1f
+        private const val DEFAULT_BUBBLE_MASK_EXPAND_RATIO = 0.1f
+        private const val MODEL_BUBBLE_MASK_GROW_RATIO = 0.1f
+        private const val MAX_PER_BUBBLE_MASK_GROW_PIXELS = 24
         private const val GLOBAL_DILATE_ITERATIONS = 3
         private const val MODEL_BUBBLE_EXTRA_DILATE_ITERATIONS = 1
         private const val WHITE_COVER_EXPAND_RATIO = 0.1f
