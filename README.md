@@ -5,7 +5,7 @@
 
 | 原图 | 翻译结果 | 嵌入效果 |
 |------|----------|----------|
-| ![原图](https://raw.githubusercontent.com/jedzqer/manga-translator/main/Tutorial/FirePunch.webp) | ![翻译结果](https://raw.githubusercontent.com/jedzqer/manga-translator/main/Tutorial/translated.jpg) | ![嵌入效果](https://raw.githubusercontent.com/jedzqer/manga-translator/main/Tutorial/embedded.jpg) |
+|![原图](https://raw.githubusercontent.com/jedzqer/manga-translator/main/Tutorial/FirePunch.webp) | ![翻译结果](https://raw.githubusercontent.com/jedzqer/manga-translator/main/Tutorial/translated.jpg) | ![嵌入效果](https://raw.githubusercontent.com/jedzqer/manga-translator/main/Tutorial/embedded.jpg) |
 
 
 ## 主要功能 ✨

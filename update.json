@@ -1,9 +1,14 @@
 {
-  "versionCode": 20,
-    "versionName": "2.2.1",
-    "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/2.2.1/app-release.apk",
-    "changelog": "新增嵌字功能，嵌字前建议先使用新版本重新翻译漫画",
+  "versionCode": 21,
+  "versionName": "2.2.2",
+  "apkUrl": "https://github.com/jedzqer/manga-translator/releases/download/2.2.2/app-release.apk",
+  "changelog": "修复 CBZ 无法导入 bug",
   "history": [
+    {
+      "versionName": "2.2.1",
+      "releasedAt": "2026-02-10",
+      "changelog": "新增嵌字功能，嵌字前建议先使用新版本重新翻译漫画"
+    },
     {
       "versionName": "2.2.0",
       "releasedAt": "2026-02-09",
