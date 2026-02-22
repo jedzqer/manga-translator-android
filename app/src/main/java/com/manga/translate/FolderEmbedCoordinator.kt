@@ -259,25 +259,14 @@ internal class FolderEmbedCoordinator(
         outputDir: File
     ): Boolean {
         val bitmap = BitmapFactory.decodeFile(sourceImage.absolutePath) ?: return false
-        val modelBubbleMask = buildEraseMask(
+        val eraseMask = buildEraseMask(
             bitmap = bitmap,
             translation = translation,
-            detector = detector,
-            includeBubble = { it.source == BubbleSource.BUBBLE_DETECTOR },
-            expandRatio = DEFAULT_BUBBLE_MASK_EXPAND_RATIO
-        )
-        val afterModelBubbleWhite = applyDirectWhiteCover(bitmap, modelBubbleMask)
-        val nonModelTranslation = translation.copy(
-            bubbles = translation.bubbles.filter { it.source != BubbleSource.BUBBLE_DETECTOR }
-        )
-        val eraseMask = buildEraseMask(
-            bitmap = afterModelBubbleWhite,
-            translation = nonModelTranslation,
             detector = detector,
             includeBubble = { true },
             expandRatio = DEFAULT_BUBBLE_MASK_EXPAND_RATIO
         )
-        val prefill = applyUniformWhiteCover(afterModelBubbleWhite, eraseMask, nonModelTranslation)
+        val prefill = applyUniformWhiteCover(bitmap, eraseMask, translation)
         val inpainted = if (prefill.remainingMask.any { it }) {
             inpainter.inpaint(prefill.preparedBitmap, prefill.remainingMask)
         } else {
@@ -291,9 +280,6 @@ internal class FolderEmbedCoordinator(
             rendered.recycle()
         }
         prefill.preparedBitmap.recycle()
-        if (afterModelBubbleWhite !== bitmap) {
-            afterModelBubbleWhite.recycle()
-        }
         if (inpainted !== bitmap) {
             inpainted.recycle()
         }
@@ -342,23 +328,6 @@ internal class FolderEmbedCoordinator(
             crop.recycle()
         }
         return mask
-    }
-
-    private fun applyDirectWhiteCover(source: Bitmap, mask: BooleanArray): Bitmap {
-        if (!mask.any { it }) {
-            return source.copy(Bitmap.Config.ARGB_8888, true)
-        }
-        val width = source.width
-        val height = source.height
-        val prepared = source.copy(Bitmap.Config.ARGB_8888, true)
-        for (y in 0 until height) {
-            val row = y * width
-            for (x in 0 until width) {
-                if (!mask[row + x]) continue
-                prepared.setPixel(x, y, Color.WHITE)
-            }
-        }
-        return prepared
     }
 
     private fun applyUniformWhiteCover(
