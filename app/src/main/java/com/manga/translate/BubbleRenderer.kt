@@ -73,7 +73,7 @@ class BubbleRenderer(context: Context) {
         verticalLayoutEnabled: Boolean
     ) {
         if (verticalLayoutEnabled) {
-            drawVerticalTextInRect(canvas, text, rect)
+            drawVerticalTextInRect(canvas, VerticalTextSymbolConverter.convert(text), rect)
         } else {
             val maxWidth = rect.width().toInt().coerceAtLeast(1)
             val maxHeight = rect.height().toInt().coerceAtLeast(1)

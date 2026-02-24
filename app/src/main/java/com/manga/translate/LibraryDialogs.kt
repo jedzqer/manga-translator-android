@@ -224,7 +224,8 @@ internal class LibraryDialogs {
         defaultThreads: Int,
         defaultUseWhiteBubbleCover: Boolean,
         defaultUseEllipseLimit: Boolean,
-        onConfirm: (Int, Boolean, Boolean) -> Unit
+        defaultUseImageRepair: Boolean,
+        onConfirm: (Int, Boolean, Boolean, Boolean) -> Unit
     ) {
         val note = TextView(context).apply {
             text = context.getString(R.string.embed_thread_note)
@@ -245,6 +246,10 @@ internal class LibraryDialogs {
             isChecked = defaultUseEllipseLimit
             isEnabled = defaultUseWhiteBubbleCover
             alpha = if (defaultUseWhiteBubbleCover) 1f else 0.5f
+        }
+        val imageRepairCheckBox = CheckBox(context).apply {
+            text = context.getString(R.string.embed_image_repair_option)
+            isChecked = defaultUseImageRepair
         }
         whiteCoverCheckBox.setOnCheckedChangeListener { _, isChecked ->
             ellipseLimitCheckBox.isEnabled = isChecked
@@ -306,6 +311,13 @@ internal class LibraryDialogs {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             )
+            addView(
+                imageRepairCheckBox,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
         }
         AlertDialog.Builder(context)
             .setTitle(R.string.embed_options_title)
@@ -317,7 +329,12 @@ internal class LibraryDialogs {
                     Toast.makeText(context, R.string.embed_thread_invalid, Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                onConfirm(threadCount, whiteCoverCheckBox.isChecked, ellipseLimitCheckBox.isChecked)
+                onConfirm(
+                    threadCount,
+                    whiteCoverCheckBox.isChecked,
+                    ellipseLimitCheckBox.isChecked,
+                    imageRepairCheckBox.isChecked
+                )
             }
             .show()
     }

@@ -175,6 +175,7 @@
     <string name="embed_thread_invalid">线程数无效，请输入 1-16</string>
     <string name="embed_white_cover_option">使用白色覆盖气泡内文字</string>
     <string name="embed_ellipse_limit_option">限制白色覆盖在气泡椭圆内</string>
+    <string name="embed_image_repair_option">启用图像修复（非气泡）</string>
 
     <!-- Error Dialogs -->
     <string name="api_request_failed_title">API 调用失败</string>

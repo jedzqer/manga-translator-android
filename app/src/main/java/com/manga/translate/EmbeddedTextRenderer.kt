@@ -72,7 +72,8 @@ class EmbeddedTextRenderer {
         textRect.inset(pad, pad)
 
         if (verticalLayoutEnabled) {
-            drawVerticalTextInRect(canvas, text, textRect, drawBackground)
+            val converted = VerticalTextSymbolConverter.convert(text)
+            drawVerticalTextInRect(canvas, converted, textRect, drawBackground)
         } else {
             val maxWidth = textRect.width().toInt().coerceAtLeast(1)
             val maxHeight = textRect.height().toInt().coerceAtLeast(1)

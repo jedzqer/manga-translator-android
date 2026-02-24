@@ -44,6 +44,10 @@ internal class FolderEmbedCoordinator(
         return prefs.getBoolean(KEY_EMBED_BUBBLE_ELLIPSE_LIMIT, DEFAULT_EMBED_BUBBLE_ELLIPSE_LIMIT)
     }
 
+    fun getUseImageRepair(): Boolean {
+        return prefs.getBoolean(KEY_EMBED_IMAGE_REPAIR, DEFAULT_EMBED_IMAGE_REPAIR)
+    }
+
     fun embedFolder(
         scope: CoroutineScope,
         folder: File,
@@ -51,6 +55,7 @@ internal class FolderEmbedCoordinator(
         embedThreads: Int,
         useWhiteBubbleCover: Boolean,
         useBubbleEllipseLimit: Boolean,
+        useImageRepair: Boolean,
         onSetActionsEnabled: (Boolean) -> Unit
     ) {
         if (activeJob?.isActive == true) {
@@ -68,6 +73,7 @@ internal class FolderEmbedCoordinator(
             .putInt(KEY_EMBED_THREADS, normalizedThreads)
             .putBoolean(KEY_EMBED_WHITE_BUBBLE_COVER, useWhiteBubbleCover)
             .putBoolean(KEY_EMBED_BUBBLE_ELLIPSE_LIMIT, effectiveBubbleEllipseLimit)
+            .putBoolean(KEY_EMBED_IMAGE_REPAIR, useImageRepair)
             .apply()
 
         onSetActionsEnabled(false)
@@ -90,7 +96,8 @@ internal class FolderEmbedCoordinator(
                     images = images,
                     embedThreads = normalizedThreads,
                     useWhiteBubbleCover = useWhiteBubbleCover,
-                    useBubbleEllipseLimit = effectiveBubbleEllipseLimit
+                    useBubbleEllipseLimit = effectiveBubbleEllipseLimit,
+                    useImageRepair = useImageRepair
                 ) { done, total ->
                     withContext(Dispatchers.Main) {
                         val progressText = appContext.getString(R.string.folder_embed_progress, done, total)
@@ -159,6 +166,7 @@ internal class FolderEmbedCoordinator(
         embedThreads: Int,
         useWhiteBubbleCover: Boolean,
         useBubbleEllipseLimit: Boolean,
+        useImageRepair: Boolean,
         onProgress: suspend (done: Int, total: Int) -> Unit
     ): EmbedResult = withContext(Dispatchers.IO) {
         val embeddedDir = embeddedStateStore.embeddedDir(folder)
@@ -232,6 +240,7 @@ internal class FolderEmbedCoordinator(
                                 verticalLayoutEnabled = verticalLayoutEnabled,
                                 useWhiteBubbleCover = useWhiteBubbleCover,
                                 useBubbleEllipseLimit = useBubbleEllipseLimit,
+                                useImageRepair = useImageRepair,
                                 outputDir = embeddedDir
                             )
                         }
@@ -282,6 +291,7 @@ internal class FolderEmbedCoordinator(
         verticalLayoutEnabled: Boolean,
         useWhiteBubbleCover: Boolean,
         useBubbleEllipseLimit: Boolean,
+        useImageRepair: Boolean,
         outputDir: File
     ): Boolean {
         val bitmap = BitmapFactory.decodeFile(sourceImage.absolutePath) ?: return false
@@ -316,14 +326,12 @@ internal class FolderEmbedCoordinator(
         } else {
             bitmap.copy(Bitmap.Config.ARGB_8888, true)
         }
-        val nonBubbleRepairMask = buildTextMaskBySource(
-            bitmap = covered,
-            translation = translation,
-            detector = detector,
-            includeBubble = { it.source != BubbleSource.BUBBLE_DETECTOR }
-        )
-        val repaired = if (nonBubbleRepairMask.any { it }) {
-            inpainter.inpaint(covered, nonBubbleRepairMask)
+        val repaired = if (useImageRepair) {
+            repairNonBubbleTextRegions(
+                source = covered,
+                translation = translation,
+                inpainter = inpainter
+            )
         } else {
             covered.copy(Bitmap.Config.ARGB_8888, true)
         }
@@ -331,7 +339,7 @@ internal class FolderEmbedCoordinator(
             source = repaired,
             translation = translation,
             verticalLayoutEnabled = verticalLayoutEnabled,
-            shouldDrawTextBackground = { bubble -> bubble.source == BubbleSource.BUBBLE_DETECTOR }
+            shouldDrawTextBackground = { true }
         )
         val outputFile = File(outputDir, sourceImage.name)
         val saved = saveBitmap(outputFile, rendered, sourceImage.name)
@@ -386,6 +394,52 @@ internal class FolderEmbedCoordinator(
                 }
             }
             crop.recycle()
+        }
+        return mask
+    }
+
+    private fun repairNonBubbleTextRegions(
+        source: Bitmap,
+        translation: TranslationResult,
+        inpainter: MiganInpainter
+    ): Bitmap {
+        var repaired = source.copy(Bitmap.Config.ARGB_8888, true)
+        val nonBubbleTargets = translation.bubbles.filter { it.source != BubbleSource.BUBBLE_DETECTOR }
+        for (bubble in nonBubbleTargets) {
+            val bubbleMask = buildSingleBubbleRepairMask(
+                bitmap = repaired,
+                bubble = bubble
+            )
+            if (!bubbleMask.any { it }) continue
+            val next = inpainter.inpaint(repaired, bubbleMask)
+            if (next !== repaired) {
+                repaired.recycle()
+            }
+            repaired = next
+        }
+        return repaired
+    }
+
+    private fun buildSingleBubbleRepairMask(
+        bitmap: Bitmap,
+        bubble: BubbleTranslation
+    ): BooleanArray {
+        val width = bitmap.width
+        val height = bitmap.height
+        val mask = BooleanArray(width * height)
+        val left = bubble.rect.left.toInt().coerceIn(0, width - 1)
+        val top = bubble.rect.top.toInt().coerceIn(0, height - 1)
+        val right = bubble.rect.right.toInt().coerceIn(left + 1, width)
+        val bottom = bubble.rect.bottom.toInt().coerceIn(top + 1, height)
+        val cropW = right - left
+        val cropH = bottom - top
+        if (cropW <= 1 || cropH <= 1) return mask
+
+        for (y in top until bottom) {
+            val row = y * width
+            for (x in left until right) {
+                mask[row + x] = true
+            }
         }
         return mask
     }
@@ -527,9 +581,11 @@ internal class FolderEmbedCoordinator(
         private const val KEY_EMBED_THREADS = "embed_threads"
         private const val KEY_EMBED_WHITE_BUBBLE_COVER = "embed_white_bubble_cover"
         private const val KEY_EMBED_BUBBLE_ELLIPSE_LIMIT = "embed_bubble_ellipse_limit"
+        private const val KEY_EMBED_IMAGE_REPAIR = "embed_image_repair"
         private const val DEFAULT_EMBED_THREADS = 2
         private const val DEFAULT_EMBED_WHITE_BUBBLE_COVER = true
         private const val DEFAULT_EMBED_BUBBLE_ELLIPSE_LIMIT = true
+        private const val DEFAULT_EMBED_IMAGE_REPAIR = true
         private const val ELLIPSE_SHRINK_FACTOR = 0.99f
         private const val MIN_EMBED_THREADS = 1
         private const val MAX_EMBED_THREADS = 16
