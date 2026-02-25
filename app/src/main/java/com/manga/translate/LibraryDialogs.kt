@@ -67,6 +67,19 @@ internal class LibraryDialogs {
             .show()
     }
 
+    fun showFixedLanguageDialog(context: Context) {
+        AlertDialog.Builder(context)
+            .setTitle(R.string.folder_language_setting_title)
+            .setSingleChoiceItems(
+                arrayOf(context.getString(R.string.folder_language_to_zh)),
+                0
+            ) { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     fun showApiErrorDialog(context: Context, errorCode: String) {
         AlertDialog.Builder(context)
             .setTitle(R.string.api_request_failed_title)

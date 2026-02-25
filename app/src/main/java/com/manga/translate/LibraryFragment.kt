@@ -437,7 +437,12 @@ class LibraryFragment : Fragment() {
 
     private fun runTranslation(folder: File, images: List<File>, force: Boolean) {
         val fullTranslate = preferencesGateway.isFullTranslateEnabled(folder)
-        val language = preferencesGateway.getTranslationLanguage(folder)
+        val useLocalOcr = settingsStore.loadOcrApiSettings().useLocalOcr
+        val language = if (useLocalOcr) {
+            preferencesGateway.getTranslationLanguage(folder)
+        } else {
+            TranslationLanguage.JA_TO_ZH
+        }
         translationCoordinator.translateFolder(
             scope = viewLifecycleOwner.lifecycleScope,
             folder = folder,
@@ -642,13 +647,22 @@ class LibraryFragment : Fragment() {
     }
 
     private fun updateLanguageSettingButton(folder: File) {
-        val language = preferencesGateway.getTranslationLanguage(folder)
-        val displayName = getString(language.displayNameResId)
+        val useLocalOcr = settingsStore.loadOcrApiSettings().useLocalOcr
+        val displayName = if (useLocalOcr) {
+            val language = preferencesGateway.getTranslationLanguage(folder)
+            getString(language.displayNameResId)
+        } else {
+            getString(R.string.folder_language_to_zh)
+        }
         binding.folderLanguageSetting.text = getString(R.string.folder_language_setting, displayName)
     }
 
     private fun showLanguageSettingDialog() {
         val folder = currentFolder ?: return
+        if (!settingsStore.loadOcrApiSettings().useLocalOcr) {
+            dialogs.showFixedLanguageDialog(requireContext())
+            return
+        }
         val currentLanguage = preferencesGateway.getTranslationLanguage(folder)
         dialogs.showLanguageSettingDialog(requireContext(), currentLanguage) { selectedLanguage ->
             preferencesGateway.setTranslationLanguage(folder, selectedLanguage)

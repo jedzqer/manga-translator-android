@@ -30,13 +30,18 @@ class ReadingEmptyBubbleCoordinator(
         val targets = baseTranslation.bubbles.filter { it.text.isBlank() }
         if (targets.isEmpty()) return@withContext null
 
-        val language = getTranslationLanguage(folder)
+        val ocrSettings = settingsStore.loadOcrApiSettings()
+        val useLocalOcr = ocrSettings.useLocalOcr
+        val language = if (useLocalOcr) {
+            getTranslationLanguage(folder)
+        } else {
+            TranslationLanguage.JA_TO_ZH
+        }
         val glossary = glossaryStore.load(folder)
         val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return@withContext null
 
         val candidates = ArrayList<OcrBubble>(targets.size)
         val removedIds = HashSet<Int>()
-        val ocrSettings = settingsStore.loadOcrApiSettings()
         if (!ocrSettings.useLocalOcr && !llmClient.isOcrConfigured()) {
             AppLogger.log("Reading", "Missing OCR API settings")
             return@withContext null
@@ -124,10 +129,7 @@ class ReadingEmptyBubbleCoordinator(
             val text = normalizeOcrText(bubble.text, language)
             "<b>$text</b>"
         }
-        val promptAsset = when (language) {
-            TranslationLanguage.EN_TO_ZH -> "en-zh-llm_prompts.json"
-            TranslationLanguage.JA_TO_ZH -> "llm_prompts.json"
-        }
+        val promptAsset = "llm_prompts.json"
         try {
             llmClient.translate(pageText, glossary, promptAsset)
         } catch (e: Exception) {

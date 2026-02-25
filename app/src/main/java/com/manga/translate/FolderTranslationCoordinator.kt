@@ -223,10 +223,7 @@ internal class FolderTranslationCoordinator(
                         total = 1,
                         imageName = glossaryImage.orEmpty()
                     )
-                    val abstractPromptAsset = when (language) {
-                        TranslationLanguage.EN_TO_ZH -> "en-zh-llm_prompts_abstract.json"
-                        TranslationLanguage.JA_TO_ZH -> "llm_prompts_abstract.json"
-                    }
+                    val abstractPromptAsset = "llm_prompts_abstract.json"
                     val extracted = llmClient.extractGlossary(glossaryText, glossary, abstractPromptAsset)
                     if (extracted != null) {
                         if (extracted.isNotEmpty()) {
@@ -265,10 +262,7 @@ internal class FolderTranslationCoordinator(
                                 if (requestFailed.get()) {
                                     return@withPermit
                                 }
-                                val fullTransPromptAsset = when (language) {
-                                    TranslationLanguage.EN_TO_ZH -> "en-zh-llm_prompts_FullTrans.json"
-                                    TranslationLanguage.JA_TO_ZH -> "llm_prompts_FullTrans.json"
-                                }
+                                val fullTransPromptAsset = "llm_prompts_FullTrans.json"
                                 val result = try {
                                     translationPipeline.translateFullPage(
                                         page,

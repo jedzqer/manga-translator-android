@@ -17,7 +17,8 @@ data class OcrApiSettings(
     val useLocalOcr: Boolean,
     val apiUrl: String,
     val apiKey: String,
-    val modelName: String
+    val modelName: String,
+    val timeoutSeconds: Int
 ) {
     fun isValid(): Boolean {
         return useLocalOcr || (apiUrl.isNotBlank() && apiKey.isNotBlank() && modelName.isNotBlank())
@@ -47,20 +48,26 @@ class SettingsStore(context: Context) {
         val url = prefs.getString(KEY_OCR_API_URL, DEFAULT_OCR_API_URL) ?: DEFAULT_OCR_API_URL
         val key = prefs.getString(KEY_OCR_API_KEY, "") ?: ""
         val model = prefs.getString(KEY_OCR_MODEL_NAME, DEFAULT_OCR_MODEL_NAME) ?: DEFAULT_OCR_MODEL_NAME
+        val timeoutSeconds = prefs.getInt(KEY_OCR_API_TIMEOUT_SECONDS, DEFAULT_OCR_API_TIMEOUT_SECONDS)
+            .coerceIn(MIN_OCR_API_TIMEOUT_SECONDS, MAX_OCR_API_TIMEOUT_SECONDS)
         return OcrApiSettings(
             useLocalOcr = useLocal,
             apiUrl = url,
             apiKey = key,
-            modelName = model
+            modelName = model,
+            timeoutSeconds = timeoutSeconds
         )
     }
 
     fun saveOcrApiSettings(settings: OcrApiSettings) {
+        val normalizedTimeout = settings.timeoutSeconds
+            .coerceIn(MIN_OCR_API_TIMEOUT_SECONDS, MAX_OCR_API_TIMEOUT_SECONDS)
         prefs.edit() {
                 putBoolean(KEY_OCR_USE_LOCAL, settings.useLocalOcr)
                 .putString(KEY_OCR_API_URL, settings.apiUrl)
                 .putString(KEY_OCR_API_KEY, settings.apiKey)
                 .putString(KEY_OCR_MODEL_NAME, settings.modelName)
+                .putInt(KEY_OCR_API_TIMEOUT_SECONDS, normalizedTimeout)
             }
     }
 
@@ -206,6 +213,7 @@ class SettingsStore(context: Context) {
         private const val KEY_OCR_API_URL = "ocr_api_url"
         private const val KEY_OCR_API_KEY = "ocr_api_key"
         private const val KEY_OCR_MODEL_NAME = "ocr_model_name"
+        private const val KEY_OCR_API_TIMEOUT_SECONDS = "ocr_api_timeout_seconds"
         private const val KEY_HORIZONTAL_TEXT = "horizontal_text_layout"
         private const val KEY_MODEL_IO_LOGGING = "model_io_logging"
         private const val KEY_MAX_CONCURRENCY = "max_concurrency"
@@ -226,7 +234,10 @@ class SettingsStore(context: Context) {
         private const val DEFAULT_LLM_PRESENCE_PENALTY = 0.2
         private const val DEFAULT_MODEL = "gpt-3.5-turbo"
         private const val DEFAULT_OCR_API_URL = "https://api.siliconflow.cn/v1"
-        private const val DEFAULT_OCR_MODEL_NAME = "deepseek-ai/DeepSeek-OCR"
+        private const val DEFAULT_OCR_MODEL_NAME = "Qwen/Qwen3-VL-8B-Instruct"
+        private const val DEFAULT_OCR_API_TIMEOUT_SECONDS = 300
+        private const val MIN_OCR_API_TIMEOUT_SECONDS = 30
+        private const val MAX_OCR_API_TIMEOUT_SECONDS = 1200
         private const val DEFAULT_MAX_CONCURRENCY = 3
         private const val MIN_MAX_CONCURRENCY = 1
         private const val MAX_MAX_CONCURRENCY = 50

@@ -55,10 +55,7 @@ class TranslationPipeline(context: Context) {
             val text = normalizeOcrText(bubble.text, language)
             "<b>$text</b>"
         }
-        val promptAsset = when (language) {
-            TranslationLanguage.EN_TO_ZH -> "en-zh-llm_prompts.json"
-            TranslationLanguage.JA_TO_ZH -> "llm_prompts.json"
-        }
+        val promptAsset = "llm_prompts.json"
         val translated = llmClient.translate(pageText, glossary, promptAsset)
         if (translated == null) {
             val fallback = page.bubbles.map { bubble ->

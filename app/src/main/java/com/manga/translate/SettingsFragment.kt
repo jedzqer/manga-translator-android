@@ -419,15 +419,18 @@ class SettingsFragment : Fragment() {
         dialogBinding.ocrApiUrlInput.setText(currentSettings.apiUrl)
         dialogBinding.ocrApiKeyInput.setText(currentSettings.apiKey)
         dialogBinding.ocrModelNameInput.setText(currentSettings.modelName)
+        dialogBinding.ocrApiTimeoutInput.setText(currentSettings.timeoutSeconds.toString())
 
         fun updateInputsEnabled(useLocalOcr: Boolean) {
             val enabled = !useLocalOcr
             dialogBinding.ocrApiUrlLayout.isEnabled = enabled
             dialogBinding.ocrApiKeyLayout.isEnabled = enabled
             dialogBinding.ocrModelNameLayout.isEnabled = enabled
+            dialogBinding.ocrApiTimeoutLayout.isEnabled = enabled
             dialogBinding.ocrApiUrlInput.isEnabled = enabled
             dialogBinding.ocrApiKeyInput.isEnabled = enabled
             dialogBinding.ocrModelNameInput.isEnabled = enabled
+            dialogBinding.ocrApiTimeoutInput.isEnabled = enabled
             dialogBinding.ocrSettingsNote.setText(
                 if (useLocalOcr) R.string.ocr_settings_note_local else R.string.ocr_settings_note_api
             )
@@ -442,11 +445,16 @@ class SettingsFragment : Fragment() {
             .setTitle(R.string.ocr_settings_title)
             .setView(dialogBinding.root)
             .setPositiveButton(android.R.string.ok) { _, _ ->
+                val timeoutInput = dialogBinding.ocrApiTimeoutInput.text?.toString()?.trim()
+                val timeoutSeconds = parseIntInput(timeoutInput)
+                    ?.coerceIn(OCR_TIMEOUT_MIN_SECONDS, OCR_TIMEOUT_MAX_SECONDS)
+                    ?: currentSettings.timeoutSeconds
                 val settings = OcrApiSettings(
                     useLocalOcr = dialogBinding.useLocalOcrSwitch.isChecked,
                     apiUrl = dialogBinding.ocrApiUrlInput.text?.toString()?.trim().orEmpty(),
                     apiKey = dialogBinding.ocrApiKeyInput.text?.toString()?.trim().orEmpty(),
-                    modelName = dialogBinding.ocrModelNameInput.text?.toString()?.trim().orEmpty()
+                    modelName = dialogBinding.ocrModelNameInput.text?.toString()?.trim().orEmpty(),
+                    timeoutSeconds = timeoutSeconds
                 )
                 settingsStore.saveOcrApiSettings(settings)
                 AppLogger.log(
@@ -558,6 +566,8 @@ class SettingsFragment : Fragment() {
     companion object {
         private const val PROJECT_URL = "https://github.com/jedzqer/manga-translator"
         private const val RELEASES_URL = "https://github.com/jedzqer/manga-translator/releases"
+        private const val OCR_TIMEOUT_MIN_SECONDS = 30
+        private const val OCR_TIMEOUT_MAX_SECONDS = 1200
     }
 
     private data class ParsedLlmParams(

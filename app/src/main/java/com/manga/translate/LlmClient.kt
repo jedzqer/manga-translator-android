@@ -62,7 +62,7 @@ class LlmClient(context: Context) {
         }
         val endpoint = buildEndpoint(ocrSettings.apiUrl)
         val payload = buildImageOcrPayload(ocrSettings.modelName, image)
-        val timeoutMs = settingsStore.loadApiTimeoutMs()
+        val timeoutMs = ocrSettings.timeoutSeconds * 1000
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
         for (attempt in 1..RETRY_COUNT) {
@@ -309,12 +309,14 @@ class LlmClient(context: Context) {
     }
 
     private fun buildImageOcrPayload(modelName: String, image: Bitmap): JSONObject {
+        val config = getPromptConfig(OCR_PROMPT_CONFIG_ASSET)
         val imageBase64 = encodeBitmapToBase64(image)
-        val content = JSONArray()
+        val userInstruction = config.userPromptPrefix.ifBlank { DEFAULT_OCR_USER_PROMPT }
+        val userContent = JSONArray()
             .put(
                 JSONObject()
                     .put("type", "text")
-                    .put("text", OCR_USER_PROMPT)
+                    .put("text", userInstruction)
             )
             .put(
                 JSONObject()
@@ -325,11 +327,25 @@ class LlmClient(context: Context) {
                     )
             )
         val messages = JSONArray()
-            .put(
+        if (config.systemPrompt.isNotBlank()) {
+            messages.put(
                 JSONObject()
-                    .put("role", "user")
-                    .put("content", content)
+                    .put("role", "system")
+                    .put("content", config.systemPrompt)
             )
+        }
+        for (message in config.exampleMessages) {
+            messages.put(
+                JSONObject()
+                    .put("role", message.role)
+                    .put("content", message.content)
+            )
+        }
+        messages.put(
+            JSONObject()
+                .put("role", "user")
+                .put("content", userContent)
+        )
         return JSONObject()
             .put("model", modelName)
             .put("messages", messages)
@@ -539,8 +555,9 @@ class LlmClient(context: Context) {
 
     companion object {
         private const val PROMPT_CONFIG_ASSET = "llm_prompts.json"
-        private const val OCR_USER_PROMPT =
-            "<image>\nOCR this image."
+        private const val OCR_PROMPT_CONFIG_ASSET = "ocr_prompts.json"
+        private const val DEFAULT_OCR_USER_PROMPT =
+            "<image>\nExtract only visible text from this image. Do not describe objects, people, or scene. If no text is visible, return None."
         private const val RETRY_COUNT = 3
         private val requestCounter = AtomicLong(0)
     }
