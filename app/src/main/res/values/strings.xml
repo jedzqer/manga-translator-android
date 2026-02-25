@@ -46,6 +46,15 @@
     <string name="fetch_models_failed_message">请求失败（%1$s）</string>
     <string name="llm_params_button">AI 参数设置</string>
     <string name="llm_params_title">AI 参数设置</string>
+    <string name="ocr_settings_button">OCR 设置</string>
+    <string name="ocr_settings_title">OCR 设置</string>
+    <string name="ocr_use_local">使用本地 OCR</string>
+    <string name="ocr_api_url_hint">OCR API 地址</string>
+    <string name="ocr_api_key_hint">OCR API Key</string>
+    <string name="ocr_model_name_hint">OCR 模型名称</string>
+    <string name="ocr_settings_note_local">启用后将只使用软件内置 OCR</string>
+    <string name="ocr_settings_note_api">关闭本地 OCR 后可配置 OpenAI 兼容 OCR</string>
+    <string name="missing_ocr_api_settings">请先在 OCR 设置中填写 API 地址、Key 与模型名称</string>
     <string name="llm_params_clear">全部留空</string>
     <string name="llm_params_invalid">参数格式有误，已忽略无效项</string>
     <string name="llm_params_note">留空将不发送该字段</string>

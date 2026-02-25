@@ -17,6 +17,7 @@ class ReadingEmptyBubbleCoordinator(
     private val languageKeyPrefix: String = "translation_language_"
 ) {
     private val appContext = context.applicationContext
+    private val settingsStore = SettingsStore(appContext)
     private var mangaOcr: MangaOcr? = null
     private var englishOcr: EnglishOcr? = null
     private var englishLineDetector: EnglishLineDetector? = null
@@ -35,8 +36,13 @@ class ReadingEmptyBubbleCoordinator(
 
         val candidates = ArrayList<OcrBubble>(targets.size)
         val removedIds = HashSet<Int>()
+        val ocrSettings = settingsStore.loadOcrApiSettings()
+        if (!ocrSettings.useLocalOcr && !llmClient.isOcrConfigured()) {
+            AppLogger.log("Reading", "Missing OCR API settings")
+            return@withContext null
+        }
         for (bubble in targets) {
-            val text = ocrBubble(bitmap, bubble.rect, language).trim()
+            val text = ocrBubble(bitmap, bubble.rect, language, ocrSettings.useLocalOcr).trim()
             if (text.length <= 2) {
                 removedIds.add(bubble.id)
             } else {
@@ -130,12 +136,16 @@ class ReadingEmptyBubbleCoordinator(
         }
     }
 
-    private fun ocrBubble(
+    private suspend fun ocrBubble(
         bitmap: android.graphics.Bitmap,
         rect: RectF,
-        language: TranslationLanguage
+        language: TranslationLanguage,
+        useLocalOcr: Boolean
     ): String {
         val crop = cropBitmap(bitmap, rect) ?: return ""
+        if (!useLocalOcr) {
+            return llmClient.recognizeImageText(crop)?.trim().orEmpty()
+        }
         return when (language) {
             TranslationLanguage.JA_TO_ZH -> {
                 val engine = getMangaOcr() ?: return ""

@@ -18,6 +18,7 @@ import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.manga.translate.databinding.DialogLlmParamsBinding
+import com.manga.translate.databinding.DialogOcrSettingsBinding
 import com.manga.translate.databinding.FragmentSettingsBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -99,6 +100,10 @@ class SettingsFragment : Fragment() {
 
         binding.llmParamsButton.setOnClickListener {
             showLlmParamsDialog()
+        }
+
+        binding.ocrSettingsButton.setOnClickListener {
+            showOcrSettingsDialog()
         }
 
         binding.viewLogsButton.setOnClickListener {
@@ -402,6 +407,52 @@ class SettingsFragment : Fragment() {
                     )
                 )
                 AppLogger.log("Settings", "LLM params cleared")
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showOcrSettingsDialog() {
+        val currentSettings = settingsStore.loadOcrApiSettings()
+        val dialogBinding = DialogOcrSettingsBinding.inflate(layoutInflater)
+        dialogBinding.useLocalOcrSwitch.isChecked = currentSettings.useLocalOcr
+        dialogBinding.ocrApiUrlInput.setText(currentSettings.apiUrl)
+        dialogBinding.ocrApiKeyInput.setText(currentSettings.apiKey)
+        dialogBinding.ocrModelNameInput.setText(currentSettings.modelName)
+
+        fun updateInputsEnabled(useLocalOcr: Boolean) {
+            val enabled = !useLocalOcr
+            dialogBinding.ocrApiUrlLayout.isEnabled = enabled
+            dialogBinding.ocrApiKeyLayout.isEnabled = enabled
+            dialogBinding.ocrModelNameLayout.isEnabled = enabled
+            dialogBinding.ocrApiUrlInput.isEnabled = enabled
+            dialogBinding.ocrApiKeyInput.isEnabled = enabled
+            dialogBinding.ocrModelNameInput.isEnabled = enabled
+            dialogBinding.ocrSettingsNote.setText(
+                if (useLocalOcr) R.string.ocr_settings_note_local else R.string.ocr_settings_note_api
+            )
+        }
+
+        updateInputsEnabled(currentSettings.useLocalOcr)
+        dialogBinding.useLocalOcrSwitch.setOnCheckedChangeListener { _, isChecked ->
+            updateInputsEnabled(isChecked)
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.ocr_settings_title)
+            .setView(dialogBinding.root)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val settings = OcrApiSettings(
+                    useLocalOcr = dialogBinding.useLocalOcrSwitch.isChecked,
+                    apiUrl = dialogBinding.ocrApiUrlInput.text?.toString()?.trim().orEmpty(),
+                    apiKey = dialogBinding.ocrApiKeyInput.text?.toString()?.trim().orEmpty(),
+                    modelName = dialogBinding.ocrModelNameInput.text?.toString()?.trim().orEmpty()
+                )
+                settingsStore.saveOcrApiSettings(settings)
+                AppLogger.log(
+                    "Settings",
+                    "OCR mode set to ${if (settings.useLocalOcr) "local" else "openai-compatible api"}"
+                )
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()

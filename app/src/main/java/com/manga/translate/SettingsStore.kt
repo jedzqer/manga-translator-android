@@ -13,6 +13,17 @@ data class ApiSettings(
     }
 }
 
+data class OcrApiSettings(
+    val useLocalOcr: Boolean,
+    val apiUrl: String,
+    val apiKey: String,
+    val modelName: String
+) {
+    fun isValid(): Boolean {
+        return useLocalOcr || (apiUrl.isNotBlank() && apiKey.isNotBlank() && modelName.isNotBlank())
+    }
+}
+
 class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -28,6 +39,28 @@ class SettingsStore(context: Context) {
                 putString(KEY_API_URL, settings.apiUrl)
                 .putString(KEY_API_KEY, settings.apiKey)
                 .putString(KEY_MODEL_NAME, settings.modelName)
+            }
+    }
+
+    fun loadOcrApiSettings(): OcrApiSettings {
+        val useLocal = prefs.getBoolean(KEY_OCR_USE_LOCAL, true)
+        val url = prefs.getString(KEY_OCR_API_URL, DEFAULT_OCR_API_URL) ?: DEFAULT_OCR_API_URL
+        val key = prefs.getString(KEY_OCR_API_KEY, "") ?: ""
+        val model = prefs.getString(KEY_OCR_MODEL_NAME, DEFAULT_OCR_MODEL_NAME) ?: DEFAULT_OCR_MODEL_NAME
+        return OcrApiSettings(
+            useLocalOcr = useLocal,
+            apiUrl = url,
+            apiKey = key,
+            modelName = model
+        )
+    }
+
+    fun saveOcrApiSettings(settings: OcrApiSettings) {
+        prefs.edit() {
+                putBoolean(KEY_OCR_USE_LOCAL, settings.useLocalOcr)
+                .putString(KEY_OCR_API_URL, settings.apiUrl)
+                .putString(KEY_OCR_API_KEY, settings.apiKey)
+                .putString(KEY_OCR_MODEL_NAME, settings.modelName)
             }
     }
 
@@ -169,6 +202,10 @@ class SettingsStore(context: Context) {
         private const val KEY_API_URL = "api_url"
         private const val KEY_API_KEY = "api_key"
         private const val KEY_MODEL_NAME = "model_name"
+        private const val KEY_OCR_USE_LOCAL = "ocr_use_local"
+        private const val KEY_OCR_API_URL = "ocr_api_url"
+        private const val KEY_OCR_API_KEY = "ocr_api_key"
+        private const val KEY_OCR_MODEL_NAME = "ocr_model_name"
         private const val KEY_HORIZONTAL_TEXT = "horizontal_text_layout"
         private const val KEY_MODEL_IO_LOGGING = "model_io_logging"
         private const val KEY_MAX_CONCURRENCY = "max_concurrency"
@@ -188,6 +225,8 @@ class SettingsStore(context: Context) {
         private const val DEFAULT_LLM_FREQUENCY_PENALTY = 0.4
         private const val DEFAULT_LLM_PRESENCE_PENALTY = 0.2
         private const val DEFAULT_MODEL = "gpt-3.5-turbo"
+        private const val DEFAULT_OCR_API_URL = "https://api.siliconflow.cn/v1"
+        private const val DEFAULT_OCR_MODEL_NAME = "deepseek-ai/DeepSeek-OCR"
         private const val DEFAULT_MAX_CONCURRENCY = 3
         private const val MIN_MAX_CONCURRENCY = 1
         private const val MAX_MAX_CONCURRENCY = 50

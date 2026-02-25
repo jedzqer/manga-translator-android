@@ -1,6 +1,8 @@
 package com.manga.translate
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -10,6 +12,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicLong
 
 class LlmClient(context: Context) {
@@ -19,6 +22,10 @@ class LlmClient(context: Context) {
 
     fun isConfigured(): Boolean {
         return settingsStore.load().isValid()
+    }
+
+    fun isOcrConfigured(): Boolean {
+        return settingsStore.loadOcrApiSettings().isValid()
     }
 
     suspend fun translate(
@@ -46,6 +53,64 @@ class LlmClient(context: Context) {
         apiKey: String
     ): List<String> = withContext(Dispatchers.IO) {
         requestModelList(apiUrl, apiKey)
+    }
+
+    suspend fun recognizeImageText(image: Bitmap): String? = withContext(Dispatchers.IO) {
+        val ocrSettings = settingsStore.loadOcrApiSettings()
+        if (!ocrSettings.isValid() || ocrSettings.useLocalOcr) {
+            return@withContext null
+        }
+        val endpoint = buildEndpoint(ocrSettings.apiUrl)
+        val payload = buildImageOcrPayload(ocrSettings.modelName, image)
+        val timeoutMs = settingsStore.loadApiTimeoutMs()
+        var lastErrorCode: String? = null
+        var lastErrorBody: String? = null
+        for (attempt in 1..RETRY_COUNT) {
+            currentCoroutineContext().ensureActive()
+            val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Authorization", "Bearer ${ocrSettings.apiKey}")
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
+                doOutput = true
+            }
+            val result = try {
+                connection.outputStream.use { output ->
+                    output.write(payload.toString().toByteArray(Charsets.UTF_8))
+                }
+                val code = connection.responseCode
+                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+                if (code !in 200..299) {
+                    AppLogger.log("LlmClient", "OCR HTTP $code on $endpoint: ${summarizeBody(body)}")
+                    lastErrorCode = "HTTP $code"
+                    lastErrorBody = body
+                    null
+                } else {
+                    parseResponseContent(body)?.trim()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLogger.log("LlmClient", "OCR request failed on $endpoint (attempt $attempt)", e)
+                lastErrorCode = "NETWORK_ERROR"
+                null
+            } finally {
+                connection.disconnect()
+            }
+            if (result != null || attempt == RETRY_COUNT) {
+                if (result != null) return@withContext result
+                if (lastErrorCode != null) {
+                    AppLogger.log(
+                        "LlmClient",
+                        "OCR request failed on $endpoint: $lastErrorCode, body=${summarizeBody(lastErrorBody)}"
+                    )
+                }
+                return@withContext null
+            }
+        }
+        null
     }
 
     private suspend fun requestContent(
@@ -219,10 +284,61 @@ class LlmClient(context: Context) {
             val choices = json.optJSONArray("choices") ?: return null
             val first = choices.optJSONObject(0) ?: return null
             val message = first.optJSONObject("message") ?: return null
-            message.optString("content")?.trim()?.ifBlank { null }
+            val rawContent = message.opt("content")
+            when (rawContent) {
+                is String -> rawContent.trim().ifBlank { null }
+                is JSONArray -> {
+                    val parts = ArrayList<String>(rawContent.length())
+                    for (i in 0 until rawContent.length()) {
+                        val item = rawContent.opt(i)
+                        when (item) {
+                            is String -> if (item.isNotBlank()) parts.add(item.trim())
+                            is JSONObject -> {
+                                val text = item.optString("text").trim()
+                                if (text.isNotBlank()) parts.add(text)
+                            }
+                        }
+                    }
+                    parts.joinToString("\n").trim().ifBlank { null }
+                }
+                else -> null
+            }
         } catch (e: Exception) {
             null
         }
+    }
+
+    private fun buildImageOcrPayload(modelName: String, image: Bitmap): JSONObject {
+        val imageBase64 = encodeBitmapToBase64(image)
+        val content = JSONArray()
+            .put(
+                JSONObject()
+                    .put("type", "text")
+                    .put("text", OCR_USER_PROMPT)
+            )
+            .put(
+                JSONObject()
+                    .put("type", "image_url")
+                    .put(
+                        "image_url",
+                        JSONObject().put("url", "data:image/jpeg;base64,$imageBase64")
+                    )
+            )
+        val messages = JSONArray()
+            .put(
+                JSONObject()
+                    .put("role", "user")
+                    .put("content", content)
+            )
+        return JSONObject()
+            .put("model", modelName)
+            .put("messages", messages)
+    }
+
+    private fun encodeBitmapToBase64(image: Bitmap): String {
+        val buffer = ByteArrayOutputStream()
+        image.compress(Bitmap.CompressFormat.JPEG, 90, buffer)
+        return Base64.encodeToString(buffer.toByteArray(), Base64.NO_WRAP)
     }
 
     private fun parseTranslationContent(content: String): LlmTranslationResult {
@@ -423,6 +539,8 @@ class LlmClient(context: Context) {
 
     companion object {
         private const val PROMPT_CONFIG_ASSET = "llm_prompts.json"
+        private const val OCR_USER_PROMPT =
+            "请识别图片中的文字并按原顺序输出纯文本。不要翻译，不要解释。没有文字时返回空字符串。"
         private const val RETRY_COUNT = 3
         private val requestCounter = AtomicLong(0)
     }
