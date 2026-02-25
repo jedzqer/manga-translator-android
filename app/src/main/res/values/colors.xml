@@ -1,10 +1,10 @@
 <resources>
-    <color name="pastel_base">#BBD8FF</color>
+    <color name="pastel_base">#FFD4C4</color>
+    <color name="pastel_decor">#BBD8FF</color>
     <color name="pastel_accent">#2B3A67</color>
-    <color name="pastel_decor">#FFD4C4</color>
-    <color name="deep_sea_base">#114468</color>
+    <color name="deep_sea_base">#EF6837</color>
+    <color name="deep_sea_decor">#114468</color>
     <color name="deep_sea_accent">#2DE2E6</color>
-    <color name="deep_sea_decor">#EF6837</color>
     <color name="light_base">#FFFFFF</color>
     <color name="light_accent">#000000</color>
     <color name="light_decor">#000000</color>

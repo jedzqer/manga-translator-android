@@ -432,6 +432,7 @@ class ReadingFragment : Fragment() {
             binding.readingAddButton.visibility = View.GONE
             return
         }
+        binding.readingEditControls.visibility = View.VISIBLE
         val button = binding.readingEditButton
         if (isEditMode) {
             button.setImageResource(R.drawable.ic_check)

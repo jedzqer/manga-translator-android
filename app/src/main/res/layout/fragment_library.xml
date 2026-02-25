@@ -4,13 +4,16 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="20dp">
+    android:background="?android:attr/colorBackground"
+    android:padding="16dp">
 
     <LinearLayout
         android:id="@+id/library_list_container"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:background="@drawable/bg_surface_panel_open_bottom"
         android:orientation="vertical"
+        android:padding="14dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -21,8 +24,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/library_title"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textAppearance="@style/Widget.MangaTranslator.Title" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/folder_list"
@@ -45,7 +47,9 @@
         android:id="@+id/folder_detail_container"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:background="@drawable/bg_surface_panel_open_bottom"
         android:orientation="vertical"
+        android:padding="14dp"
         android:visibility="gone"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -69,7 +73,7 @@
                 android:id="@+id/folder_title"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:textSize="16sp"
+                android:textSize="17sp"
                 android:textStyle="bold"
                 android:layout_weight="1"
                 android:gravity="center_vertical"
@@ -149,12 +153,16 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
+            android:background="@drawable/bg_surface_card"
             android:orientation="vertical">
 
             <TextView
                 android:id="@+id/folder_translation_settings_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:paddingTop="8dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:text="@string/folder_translation_settings"
                 android:textStyle="bold" />
 
@@ -163,6 +171,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:gravity="center_vertical"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:orientation="horizontal">
 
                 <androidx.appcompat.widget.SwitchCompat
@@ -183,13 +193,18 @@
 
             <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/folder_language_setting"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp"
+                android:layout_gravity="center_horizontal"
+                android:minWidth="180dp"
+                android:maxWidth="260dp"
                 android:textAllCaps="false"
-                android:gravity="start|center_vertical"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
+                android:gravity="center"
+                android:textAlignment="center"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
                 android:text="@string/folder_language_setting" />
         </LinearLayout>
 
@@ -284,6 +299,7 @@
         android:layout_height="wrap_content"
         android:contentDescription="@string/create_folder"
         android:src="@android:drawable/ic_input_add"
+        app:backgroundTint="?attr/colorAccent"
         app:tint="@android:color/white"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
