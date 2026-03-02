@@ -55,7 +55,8 @@ class LibraryFragment : Fragment() {
 
     private val folderAdapter = LibraryFolderAdapter(
         onClick = { openFolder(it.folder) },
-        onDelete = { confirmDeleteFolder(it.folder) }
+        onDelete = { confirmDeleteFolder(it.folder) },
+        onRename = { showRenameFolderDialog(it.folder) }
     )
 
     private val imageAdapter = FolderImageAdapter(
@@ -236,6 +237,11 @@ class LibraryFragment : Fragment() {
 
         binding.folderList.layoutManager = LinearLayoutManager(requireContext())
         binding.folderList.adapter = folderAdapter
+        binding.root.setOnClickListener { folderAdapter.clearActionSelection() }
+        binding.folderList.setOnTouchListener { _, _ ->
+            folderAdapter.clearActionSelection()
+            false
+        }
         binding.folderImageList.layoutManager = LinearLayoutManager(requireContext())
         binding.folderImageList.adapter = imageAdapter
 
@@ -304,7 +310,7 @@ class LibraryFragment : Fragment() {
         binding.importEhviewerButton.visibility = View.VISIBLE
         uiCallbacks.clearFolderStatus()
         selectionController.exitSelectionMode()
-        folderAdapter.clearDeleteSelection()
+        folderAdapter.clearActionSelection()
         loadFolders()
     }
 
@@ -358,6 +364,7 @@ class LibraryFragment : Fragment() {
     }
 
     private fun openFolder(folder: File) {
+        folderAdapter.clearActionSelection()
         showFolderDetail(folder)
     }
 
@@ -426,6 +433,19 @@ class LibraryFragment : Fragment() {
                 AppLogger.log("Library", "Deleted folder ${folder.name}")
             }
             loadFolders()
+        }
+    }
+
+    private fun showRenameFolderDialog(folder: File) {
+        dialogs.showRenameFolderDialog(requireContext(), folder.name) { inputName ->
+            val renamed = repository.renameFolder(folder, inputName)
+            if (renamed == null) {
+                AppLogger.log("Library", "Rename folder failed: ${folder.name} -> $inputName")
+                Toast.makeText(requireContext(), R.string.folder_rename_failed, Toast.LENGTH_SHORT).show()
+            } else {
+                AppLogger.log("Library", "Renamed folder ${folder.name} -> ${renamed.name}")
+                loadFolders()
+            }
         }
     }
 

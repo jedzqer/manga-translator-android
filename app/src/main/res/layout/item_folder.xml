@@ -21,12 +21,26 @@
             android:textSize="17sp"
             android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/folder_delete"
+        <LinearLayout
+            android:id="@+id/folder_actions"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/folder_delete"
-            android:visibility="gone" />
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <Button
+                android:id="@+id/folder_rename"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/folder_rename" />
+
+            <Button
+                android:id="@+id/folder_delete"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/folder_delete" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView

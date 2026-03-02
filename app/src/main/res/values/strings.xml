@@ -102,8 +102,10 @@
     <string name="folder_back">返回</string>
     <string name="folder_image_count">%1$d 张图片</string>
     <string name="folder_delete">删除</string>
+    <string name="folder_rename">重命名</string>
     <string name="folder_delete_confirm">确定删除文件夹“%1$s”吗？此操作无法撤销。</string>
     <string name="folder_delete_failed">删除失败，请稍后重试</string>
+    <string name="folder_rename_failed">重命名失败，请检查名称</string>
 
     <!-- Library / Translation Options -->
     <string name="folder_translation_settings">翻译设置</string>

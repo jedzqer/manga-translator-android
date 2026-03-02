@@ -40,6 +40,26 @@ internal class LibraryDialogs {
             .show()
     }
 
+    fun showRenameFolderDialog(
+        context: Context,
+        oldName: String,
+        onConfirm: (String) -> Unit
+    ) {
+        val input = EditText(context).apply {
+            hint = context.getString(R.string.folder_name_hint)
+            setText(oldName)
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(context)
+            .setTitle(R.string.folder_rename)
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                onConfirm(input.text?.toString().orEmpty())
+            }
+            .show()
+    }
+
     fun showFullTranslateInfo(context: Context) {
         AlertDialog.Builder(context)
             .setTitle(R.string.folder_full_translate_info_title)

@@ -138,6 +138,16 @@ class LibraryRepository(private val context: Context) {
         return folder.deleteRecursively()
     }
 
+    fun renameFolder(folder: File, newName: String): File? {
+        if (!folder.exists() || !folder.isDirectory) return null
+        val trimmed = newName.trim().replace("/", "_").replace("\\", "_")
+        if (trimmed.isEmpty() || trimmed.contains("..")) return null
+        if (trimmed == folder.name) return folder
+        val target = File(rootDir, trimmed)
+        if (target.exists()) return null
+        return if (folder.renameTo(target)) target else null
+    }
+
     private fun isImageFile(name: String): Boolean {
         val lower = name.lowercase(Locale.getDefault())
         return lower.endsWith(".jpg") ||
