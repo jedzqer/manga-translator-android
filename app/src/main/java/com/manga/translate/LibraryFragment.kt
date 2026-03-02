@@ -248,7 +248,13 @@ class LibraryFragment : Fragment() {
         binding.addFolderFab.setOnClickListener { showCreateFolderDialog() }
         binding.importEhviewerButton.setOnClickListener { importFromEhViewer() }
         binding.importCbzButton.setOnClickListener {
-            pickCbzFile.launch(arrayOf("*/*"))
+            pickCbzFile.launch(
+                arrayOf(
+                    "application/vnd.comicbook+zip",
+                    "application/x-cbz",
+                    "application/zip"
+                )
+            )
         }
         binding.tutorialButton.setOnClickListener { openTutorial() }
         binding.folderBackButton.setOnClickListener { showFolderList() }

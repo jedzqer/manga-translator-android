@@ -88,7 +88,7 @@
     <!-- Library / Folder Actions -->
     <string name="create_folder">新建文件夹</string>
     <string name="import_ehviewer">从 EhViewer 导入</string>
-    <string name="import_cbz">从 CBZ 导入</string>
+    <string name="import_cbz">从 CBZ/ZIP 导入</string>
     <string name="folder_name_hint">文件夹名称</string>
     <string name="folder_create_failed">创建失败，请检查名称</string>
     <string name="folder_empty">暂无漫画文件夹</string>
@@ -161,9 +161,9 @@
     <string name="ehviewer_import_done">已导入 %1$d 张图片</string>
 
     <!-- Import / CBZ -->
-    <string name="cbz_import_failed">CBZ 导入失败，请重试</string>
-    <string name="cbz_import_no_images">CBZ 中未找到可导入图片</string>
-    <string name="cbz_import_done">CBZ 导入完成，已导入 %1$d 张图片</string>
+    <string name="cbz_import_failed">CBZ/ZIP 导入失败，请重试</string>
+    <string name="cbz_import_no_images">压缩包中未找到可导入图片</string>
+    <string name="cbz_import_done">CBZ/ZIP 导入完成，已导入 %1$d 张图片</string>
 
     <!-- Export -->
     <string name="exporting_progress">导出中…(%1$d/%2$d)</string>

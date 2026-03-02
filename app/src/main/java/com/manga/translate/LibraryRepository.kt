@@ -62,44 +62,42 @@ class LibraryRepository(private val context: Context) {
     }
 
     fun importCbz(uri: Uri): CbzImportResult? {
-        val cbzName = queryDisplayName(uri) ?: "cbz_import_${System.currentTimeMillis()}.cbz"
-        val folderName = cbzName.substringBeforeLast('.', cbzName).trim().ifEmpty { "cbz_import" }
+        val archiveName = queryDisplayName(uri) ?: "cbz_import_${System.currentTimeMillis()}.cbz"
+        val folderName = archiveName.substringBeforeLast('.', archiveName).trim().ifEmpty { "cbz_import" }
         val folder = createUniqueFolder(folderName) ?: return null
-        
-        // 创建临时文件
-        val tempFile = File(context.cacheDir, "temp_cbz_${System.currentTimeMillis()}.cbz")
+
+        val archiveExt = archiveName.substringAfterLast('.', "").lowercase(Locale.US)
+        val tempSuffix = if (archiveExt == "zip") ".zip" else ".cbz"
+        val tempFile = File(context.cacheDir, "temp_cbz_${System.currentTimeMillis()}$tempSuffix")
         var importedCount = 0
         
         try {
-            // 第一步：将 CBZ 复制到临时文件
-            AppLogger.log("LibraryRepo", "CBZ import started: $cbzName")
+            AppLogger.log("LibraryRepo", "Archive import started: $archiveName")
             context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(tempFile).use { output ->
                     input.copyTo(output)
                 }
             } ?: run {
-                AppLogger.log("LibraryRepo", "CBZ import failed: cannot open input stream")
+                AppLogger.log("LibraryRepo", "Archive import failed: cannot open input stream")
                 folder.deleteRecursively()
                 return null
             }
             
-            AppLogger.log("LibraryRepo", "CBZ copied to temp file: ${tempFile.length()} bytes")
-            
-            // 第二步：使用 ZipFile 解压
+            AppLogger.log("LibraryRepo", "Archive copied to temp file: ${tempFile.length()} bytes")
+
             ZipFile(tempFile).use { zipFile ->
                 val entries = zipFile.entries()
-                AppLogger.log("LibraryRepo", "CBZ total entries: ${zipFile.size()}")
+                AppLogger.log("LibraryRepo", "Archive total entries: ${zipFile.size()}")
                 
                 while (entries.hasMoreElements()) {
                     val entry = entries.nextElement()
                     
                     if (!entry.isDirectory) {
-                        // 处理 Windows 和 Unix 风格的路径分隔符
                         val entryName = entry.name
                             .replace('\\', '/')
                             .substringAfterLast('/')
                         
-                        AppLogger.log("LibraryRepo", "CBZ entry: ${entry.name} -> $entryName")
+                        AppLogger.log("LibraryRepo", "Archive entry: ${entry.name} -> $entryName")
                         
                         if (entryName.isNotBlank() && isImageFile(entryName)) {
                             val dest = resolveUniqueFile(folder, entryName)
@@ -109,23 +107,22 @@ class LibraryRepository(private val context: Context) {
                                 }
                             }
                             importedCount += 1
-                            AppLogger.log("LibraryRepo", "CBZ imported: $entryName (${dest.length()} bytes)")
+                            AppLogger.log("LibraryRepo", "Archive imported: $entryName (${dest.length()} bytes)")
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            AppLogger.log("LibraryRepo", "CBZ import failed: $cbzName", e)
+            AppLogger.log("LibraryRepo", "Archive import failed: $archiveName", e)
             folder.deleteRecursively()
             return null
         } finally {
-            // 清理临时文件
             if (tempFile.exists()) {
                 tempFile.delete()
             }
         }
 
-        AppLogger.log("LibraryRepo", "CBZ import completed: $importedCount images")
+        AppLogger.log("LibraryRepo", "Archive import completed: $importedCount images")
         if (importedCount == 0) {
             folder.deleteRecursively()
             return CbzImportResult(folder = null, importedCount = 0)
