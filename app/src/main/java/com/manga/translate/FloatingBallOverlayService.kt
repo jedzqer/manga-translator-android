@@ -14,7 +14,9 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
@@ -54,6 +56,18 @@ class FloatingBallOverlayService : Service() {
     private var captureHeight = 0
     private var densityDpi = 0
     private var bubbleDragEnabled = false
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            scope.launch(Dispatchers.Main) {
+                releaseProjection()
+                Toast.makeText(
+                    this@FloatingBallOverlayService,
+                    R.string.floating_capture_not_ready,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -141,6 +155,8 @@ class FloatingBallOverlayService : Service() {
         val clearButton = AppCompatButton(this).apply {
             text = getString(R.string.overlay_clear_button)
             textSize = 12f
+            setTextColor(0xFFFFFFFF.toInt())
+            background = createOverlayActionButtonBackground(density)
             minimumWidth = 0
             minWidth = 0
             setPadding((10f * density).toInt(), 0, (10f * density).toInt(), 0)
@@ -149,6 +165,8 @@ class FloatingBallOverlayService : Service() {
         val translateButton = AppCompatButton(this).apply {
             text = getString(R.string.overlay_translate_button)
             textSize = 12f
+            setTextColor(0xFFFFFFFF.toInt())
+            background = createOverlayActionButtonBackground(density)
             minimumWidth = 0
             minWidth = 0
             setPadding((10f * density).toInt(), 0, (10f * density).toInt(), 0)
@@ -157,6 +175,8 @@ class FloatingBallOverlayService : Service() {
         val exitButton = AppCompatButton(this).apply {
             text = getString(R.string.overlay_exit_button)
             textSize = 12f
+            setTextColor(0xFFFFFFFF.toInt())
+            background = createOverlayActionButtonBackground(density)
             minimumWidth = 0
             minWidth = 0
             setPadding((10f * density).toInt(), 0, (10f * density).toInt(), 0)
@@ -215,6 +235,8 @@ class FloatingBallOverlayService : Service() {
         }
         val bubbleDragSwitch = SwitchCompat(this).apply {
             text = getString(R.string.overlay_drag_bubble_option)
+            // Some SwitchCompat themes enable showText by default; with null textOn/textOff this can crash on measure.
+            showText = false
             isChecked = bubbleDragEnabled
             setOnCheckedChangeListener { _, checked ->
                 applyBubbleDragEnabled(checked)
@@ -228,8 +250,10 @@ class FloatingBallOverlayService : Service() {
             )
         )
         val settingsButton = AppCompatButton(this).apply {
-                text = getString(R.string.overlay_settings_button)
+            text = getString(R.string.overlay_settings_button)
             textSize = 12f
+            setTextColor(0xFFFFFFFF.toInt())
+            background = createOverlayActionButtonBackground(density)
             minimumWidth = 0
             minWidth = 0
             setPadding((10f * density).toInt(), 0, (10f * density).toInt(), 0)
@@ -323,6 +347,15 @@ class FloatingBallOverlayService : Service() {
         return flags
     }
 
+    private fun createOverlayActionButtonBackground(density: Float): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 8f * density
+            setColor(0xCC1B1B1B.toInt())
+            setStroke((1f * density).toInt(), 0x66FFFFFF)
+        }
+    }
+
     private fun applyBubbleDragEnabled(enabled: Boolean) {
         bubbleDragEnabled = enabled
         settingsStore.saveFloatingBubbleDragEnabled(enabled)
@@ -342,6 +375,7 @@ class FloatingBallOverlayService : Service() {
         val manager = getSystemService(MediaProjectionManager::class.java) ?: return
         val projection = manager.getMediaProjection(resultCode, data) ?: return
         mediaProjection = projection
+        projection.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
         val metrics = resources.displayMetrics
         captureWidth = metrics.widthPixels.coerceAtLeast(1)
         captureHeight = metrics.heightPixels.coerceAtLeast(1)
@@ -381,8 +415,19 @@ class FloatingBallOverlayService : Service() {
                 mangaOcr = it
             }
             val detections = detector.detect(bitmap)
-            val bubbles = ArrayList<BubbleTranslation>(detections.size)
-            for ((index, rect) in detections.withIndex()) {
+            val deduplicatedRects = RectGeometryDeduplicator.mergeSupplementRects(
+                detections,
+                bitmap.width,
+                bitmap.height
+            )
+            if (deduplicatedRects.size < detections.size) {
+                AppLogger.log(
+                    "FloatingOCR",
+                    "Deduplicated overlapping detections: ${detections.size} -> ${deduplicatedRects.size}"
+                )
+            }
+            val bubbles = ArrayList<BubbleTranslation>(deduplicatedRects.size)
+            for ((index, rect) in deduplicatedRects.withIndex()) {
                 val crop = cropBitmap(bitmap, rect)
                 if (crop == null) {
                     bubbles.add(
@@ -551,6 +596,13 @@ class FloatingBallOverlayService : Service() {
     }
 
     private fun releaseProjection() {
+        val projection = mediaProjection
+        if (projection != null) {
+            try {
+                projection.unregisterCallback(projectionCallback)
+            } catch (_: Exception) {
+            }
+        }
         try {
             virtualDisplay?.release()
         } catch (_: Exception) {
@@ -560,7 +612,7 @@ class FloatingBallOverlayService : Service() {
         } catch (_: Exception) {
         }
         try {
-            mediaProjection?.stop()
+            projection?.stop()
         } catch (_: Exception) {
         }
         virtualDisplay = null
