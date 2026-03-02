@@ -9,6 +9,9 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.View
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import androidx.core.graphics.withTranslation
 
 class FloatingDetectionOverlayView @JvmOverloads constructor(
@@ -32,6 +35,14 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
     private var sourceWidth = 1
     private var sourceHeight = 1
     private var bubbles: List<BubbleTranslation> = emptyList()
+    private var bubbleDragEnabled = false
+    private val touchSlop = 3f * resources.displayMetrics.density
+    private var draggingBubbleId: Int? = null
+    private var dragOffsetX = 0f
+    private var dragOffsetY = 0f
+    private var downX = 0f
+    private var downY = 0f
+    private var isDragging = false
 
     fun setDetections(sourceWidth: Int, sourceHeight: Int, bubbles: List<BubbleTranslation>) {
         this.sourceWidth = sourceWidth.coerceAtLeast(1)
@@ -42,6 +53,88 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
 
     fun clearDetections() {
         bubbles = emptyList()
+        draggingBubbleId = null
+        invalidate()
+    }
+
+    fun setBubbleDragEnabled(enabled: Boolean) {
+        bubbleDragEnabled = enabled
+        if (!enabled) {
+            draggingBubbleId = null
+            isDragging = false
+        }
+    }
+
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (!bubbleDragEnabled || bubbles.isEmpty()) return false
+        val scaleX = width.toFloat() / sourceWidth
+        val scaleY = height.toFloat() / sourceHeight
+        val sourceX = event.x / scaleX
+        val sourceY = event.y / scaleY
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                val bubble = findBubbleAt(sourceX, sourceY) ?: return false
+                draggingBubbleId = bubble.id
+                downX = event.x
+                downY = event.y
+                isDragging = false
+                dragOffsetX = sourceX - bubble.rect.left
+                dragOffsetY = sourceY - bubble.rect.top
+                return true
+            }
+
+            android.view.MotionEvent.ACTION_MOVE -> {
+                val id = draggingBubbleId ?: return false
+                val moved = abs(event.x - downX) > touchSlop || abs(event.y - downY) > touchSlop
+                if (moved) {
+                    isDragging = true
+                }
+                if (!isDragging) return true
+                updateBubblePosition(id, sourceX, sourceY)
+                return true
+            }
+
+            android.view.MotionEvent.ACTION_UP,
+            android.view.MotionEvent.ACTION_CANCEL -> {
+                val hadTarget = draggingBubbleId != null
+                draggingBubbleId = null
+                isDragging = false
+                return hadTarget
+            }
+
+            else -> return false
+        }
+    }
+
+    private fun findBubbleAt(x: Float, y: Float): BubbleTranslation? {
+        for (i in bubbles.indices.reversed()) {
+            val bubble = bubbles[i]
+            if (bubble.rect.contains(x, y)) {
+                return bubble
+            }
+        }
+        return null
+    }
+
+    private fun updateBubblePosition(id: Int, sourceX: Float, sourceY: Float) {
+        val mutable = bubbles.toMutableList()
+        val index = mutable.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val bubble = mutable[index]
+        val width = bubble.rect.width().coerceAtLeast(1f)
+        val height = bubble.rect.height().coerceAtLeast(1f)
+        val maxLeft = max(0f, sourceWidth.toFloat() - width)
+        val maxTop = max(0f, sourceHeight.toFloat() - height)
+        val newLeft = min(max(sourceX - dragOffsetX, 0f), maxLeft)
+        val newTop = min(max(sourceY - dragOffsetY, 0f), maxTop)
+        val newRect = RectF(
+            newLeft,
+            newTop,
+            newLeft + width,
+            newTop + height
+        )
+        mutable[index] = bubble.copy(rect = newRect)
+        bubbles = mutable
         invalidate()
     }
 

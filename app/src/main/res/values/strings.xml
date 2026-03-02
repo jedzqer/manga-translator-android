@@ -90,6 +90,8 @@
     <string name="overlay_clear_button">清屏</string>
     <string name="overlay_translate_button">翻译</string>
     <string name="overlay_exit_button">退出</string>
+    <string name="overlay_settings_button">设置</string>
+    <string name="overlay_drag_bubble_option">气泡可拖动</string>
     <string name="screen_capture_permission_required_title">需要屏幕捕获权限</string>
     <string name="screen_capture_permission_required_message">请授权屏幕捕获，用于识别当前屏幕文本区域。</string>
     <string name="screen_capture_permission_failed">未获取屏幕捕获权限，无法进行悬浮识别。</string>

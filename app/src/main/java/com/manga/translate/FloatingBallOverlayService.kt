@@ -18,11 +18,13 @@ import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatButton
+import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +37,7 @@ import kotlin.math.abs
 
 class FloatingBallOverlayService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
+    private val settingsStore by lazy { SettingsStore(applicationContext) }
     private lateinit var windowManager: WindowManager
     private var controllerRoot: LinearLayout? = null
     private var controllerLayoutParams: WindowManager.LayoutParams? = null
@@ -50,6 +53,7 @@ class FloatingBallOverlayService : Service() {
     private var captureWidth = 0
     private var captureHeight = 0
     private var densityDpi = 0
+    private var bubbleDragEnabled = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -63,6 +67,7 @@ class FloatingBallOverlayService : Service() {
             return START_NOT_STICKY
         }
         ensureForeground()
+        bubbleDragEnabled = settingsStore.loadFloatingBubbleDragEnabled()
         if (controllerRoot == null) {
             showControllerOverlay()
         }
@@ -193,6 +198,66 @@ class FloatingBallOverlayService : Service() {
                 topMargin = (4f * density).toInt()
             }
         )
+        val settingsPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                (8f * density).toInt(),
+                (8f * density).toInt(),
+                (8f * density).toInt(),
+                (8f * density).toInt()
+            )
+            background = GradientDrawable().apply {
+                cornerRadius = 8f * density
+                setColor(0xF5FFFFFF.toInt())
+                setStroke((1f * density).toInt(), 0x33222222)
+            }
+            visibility = View.GONE
+        }
+        val bubbleDragSwitch = SwitchCompat(this).apply {
+            text = getString(R.string.overlay_drag_bubble_option)
+            isChecked = bubbleDragEnabled
+            setOnCheckedChangeListener { _, checked ->
+                applyBubbleDragEnabled(checked)
+            }
+        }
+        settingsPanel.addView(
+            bubbleDragSwitch,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        val settingsButton = AppCompatButton(this).apply {
+                text = getString(R.string.overlay_settings_button)
+            textSize = 12f
+            minimumWidth = 0
+            minWidth = 0
+            setPadding((10f * density).toInt(), 0, (10f * density).toInt(), 0)
+            setOnClickListener {
+                settingsPanel.visibility = if (settingsPanel.visibility == View.VISIBLE) {
+                    View.GONE
+                } else {
+                    View.VISIBLE
+                }
+            }
+        }
+
+        root.addView(
+            settingsPanel,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = (4f * density).toInt()
+            }
+        )
+        root.addView(
+            settingsButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                (28f * density).toInt()
+            )
+        )
         root.addView(
             floatingBall,
             LinearLayout.LayoutParams(ballSize, ballSize).apply {
@@ -236,18 +301,40 @@ class FloatingBallOverlayService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            buildDetectionFlags(bubbleDragEnabled),
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
         }
+        overlay.setBubbleDragEnabled(bubbleDragEnabled)
         windowManager.addView(overlay, params)
         detectionOverlayView = overlay
         detectionLayoutParams = params
+    }
+
+    private fun buildDetectionFlags(dragEnabled: Boolean): Int {
+        var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        if (!dragEnabled) {
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        return flags
+    }
+
+    private fun applyBubbleDragEnabled(enabled: Boolean) {
+        bubbleDragEnabled = enabled
+        settingsStore.saveFloatingBubbleDragEnabled(enabled)
+        detectionOverlayView?.setBubbleDragEnabled(enabled)
+        val params = detectionLayoutParams ?: return
+        val newFlags = buildDetectionFlags(enabled)
+        if (params.flags == newFlags) return
+        params.flags = newFlags
+        try {
+            windowManager.updateViewLayout(detectionOverlayView, params)
+        } catch (_: Exception) {
+        }
     }
 
     private fun prepareProjection(resultCode: Int, data: Intent) {

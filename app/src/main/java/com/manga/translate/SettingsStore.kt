@@ -91,6 +91,16 @@ class SettingsStore(context: Context) {
             }
     }
 
+    fun loadFloatingBubbleDragEnabled(): Boolean {
+        return prefs.getBoolean(KEY_FLOATING_BUBBLE_DRAG_ENABLED, false)
+    }
+
+    fun saveFloatingBubbleDragEnabled(enabled: Boolean) {
+        prefs.edit() {
+                putBoolean(KEY_FLOATING_BUBBLE_DRAG_ENABLED, enabled)
+            }
+    }
+
     fun loadMaxConcurrency(): Int {
         val saved = prefs.getInt(KEY_MAX_CONCURRENCY, DEFAULT_MAX_CONCURRENCY)
         return saved.coerceIn(MIN_MAX_CONCURRENCY, MAX_MAX_CONCURRENCY)
@@ -216,6 +226,7 @@ class SettingsStore(context: Context) {
         private const val KEY_OCR_API_TIMEOUT_SECONDS = "ocr_api_timeout_seconds"
         private const val KEY_HORIZONTAL_TEXT = "horizontal_text_layout"
         private const val KEY_MODEL_IO_LOGGING = "model_io_logging"
+        private const val KEY_FLOATING_BUBBLE_DRAG_ENABLED = "floating_bubble_drag_enabled"
         private const val KEY_MAX_CONCURRENCY = "max_concurrency"
         private const val KEY_API_TIMEOUT_SECONDS = "api_timeout_seconds"
         private const val KEY_THEME_MODE = "theme_mode"
