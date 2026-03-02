@@ -2,14 +2,18 @@ package com.manga.translate
 
 import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -177,6 +181,29 @@ class LibraryFragment : Fragment() {
         }
     }
 
+    private val requestOverlayPermission = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (!isAdded) return@registerForActivityResult
+        if (canDrawOverlays()) {
+            launchScreenCapturePermissionRequest()
+            return@registerForActivityResult
+        }
+        showOverlayPermissionFailedDialog()
+    }
+
+    private val requestScreenCapturePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (!isAdded) return@registerForActivityResult
+        val data = result.data
+        if (result.resultCode == android.app.Activity.RESULT_OK && data != null) {
+            startFloatingTranslateEntry(result.resultCode, data)
+            return@registerForActivityResult
+        }
+        showScreenCapturePermissionFailedDialog()
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -247,6 +274,7 @@ class LibraryFragment : Fragment() {
 
         binding.addFolderFab.setOnClickListener { showCreateFolderDialog() }
         binding.importEhviewerButton.setOnClickListener { importFromEhViewer() }
+        binding.floatingTranslateButton.setOnClickListener { handleFloatingTranslateClick() }
         binding.importCbzButton.setOnClickListener {
             pickCbzFile.launch(
                 arrayOf(
@@ -300,6 +328,85 @@ class LibraryFragment : Fragment() {
         showFolderList()
     }
 
+    private fun handleFloatingTranslateClick() {
+        if (canDrawOverlays()) {
+            launchScreenCapturePermissionRequest()
+            return
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.overlay_permission_required_title))
+            .setMessage(getString(R.string.overlay_permission_required_message))
+            .setPositiveButton(android.R.string.ok) { _, _ -> openOverlayPermissionSettings() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun openOverlayPermissionSettings() {
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:${requireContext().packageName}")
+        )
+        requestOverlayPermission.launch(intent)
+    }
+
+    private fun launchScreenCapturePermissionRequest() {
+        val manager = requireContext().getSystemService(MediaProjectionManager::class.java)
+        if (manager == null) {
+            showScreenCapturePermissionFailedDialog()
+            return
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.screen_capture_permission_required_title))
+            .setMessage(getString(R.string.screen_capture_permission_required_message))
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                requestScreenCapturePermissionLauncher.launch(manager.createScreenCaptureIntent())
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showOverlayPermissionFailedDialog() {
+        if (!isAdded) return
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.overlay_permission_failed_title))
+            .setMessage(getString(R.string.overlay_permission_failed_message))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showScreenCapturePermissionFailedDialog() {
+        if (!isAdded) return
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.screen_capture_permission_required_title))
+            .setMessage(getString(R.string.screen_capture_permission_failed))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun startFloatingTranslateEntry(resultCode: Int, resultData: Intent) {
+        val context = requireContext()
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, FloatingBallOverlayService::class.java).apply {
+                action = FloatingBallOverlayService.ACTION_START
+                putExtra(FloatingBallOverlayService.EXTRA_RESULT_CODE, resultCode)
+                putExtra(FloatingBallOverlayService.EXTRA_RESULT_DATA, resultData)
+            }
+        )
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(homeIntent)
+    }
+
+    private fun canDrawOverlays(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+            return true
+        }
+        return Settings.canDrawOverlays(requireContext())
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
@@ -312,6 +419,7 @@ class LibraryFragment : Fragment() {
         binding.folderDetailContainer.visibility = View.GONE
         binding.addFolderFab.visibility = View.VISIBLE
         binding.tutorialButton.visibility = View.VISIBLE
+        binding.floatingTranslateButton.visibility = View.VISIBLE
         binding.importCbzButton.visibility = View.VISIBLE
         binding.importEhviewerButton.visibility = View.VISIBLE
         uiCallbacks.clearFolderStatus()
@@ -330,6 +438,7 @@ class LibraryFragment : Fragment() {
         binding.folderDetailContainer.visibility = View.VISIBLE
         binding.addFolderFab.visibility = View.GONE
         binding.tutorialButton.visibility = View.GONE
+        binding.floatingTranslateButton.visibility = View.GONE
         binding.importCbzButton.visibility = View.GONE
         binding.importEhviewerButton.visibility = View.GONE
         selectionController.exitSelectionMode()

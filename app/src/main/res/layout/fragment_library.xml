@@ -316,6 +316,19 @@
         android:text="@string/tutorial_button"
         android:textAlignment="center"
         android:textAllCaps="false"
+        app:layout_constraintBottom_toTopOf="@id/floating_translate_button"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="8dp" />
+
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/floating_translate_button"
+        android:layout_width="120dp"
+        android:layout_height="40dp"
+        android:gravity="center"
+        android:text="@string/floating_translate_button"
+        android:textAlignment="center"
+        android:textAllCaps="false"
         app:layout_constraintBottom_toTopOf="@id/import_cbz_button"
         app:layout_constraintStart_toStartOf="parent"
         android:layout_marginStart="4dp"

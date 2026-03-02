@@ -82,6 +82,24 @@
     <!-- Library / Entry -->
     <string name="library_title">漫画库</string>
     <string name="tutorial_button">使用教程</string>
+    <string name="floating_translate_button">悬浮窗翻译</string>
+    <string name="overlay_permission_required_title">需要悬浮窗权限</string>
+    <string name="overlay_permission_required_message">请先授予悬浮窗权限，才能启用悬浮球。</string>
+    <string name="overlay_permission_failed_title">未获取到悬浮窗权限</string>
+    <string name="overlay_permission_failed_message">未检测到悬浮窗权限，功能无法启动。</string>
+    <string name="overlay_clear_button">清屏</string>
+    <string name="overlay_translate_button">翻译</string>
+    <string name="overlay_exit_button">退出</string>
+    <string name="screen_capture_permission_required_title">需要屏幕捕获权限</string>
+    <string name="screen_capture_permission_required_message">请授权屏幕捕获，用于识别当前屏幕文本区域。</string>
+    <string name="screen_capture_permission_failed">未获取屏幕捕获权限，无法进行悬浮识别。</string>
+    <string name="floating_detecting">正在识别文本区域…</string>
+    <string name="floating_detected_count">已识别 %1$d 个文本区域</string>
+    <string name="floating_capture_not_ready">屏幕捕获未就绪，请重新启动悬浮窗翻译。</string>
+    <string name="floating_service_channel">悬浮窗识别</string>
+    <string name="floating_service_title">悬浮窗识别运行中</string>
+    <string name="floating_service_message">点击悬浮球可识别当前屏幕文本区域</string>
+    <string name="floating_bubble_placeholder">文本区域</string>
     <string name="tutorial_option_gitee_recommended">镜像站</string>
     <string name="tutorial_option_github">GitHub</string>
 
