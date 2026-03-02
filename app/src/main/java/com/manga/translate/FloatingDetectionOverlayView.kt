@@ -8,6 +8,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.View
 import kotlin.math.abs
 import kotlin.math.max
@@ -31,6 +32,16 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         color = 0xFF111111.toInt()
         textSize = resources.displayMetrics.density * resources.configuration.fontScale * 12f
     }
+    private val minTextSizePx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_SP,
+        8f,
+        resources.displayMetrics
+    )
+    private val textSizeStepPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_SP,
+        0.5f,
+        resources.displayMetrics
+    ).coerceAtLeast(0.5f)
     private val sourceRect = RectF()
     private var sourceWidth = 1
     private var sourceHeight = 1
@@ -159,16 +170,38 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
             canvas.drawRoundRect(sourceRect, radius, radius, borderPaint)
             val text = bubble.text.ifBlank { context.getString(R.string.floating_bubble_placeholder) }
             val availableWidth = (sourceRect.width() - horizontalPadding * 2f).toInt().coerceAtLeast(1)
-            val textLayout = StaticLayout.Builder
-                .obtain(text, 0, text.length, textPaint, availableWidth)
-                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                .setIncludePad(false)
-                .build()
-            val drawY = (sourceRect.top + verticalPadding)
-                .coerceAtMost(sourceRect.bottom - verticalPadding - textLayout.height)
+            val availableHeight = (sourceRect.height() - verticalPadding * 2f).toInt().coerceAtLeast(1)
+            val textLayout = buildFittedTextLayout(text, availableWidth, availableHeight)
+            val drawY = sourceRect.top + verticalPadding +
+                ((availableHeight - textLayout.height) / 2f).coerceAtLeast(0f)
             canvas.withTranslation(sourceRect.left + horizontalPadding, drawY) {
                 textLayout.draw(this)
             }
         }
+    }
+
+    private fun buildFittedTextLayout(
+        text: String,
+        availableWidth: Int,
+        availableHeight: Int
+    ): StaticLayout {
+        val probePaint = TextPaint(textPaint)
+        var size = textPaint.textSize
+        var fitted = buildLayout(text, probePaint, availableWidth)
+        while (fitted.height > availableHeight && size > minTextSizePx) {
+            size = (size - textSizeStepPx).coerceAtLeast(minTextSizePx)
+            probePaint.textSize = size
+            fitted = buildLayout(text, probePaint, availableWidth)
+            if (size <= minTextSizePx) break
+        }
+        return fitted
+    }
+
+    private fun buildLayout(text: String, paint: TextPaint, availableWidth: Int): StaticLayout {
+        return StaticLayout.Builder
+            .obtain(text, 0, text.length, paint, availableWidth)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setIncludePad(false)
+            .build()
     }
 }

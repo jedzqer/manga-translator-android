@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicLong
@@ -31,10 +32,19 @@ class LlmClient(context: Context) {
     suspend fun translate(
         text: String,
         glossary: Map<String, String>,
-        promptAsset: String = PROMPT_CONFIG_ASSET
+        promptAsset: String = PROMPT_CONFIG_ASSET,
+        requestTimeoutMs: Int? = null,
+        retryCount: Int = RETRY_COUNT
     ): LlmTranslationResult? =
         withContext(Dispatchers.IO) {
-            val content = requestContent(text, glossary, promptAsset, useJsonPayload = true)
+            val content = requestContent(
+                text = text,
+                glossary = glossary,
+                promptAsset = promptAsset,
+                useJsonPayload = true,
+                requestTimeoutMs = requestTimeoutMs,
+                retryCount = retryCount
+            )
                 ?: return@withContext null
             parseTranslationContent(content)
     }
@@ -117,7 +127,9 @@ class LlmClient(context: Context) {
         text: String,
         glossary: Map<String, String>,
         promptAsset: String,
-        useJsonPayload: Boolean
+        useJsonPayload: Boolean,
+        requestTimeoutMs: Int? = null,
+        retryCount: Int = RETRY_COUNT
     ): String? {
         val settings = settingsStore.load()
         if (!settings.isValid()) return null
@@ -129,10 +141,11 @@ class LlmClient(context: Context) {
             AppLogger.log("LlmClient", "Model input ($promptAsset): $payload")
             AppLogger.log("LlmClient", "Selected model: $selectedModel")
         }
-        val timeoutMs = settingsStore.loadApiTimeoutMs()
+        val timeoutMs = requestTimeoutMs?.coerceAtLeast(1_000) ?: settingsStore.loadApiTimeoutMs()
+        val retries = retryCount.coerceAtLeast(1)
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
-        for (attempt in 1..RETRY_COUNT) {
+        for (attempt in 1..retries) {
             currentCoroutineContext().ensureActive()
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -175,6 +188,10 @@ class LlmClient(context: Context) {
                     }
                     content
                 }
+            } catch (e: SocketTimeoutException) {
+                AppLogger.log("LlmClient", "Request timeout on $endpoint (attempt $attempt)", e)
+                lastErrorCode = "TIMEOUT"
+                null
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -184,7 +201,7 @@ class LlmClient(context: Context) {
             } finally {
                 connection.disconnect()
             }
-            if (result != null || attempt == RETRY_COUNT) {
+            if (result != null || attempt == retries) {
                 if (result != null) {
                     return result
                 }

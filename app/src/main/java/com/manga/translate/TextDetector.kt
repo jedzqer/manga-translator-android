@@ -48,7 +48,7 @@ class TextDetector(
 
     companion object {
         private const val YSG_CONF_THRESHOLD = 0.4f
-        private const val YSG_NMS_IOU_THRESHOLD = 0.6f
+        private const val YSG_NMS_IOU_THRESHOLD = 0.5f
         private const val OUTPUT_EXPAND_RATIO = 0.08f
         private const val OUTPUT_EXPAND_MIN = 1.0f
     }

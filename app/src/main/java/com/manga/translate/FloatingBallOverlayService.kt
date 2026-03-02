@@ -26,7 +26,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatButton
-import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +55,7 @@ class FloatingBallOverlayService : Service() {
     private var captureHeight = 0
     private var densityDpi = 0
     private var bubbleDragEnabled = false
+    private var bubbleDragToggleButton: AppCompatButton? = null
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             scope.launch(Dispatchers.Main) {
@@ -72,27 +72,35 @@ class FloatingBallOverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        AppLogger.log("FloatingOCR", "Service onStartCommand action=${intent?.action ?: "null"}")
         if (intent?.action == ACTION_STOP) {
+            AppLogger.log("FloatingOCR", "Received stop action")
             stopSelf()
             return START_NOT_STICKY
         }
         if (!canDrawOverlays()) {
+            AppLogger.log("FloatingOCR", "Overlay permission missing, stop service")
             stopSelf()
             return START_NOT_STICKY
         }
         ensureForeground()
+        ensureWindowManager()
         bubbleDragEnabled = settingsStore.loadFloatingBubbleDragEnabled()
-        if (controllerRoot == null) {
-            showControllerOverlay()
-        }
+        AppLogger.log("FloatingOCR", "Loaded bubbleDragEnabled=$bubbleDragEnabled")
         if (detectionOverlayView == null) {
             showDetectionOverlay()
+        }
+        if (controllerRoot == null) {
+            showControllerOverlay()
         }
         if (intent?.action == ACTION_START) {
             val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Int.MIN_VALUE)
             val data = intent.getParcelableIntentExtraCompat(EXTRA_RESULT_DATA)
             if (resultCode != Int.MIN_VALUE && data != null) {
+                AppLogger.log("FloatingOCR", "Prepare projection from start intent")
                 prepareProjection(resultCode, data)
+            } else {
+                AppLogger.log("FloatingOCR", "Start intent missing projection extras")
             }
         }
         return START_STICKY
@@ -142,12 +150,12 @@ class FloatingBallOverlayService : Service() {
     }
 
     private fun showControllerOverlay() {
+        ensureWindowManager()
         val density = resources.displayMetrics.density
         val ballSize = (56f * density).toInt()
         val margin = (8f * density).toInt()
         val screenWidth = resources.displayMetrics.widthPixels
 
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -233,17 +241,30 @@ class FloatingBallOverlayService : Service() {
             }
             visibility = View.GONE
         }
-        val bubbleDragSwitch = SwitchCompat(this).apply {
-            text = getString(R.string.overlay_drag_bubble_option)
-            // Some SwitchCompat themes enable showText by default; with null textOn/textOff this can crash on measure.
-            showText = false
-            isChecked = bubbleDragEnabled
-            setOnCheckedChangeListener { _, checked ->
-                applyBubbleDragEnabled(checked)
+        val bubbleDragButton = AppCompatButton(this).apply {
+            textSize = 13f
+            setTextColor(0xFF1F1F1F.toInt())
+            background = GradientDrawable().apply {
+                cornerRadius = 8f * density
+                setColor(0xFFFFFFFF.toInt())
+                setStroke((1f * density).toInt(), 0x33222222)
+            }
+            minimumWidth = 0
+            minWidth = 0
+            setPadding(
+                (10f * density).toInt(),
+                (8f * density).toInt(),
+                (10f * density).toInt(),
+                (8f * density).toInt()
+            )
+            setOnClickListener {
+                applyBubbleDragEnabled(!bubbleDragEnabled)
             }
         }
+        bubbleDragToggleButton = bubbleDragButton
+        updateBubbleDragToggleButton()
         settingsPanel.addView(
-            bubbleDragSwitch,
+            bubbleDragButton,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -309,11 +330,13 @@ class FloatingBallOverlayService : Service() {
 
         attachDragGesture(floatingBall, params)
         windowManager.addView(root, params)
+        AppLogger.log("FloatingOCR", "Controller overlay added")
         controllerRoot = root
         controllerLayoutParams = params
     }
 
     private fun showDetectionOverlay() {
+        ensureWindowManager()
         val overlay = FloatingDetectionOverlayView(this)
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -334,8 +357,15 @@ class FloatingBallOverlayService : Service() {
         }
         overlay.setBubbleDragEnabled(bubbleDragEnabled)
         windowManager.addView(overlay, params)
+        AppLogger.log("FloatingOCR", "Detection overlay added dragEnabled=$bubbleDragEnabled")
         detectionOverlayView = overlay
         detectionLayoutParams = params
+    }
+
+    private fun ensureWindowManager() {
+        if (!this::windowManager.isInitialized) {
+            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        }
     }
 
     private fun buildDetectionFlags(dragEnabled: Boolean): Int {
@@ -359,18 +389,38 @@ class FloatingBallOverlayService : Service() {
     private fun applyBubbleDragEnabled(enabled: Boolean) {
         bubbleDragEnabled = enabled
         settingsStore.saveFloatingBubbleDragEnabled(enabled)
+        AppLogger.log("FloatingOCR", "Bubble drag toggled enabled=$enabled")
+        updateBubbleDragToggleButton()
         detectionOverlayView?.setBubbleDragEnabled(enabled)
         val params = detectionLayoutParams ?: return
         val newFlags = buildDetectionFlags(enabled)
-        if (params.flags == newFlags) return
-        params.flags = newFlags
+        if (params.flags != newFlags) {
+            params.flags = newFlags
+            try {
+                windowManager.updateViewLayout(detectionOverlayView, params)
+            } catch (_: Exception) {
+            }
+        }
+        ensureControllerOnTop()
+    }
+
+    private fun ensureControllerOnTop() {
+        val root = controllerRoot ?: return
+        val params = controllerLayoutParams ?: return
         try {
-            windowManager.updateViewLayout(detectionOverlayView, params)
+            windowManager.removeView(root)
+            windowManager.addView(root, params)
         } catch (_: Exception) {
         }
     }
 
+    private fun updateBubbleDragToggleButton() {
+        val suffix = if (bubbleDragEnabled) "开" else "关"
+        bubbleDragToggleButton?.text = "${getString(R.string.overlay_drag_bubble_option)}：$suffix"
+    }
+
     private fun prepareProjection(resultCode: Int, data: Intent) {
+        AppLogger.log("FloatingOCR", "Preparing projection")
         releaseProjection()
         val manager = getSystemService(MediaProjectionManager::class.java) ?: return
         val projection = manager.getMediaProjection(resultCode, data) ?: return
@@ -396,96 +446,150 @@ class FloatingBallOverlayService : Service() {
             null,
             null
         )
+        AppLogger.log("FloatingOCR", "Projection ready ${captureWidth}x${captureHeight}@${densityDpi}dpi")
     }
 
     private fun runTextDetection() {
         if (detectJob?.isActive == true) return
         val projection = mediaProjection
         if (projection == null || imageReader == null) {
+            AppLogger.log("FloatingOCR", "Run detection blocked: projection not ready")
             Toast.makeText(this, R.string.floating_capture_not_ready, Toast.LENGTH_SHORT).show()
             return
         }
+        AppLogger.log("FloatingOCR", "Run detection started")
         Toast.makeText(this, R.string.floating_detecting, Toast.LENGTH_SHORT).show()
         detectJob = scope.launch(Dispatchers.Default) {
-            val bitmap = captureCurrentScreen() ?: return@launch
-            val detector = textDetector ?: TextDetector(applicationContext).also { textDetector = it }
-            val ocr = mangaOcr ?: runCatching {
-                MangaOcr(applicationContext)
-            }.getOrNull()?.also {
-                mangaOcr = it
-            }
-            val detections = detector.detect(bitmap)
-            val deduplicatedRects = RectGeometryDeduplicator.mergeSupplementRects(
-                detections,
-                bitmap.width,
-                bitmap.height
-            )
-            if (deduplicatedRects.size < detections.size) {
-                AppLogger.log(
-                    "FloatingOCR",
-                    "Deduplicated overlapping detections: ${detections.size} -> ${deduplicatedRects.size}"
+            var bitmap: Bitmap? = null
+            try {
+                bitmap = captureCurrentScreen()
+                if (bitmap == null) {
+                    AppLogger.log("FloatingOCR", "Capture screen returned null")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@FloatingBallOverlayService,
+                            R.string.floating_capture_not_ready,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@launch
+                }
+                val detector = textDetector ?: TextDetector(applicationContext).also { textDetector = it }
+                val ocr = mangaOcr ?: runCatching {
+                    MangaOcr(applicationContext)
+                }.getOrNull()?.also {
+                    mangaOcr = it
+                }
+                val detections = detector.detect(bitmap)
+                AppLogger.log("FloatingOCR", "Raw detections count=${detections.size}")
+                val deduplicatedRects = RectGeometryDeduplicator.mergeSupplementRects(
+                    detections,
+                    bitmap.width,
+                    bitmap.height
                 )
-            }
-            val bubbles = ArrayList<BubbleTranslation>(deduplicatedRects.size)
-            for ((index, rect) in deduplicatedRects.withIndex()) {
-                val crop = cropBitmap(bitmap, rect)
-                if (crop == null) {
+                if (deduplicatedRects.size < detections.size) {
+                    AppLogger.log(
+                        "FloatingOCR",
+                        "Deduplicated overlapping detections: ${detections.size} -> ${deduplicatedRects.size}"
+                    )
+                }
+                AppLogger.log("FloatingOCR", "Deduplicated detections count=${deduplicatedRects.size}")
+                val bubbles = ArrayList<BubbleTranslation>(deduplicatedRects.size)
+                for ((index, rect) in deduplicatedRects.withIndex()) {
+                    val crop = cropBitmap(bitmap, rect)
+                    if (crop == null) {
+                        bubbles.add(
+                            BubbleTranslation(
+                                id = index,
+                                rect = rect,
+                                text = "",
+                                source = BubbleSource.TEXT_DETECTOR
+                            )
+                        )
+                        continue
+                    }
+                    val text = try {
+                        ocr?.recognize(crop)?.trim().orEmpty()
+                    } catch (e: Exception) {
+                        AppLogger.log("FloatingOCR", "MangaOCR recognize failed", e)
+                        ""
+                    } finally {
+                        crop.recycle()
+                    }
                     bubbles.add(
                         BubbleTranslation(
                             id = index,
                             rect = rect,
-                            text = "",
+                            text = text,
                             source = BubbleSource.TEXT_DETECTOR
                         )
                     )
-                    continue
                 }
-                val text = try {
-                    ocr?.recognize(crop)?.trim().orEmpty()
-                } catch (e: Exception) {
-                    AppLogger.log("FloatingOCR", "MangaOCR recognize failed", e)
-                    ""
-                } finally {
-                    crop.recycle()
-                }
-                bubbles.add(
-                    BubbleTranslation(
-                        id = index,
-                        rect = rect,
-                        text = text,
-                        source = BubbleSource.TEXT_DETECTOR
-                    )
+                val translatedBubbles = translateBubblesIfConfigured(
+                    bubbles = bubbles,
+                    timeoutMs = FLOATING_TRANSLATE_TIMEOUT_MS.toInt(),
+                    retryCount = FLOATING_TRANSLATE_RETRY_COUNT
                 )
+                if (translatedBubbles == null) {
+                    AppLogger.log("FloatingOCR", "Translate timeout")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@FloatingBallOverlayService,
+                            R.string.floating_translate_timeout,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@launch
+                }
+                withContext(Dispatchers.Main) {
+                    detectionOverlayView?.setDetections(bitmap.width, bitmap.height, translatedBubbles)
+                    Toast.makeText(
+                        this@FloatingBallOverlayService,
+                        getString(R.string.floating_detected_count, translatedBubbles.size),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                AppLogger.log("FloatingOCR", "Run detection finished bubbles=${translatedBubbles.size}")
+            } catch (e: Exception) {
+                AppLogger.log("FloatingOCR", "Floating detection failed", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@FloatingBallOverlayService,
+                        R.string.floating_detect_failed,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } finally {
+                bitmap?.recycle()
             }
-            val translatedBubbles = translateBubblesIfConfigured(bubbles)
-            withContext(Dispatchers.Main) {
-                detectionOverlayView?.setDetections(bitmap.width, bitmap.height, translatedBubbles)
-                Toast.makeText(
-                    this@FloatingBallOverlayService,
-                    getString(R.string.floating_detected_count, translatedBubbles.size),
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-            bitmap.recycle()
         }
     }
 
     private suspend fun translateBubblesIfConfigured(
-        bubbles: List<BubbleTranslation>
-    ): List<BubbleTranslation> {
+        bubbles: List<BubbleTranslation>,
+        timeoutMs: Int,
+        retryCount: Int
+    ): List<BubbleTranslation>? {
         if (bubbles.isEmpty()) return bubbles
         val translatable = bubbles.filter { it.text.isNotBlank() }
-        if (translatable.isEmpty()) return bubbles
-        val client = llmClient ?: LlmClient(applicationContext).also { llmClient = it }
-        if (!client.isConfigured()) {
+        if (translatable.isEmpty()) {
+            AppLogger.log("FloatingOCR", "Skip translate: no translatable text")
             return bubbles
         }
+        val client = llmClient ?: LlmClient(applicationContext).also { llmClient = it }
+        if (!client.isConfigured()) {
+            AppLogger.log("FloatingOCR", "Skip translate: LLM client not configured")
+            return bubbles
+        }
+        AppLogger.log("FloatingOCR", "Translate request segments=${translatable.size}")
         return try {
             val text = translatable.joinToString("\n") { "<b>${it.text}</b>" }
             val translated = client.translate(
                 text = text,
                 glossary = emptyMap(),
-                promptAsset = FLOAT_PROMPT_ASSET
+                promptAsset = FLOAT_PROMPT_ASSET,
+                requestTimeoutMs = timeoutMs,
+                retryCount = retryCount
             ) ?: return bubbles
             val segments = extractTaggedSegments(
                 translated.translation,
@@ -495,13 +599,23 @@ class FloatingBallOverlayService : Service() {
             for (i in translatable.indices) {
                 translatedMap[translatable[i].id] = segments.getOrElse(i) { translatable[i].text }
             }
-            bubbles.map { bubble ->
+            val result = bubbles.map { bubble ->
                 val translatedText = translatedMap[bubble.id]
                 if (translatedText.isNullOrBlank()) {
                     bubble
                 } else {
                     bubble.copy(text = translatedText)
                 }
+            }
+            AppLogger.log("FloatingOCR", "Translate success segments=${translatedMap.size}")
+            result
+        } catch (e: LlmRequestException) {
+            if (e.errorCode == "TIMEOUT") {
+                AppLogger.log("FloatingOCR", "LLM translate timeout")
+                null
+            } else {
+                AppLogger.log("FloatingOCR", "LLM translate request failed, fallback to OCR text", e)
+                bubbles
             }
         } catch (e: Exception) {
             AppLogger.log("FloatingOCR", "LLM translate failed, fallback to OCR text", e)
@@ -518,7 +632,10 @@ class FloatingBallOverlayService : Service() {
             image = reader.acquireLatestImage()
             retry++
         }
-        image ?: return null
+        if (image == null) {
+            AppLogger.log("FloatingOCR", "Capture frame timeout retry=$retry")
+            return null
+        }
         image.use { frame ->
             val plane = frame.planes.firstOrNull() ?: return null
             val width = frame.width
@@ -529,6 +646,7 @@ class FloatingBallOverlayService : Service() {
             val fullWidth = width + rowPadding / pixelStride
             val bitmap = Bitmap.createBitmap(fullWidth, height, Bitmap.Config.ARGB_8888)
             bitmap.copyPixelsFromBuffer(plane.buffer)
+            AppLogger.log("FloatingOCR", "Captured frame ${width}x${height} retry=$retry")
             return Bitmap.createBitmap(bitmap, 0, 0, width, height).also {
                 bitmap.recycle()
             }
@@ -593,6 +711,7 @@ class FloatingBallOverlayService : Service() {
         controllerLayoutParams = null
         detectionOverlayView = null
         detectionLayoutParams = null
+        bubbleDragToggleButton = null
     }
 
     private fun releaseProjection() {
@@ -632,6 +751,8 @@ class FloatingBallOverlayService : Service() {
         private const val CHANNEL_ID = "floating_detect_channel"
         private const val NOTIFICATION_ID = 2002
         private const val FLOAT_PROMPT_ASSET = "float_llm_prompts.json"
+        private const val FLOATING_TRANSLATE_TIMEOUT_MS = 30_000L
+        private const val FLOATING_TRANSLATE_RETRY_COUNT = 1
     }
 }
 

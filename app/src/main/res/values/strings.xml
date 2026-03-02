@@ -98,6 +98,8 @@
     <string name="floating_detecting">正在识别文本区域…</string>
     <string name="floating_detected_count">已识别 %1$d 个文本区域</string>
     <string name="floating_capture_not_ready">屏幕捕获未就绪，请重新启动悬浮窗翻译。</string>
+    <string name="floating_detect_failed">识别失败，请重试。</string>
+    <string name="floating_translate_timeout">翻译超时，请重试。</string>
     <string name="floating_service_channel">悬浮窗识别</string>
     <string name="floating_service_title">悬浮窗识别运行中</string>
     <string name="floating_service_message">点击悬浮球可识别当前屏幕文本区域</string>
