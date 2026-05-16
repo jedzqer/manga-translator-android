@@ -27,6 +27,7 @@ MiniCPM-V 4.6 参数量为 1.3B，全精度 (FP16) 约占用 2.6GB 内存。为�
 - [x] 检查并关联用户的 Fork 远程仓库 (`https://github.com/222222222l/manga-translator-android`)。
 - [x] 创建功能分支 `feature/minicpm-v-integration`。
 - [x] 清理无用依赖：移除原有的臃肿 OCR 库和模型 (将随管线重构同步进行)。
+- [x] 配置 GitHub Actions 云端构建 Debug APK（安装 Android SDK/NDK/CMake，并提前切换到 Node.js 24 运行时）。
 
 ### Phase 2: C++ 引擎层接入 (llama.cpp)
 - [x] 在 `app/src/main/cpp` 中引入 `llama.cpp` 源码（包含 `llava` 多模态扩展支持）。
