@@ -3,7 +3,12 @@ package com.manga.translate
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
-import android.os.Bundle
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.launch
+import com.google.android.material.snackbar.Snackbar
+
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -54,6 +59,16 @@ class SettingsFragment : Fragment() {
     private val appContainer by lazy(LazyThreadSafetyMode.NONE) { requireContext().appContainer }
     private val settingsStore by lazy(LazyThreadSafetyMode.NONE) { appContainer.settingsStore }
     private val llmClient by lazy(LazyThreadSafetyMode.NONE) { appContainer.llmClient }
+    private val vlmModelManager by lazy { VlmModelManager(requireContext()) }
+    
+    private val importTextModelLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { handleModelImport(it, false) }
+    }
+
+    private val importMmprojModelLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { handleModelImport(it, true) }
+    }
+
     private lateinit var settingsPersistenceController: SettingsPersistenceController
     private val numberFormatter by lazy {
         NumberFormat.getNumberInstance(Locale.getDefault()).apply {
@@ -384,6 +399,10 @@ class SettingsFragment : Fragment() {
         binding.aboutButton.setOnClickListener {
             showAboutDialog()
         }
+
+        binding.btnImportTextModel.setOnClickListener { importTextModelLauncher.launch("*/*") }
+        binding.btnImportMmprojModel.setOnClickListener { importMmprojModelLauncher.launch("*/*") }
+        updateVlmModelStatus()
     }
 
     override fun onDestroyView() {
@@ -677,6 +696,32 @@ class SettingsFragment : Fragment() {
             R.string.multi_provider_scheduling_button_format,
             providers.size
         )
+    }
+
+    private fun handleModelImport(uri: Uri, isMmproj: Boolean) {
+        lifecycleScope.launch {
+            val success = vlmModelManager.importModelFromUri(uri, isMmproj)
+            if (success) {
+                Snackbar.make(binding.root, "导入成功: ${vlmModelManager.getFileName(uri)}", Snackbar.LENGTH_SHORT).show()
+                updateVlmModelStatus()
+            } else {
+                Snackbar.make(binding.root, "导入失败", Snackbar.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun updateVlmModelStatus() {
+        binding.tvTextModelStatus.text = if (vlmModelManager.textModelFile.exists()) {
+            "语言模型 (LLM): 已导入 (${vlmModelManager.textModelFile.length() / 1024 / 1024} MB)"
+        } else {
+            "语言模型 (LLM): 未导入"
+        }
+
+        binding.tvMmprojModelStatus.text = if (vlmModelManager.mmprojModelFile.exists()) {
+            "视觉模型 (mmproj): 已导入 (${vlmModelManager.mmprojModelFile.length() / 1024 / 1024} MB)"
+        } else {
+            "视觉模型 (mmproj): 未导入"
+        }
     }
 
     private fun requiredMainTranslationProviderConcurrency(): Int {

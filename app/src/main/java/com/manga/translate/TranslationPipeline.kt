@@ -4,28 +4,15 @@ import android.content.Context
 import android.graphics.RectF
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import android.graphics.BitmapFactory
 
 internal class TranslationPipeline(
     context: Context,
-    private val llmClient: LlmClient = LlmClient(context.applicationContext),
-    private val settingsStore: SettingsStore = SettingsStore(context.applicationContext),
-    private val store: TranslationStore = TranslationStore(),
-    private val ocrStore: OcrStore = OcrStore(),
-    private val ocrEngineRegistry: OcrEngineRegistry =
-        OcrEngineRegistry(context.applicationContext, settingsStore),
-    private val bubbleTextRecognizer: BubbleTextRecognizer =
-        BubbleTextRecognizer(llmClient, ocrEngineRegistry, settingsStore),
-    private val textBubbleTranslationCoordinator: TextBubbleTranslationCoordinator =
-        TextBubbleTranslationCoordinator(llmClient = llmClient),
-    private val floatingBubbleTranslationCoordinator: FloatingBubbleTranslationCoordinator =
-        FloatingBubbleTranslationCoordinator(
-            llmClient = llmClient,
-            floatingTranslationCacheStore = FloatingTranslationCacheStore(context.applicationContext),
-            settingsStore = settingsStore
-        ),
-    private val pageRegionDetector: PageRegionDetector =
-        PageRegionDetector(context.applicationContext, settingsStore)
+    private val vlmClient: LocalVlmClient = LocalVlmClient(),
+    private val vlmManager: VlmModelManager = VlmModelManager(context.applicationContext)
 ) {
     private val appContext = context.applicationContext
 
@@ -37,76 +24,108 @@ internal class TranslationPipeline(
         providerContext: PageTranslationProviderContext? = null,
         onProgress: (String) -> Unit
     ): TranslationResult? = withContext(Dispatchers.Default) {
-        val resolvedApiSettings = providerContext?.apiSettings
-        if (!llmClient.isConfigured(resolvedApiSettings)) {
-            onProgress(appContext.getString(R.string.missing_api_settings))
-            AppLogger.log("Pipeline", "Missing API settings")
+        
+        if (!vlmManager.isModelReady()) {
+            onProgress("MiniCPM-V 端侧模型未导入，请前往设置配置。")
+            AppLogger.log("Pipeline", "Missing VLM models")
             return@withContext null
         }
-        val page = ocrImage(imageFile, forceOcr, language, onProgress) ?: return@withContext null
+
+        onProgress("正在加载 VLM 模型...")
+        // 建议在真实的 Application 或 Service 生命周期中初始化，这里仅作演示
+        val initSuccess = vlmClient.initModel(
+            vlmManager.textModelFile.absolutePath,
+            vlmManager.mmprojModelFile.absolutePath,
+            4
+        )
+        if (!initSuccess) {
+            onProgress("模型加载失败，请检查模型文件是否损坏。")
+            return@withContext null
+        }
+
+        onProgress("正在分析图片并翻译...")
+        val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return@withContext null
+        val bytes = imageFile.readBytes()
+
+        val prompt = buildVlmPrompt(language, glossary)
+        
+        AppLogger.log("Pipeline", "Start VLM inference for ${imageFile.name}")
+        val jsonResult = vlmClient.processImage(bytes, prompt)
+        AppLogger.log("Pipeline", "VLM Result: $jsonResult")
+
+        val translatedBubbles = parseVlmJsonToBubbles(jsonResult, bitmap.width, bitmap.height)
+        
         val metadata = buildTranslationMetadata(
             imageFile = imageFile,
             language = language,
             mode = TranslationMetadata.MODE_STANDARD,
-            promptAsset = STANDARD_PROMPT_ASSET,
-            ocrCacheMode = page.cacheMode,
+            promptAsset = "minicpm_v",
+            ocrCacheMode = "none",
             providerContext = providerContext
         )
-        AppLogger.log("Pipeline", "Translate image ${imageFile.name}")
-        val translatable = page.bubbles.filter { it.text.isNotBlank() }
-        if (translatable.isEmpty()) {
-            val emptyTranslations = page.bubbles.map {
-                BubbleTranslation.pending(it.id, it.rect, "", it.source, it.maskContour)
-            }
-            return@withContext TranslationResult(
-                imageFile.name,
-                page.width,
-                page.height,
-                emptyTranslations,
-                metadata
-            )
+
+        onProgress("翻译完成")
+        TranslationResult(
+            imageFile.name,
+            bitmap.width,
+            bitmap.height,
+            translatedBubbles,
+            metadata
+        )
+    }
+
+    private fun buildVlmPrompt(language: TranslationLanguage, glossary: Map<String, String>): String {
+        val targetLang = if (language == TranslationLanguage.JA_TO_ZH) "中文" else "目标语言"
+        var prompt = "<__media__>\n你是一个专业的漫画翻译专家。请识别图片中所有漫画气泡框内的文字，将其翻译为$targetLang。\n"
+        prompt += "请必须以严格的 JSON 格式输出，格式为：\n"
+        prompt += "[{\"box\": [x_min, y_min, x_max, y_max], \"original\": \"原文\", \"translation\": \"译文\"}]\n"
+        if (glossary.isNotEmpty()) {
+            prompt += "请参考以下术语表：\n"
+            glossary.forEach { (k, v) -> prompt += "- $k: $v\n" }
         }
-        onProgress(appContext.getString(R.string.translating_bubbles))
-        val promptAsset = STANDARD_PROMPT_ASSET
-        val translatedBubbles = try {
-            val translated = executeWithModelResponseRetries("Pipeline") {
-                textBubbleTranslationCoordinator.translateBubbles(
-                    bubbles = translatable.map {
-                        BubbleTranslation.pending(
-                            id = it.id,
-                            rect = it.rect,
-                            originalText = it.text,
-                            source = it.source,
-                            maskContour = it.maskContour
-                        )
-                    },
-                    glossary = glossary,
-                    promptAsset = promptAsset,
-                    apiSettings = resolvedApiSettings,
-                    language = language,
-                    logTag = "Pipeline",
-                    translationMode = "standard"
+        return prompt
+    }
+
+    private fun parseVlmJsonToBubbles(jsonString: String, imgWidth: Int, imgHeight: Int): List<BubbleTranslation> {
+        val bubbles = mutableListOf<BubbleTranslation>()
+        try {
+            // 尝试提取 JSON 数组部分，防止模型输出包含额外文本
+            val startIndex = jsonString.indexOf('[')
+            val endIndex = jsonString.lastIndexOf(']')
+            if (startIndex == -1 || endIndex == -1) return bubbles
+            
+            val cleanJson = jsonString.substring(startIndex, endIndex + 1)
+            val jsonArray = JSONArray(cleanJson)
+            
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val boxArray = obj.getJSONArray("box")
+                
+                // 将相对坐标转换为绝对坐标或直接使用返回的像素坐标
+                val xMin = boxArray.getDouble(0).toFloat()
+                val yMin = boxArray.getDouble(1).toFloat()
+                val xMax = boxArray.getDouble(2).toFloat()
+                val yMax = boxArray.getDouble(3).toFloat()
+                
+                val rect = RectF(xMin, yMin, xMax, yMax)
+                val originalText = obj.optString("original", "")
+                val translation = obj.optString("translation", "")
+                
+                bubbles.add(
+                    BubbleTranslation.success(
+                        id = "vlm_$i",
+                        rect = rect,
+                        originalText = originalText,
+                        translation = translation,
+                        source = TextSource.LOCAL_OCR, // 重用现有枚举
+                        glossaryUsed = emptyMap()
+                    )
                 )
-            } ?: return@withContext null
-            if (translated.glossaryUsed.isNotEmpty()) {
-                glossary.putAll(translated.glossaryUsed)
             }
-            translated.bubbles
-        } catch (e: LlmResponseException) {
-            throw e.withPageName(imageFile.name)
+        } catch (e: Exception) {
+            AppLogger.log("Pipeline", "JSON parse error: ${e.message}")
         }
-        val translationMap = translatedBubbles.associateBy { it.id }
-        val bubbles = page.bubbles.map { bubble ->
-            translationMap[bubble.id] ?: BubbleTranslation.pending(
-                id = bubble.id,
-                rect = bubble.rect,
-                originalText = bubble.text,
-                source = bubble.source,
-                maskContour = bubble.maskContour
-            )
-        }
-        AppLogger.log("Pipeline", "Translation finished for ${imageFile.name}")
-        TranslationResult(imageFile.name, page.width, page.height, bubbles, metadata)
+        return bubbles
     }
 
     suspend fun ocrImage(
