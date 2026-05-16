@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
     - uses: actions/checkout@v4
@@ -23,11 +25,16 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Install Android SDK packages
+      run: |
+        yes | sdkmanager --licenses
+        sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;26.3.11579264" "cmake;3.22.1"
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-
-    - name: Setup Android NDK
-      run: echo "NDK is pre-installed on GitHub Actions runners"
 
     - name: Build with Gradle (Debug APK)
       run: ./gradlew assembleDebug --stacktrace
