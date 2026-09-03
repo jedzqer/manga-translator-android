@@ -47,13 +47,17 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 - 修复检测、OCR、渲染或缓存问题时，不得删除、覆盖、隐藏或主动使已有 `*.json` 翻译结果失效。
 - 不得仅为强制重新处理而修改 `TranslationStore` 的 metadata 可用性规则、结果版本或缓存兼容判定。
-- 必须变更持久化格式时，先说明影响并获得用户同意，同时提供向后兼容、迁移或恢复方案。
+- 翻译结果和 OCR 缓存的有效性必须包含所有会改变译文语义的维度。`TranslationStore.isMetadataUsable()` 校验源文件指纹、版本、`language`、`mode`、`promptAsset` 和 `ocrCacheMode`；`apiFormat` 仅记录产出译文的供应商协议，不参与可用性判定，切换 AI 供应商（含跨 API 格式）不得使已落盘译文失效。批量补填共用 `matchesPartialTranslationRequest()`。新增会影响译文的配置维度时必须同步接入，不得放宽比较。
+- 悬浮窗翻译缓存的键与相似度匹配范围统一由 `FloatingCacheScope`（语言 + `providerId` + `modelName` + `promptAsset`）决定。该缓存启用相似文本匹配，缺失任一维度会导致静默返回错误译文；新增影响译文的维度必须加入 scope 并提升缓存 schema 版本。
+- 跨页合并后的 `PageOcrResult` 只存在于内存中，不得落盘。若将来需要持久化，必须先在 `OcrMetadata` 中记录阅读模式，否则普通阅读会读到跨页坐标。
+- 必须变更持久化格式时，先说明影响并获得用户同意，同时提供向后兼容、迁移或恢复方案。`cacheDir` 下的可重建缓存（如 `floating_translate_cache.json`）可通过提升版本直接丢弃，不属于用户数据。
 - 漫画库文件操作统一经 `LibraryRepository`；翻译、OCR、glossary 和进度数据统一经对应 Store，避免在 UI 或 Coordinator 中另写一套文件协议。
 
 ### 多语言与文案
 
 - 用户可见文案不得硬编码在 Kotlin 或布局中，必须写入资源。
-- 日常功能和修复至少同步更新基础资源 `app/src/main/res/values/strings.xml`（简体中文）。其他现有语言允许暂时回退基础文案，不要求每次同步翻译。
+- 日常功能和修复至少同步更新基础资源 `app/src/main/res/values/strings.xml`（简体中文）。
+- 新增或修改用户可见文案时，必须同步补齐全部四套语言资源（`values-b+zh+Hant`、`values-en`、`values-pt-rBR`、`values-ru`）；只更新简体中文会导致其他界面语言回退。非英语语言资源中与英文逐字相同的长文案属于未翻译缺口，不得引入。
 - 新增界面语言时，必须同时接入 `model/AppLanguage.kt`、`res/xml/locales_config.xml`、对应 `values-*` 资源，以及该语言需要的 Prompt 变体。
 - 当前覆盖资源为繁体中文、英语、巴西葡萄牙语和俄语；繁体 Prompt 通过 `PromptAssetResolver` 优先解析 `_hant` 变体，缺失时回退基础文件。
 
@@ -65,7 +69,15 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 ## 源码导航
 
-以下路径均相对于 `app/src/main/java/com/manga/translate/`：
+本仓库已建立 CodeGraph 代码图谱（根目录 `.codegraph/`，Kotlin 全量索引，随文件改动自动同步）。定位代码时`优先`查图谱，不要一上来就 grep 或逐个读文件。
+
+- 主入口 `codegraph explore "<符号名或问题>"`：一次返回相关符号的逐行源码、彼此的调用链和受影响范围（blast radius）。配置了 MCP 的 Agent 用等价的 `codegraph_explore` 工具。
+- `codegraph query <关键字>` 按名字找符号位置；`codegraph node <符号>` 看单个符号的源码与调用上下游。
+- 改动共享契约前用 `codegraph impact <符号>` 确认影响面，`codegraph callers <符号>` 列出全部调用方，`codegraph affected <文件...>` 找出需要跟着跑的测试。
+- `codegraph explore` 输出的源码即当前磁盘内容，已展示的文件不需再读一遍。图谱只覆盖代码符号，资源、Prompt asset、`update.json` 等非代码文件仍需直接查看。
+- 图谱是本地派生数据，不进版本库；新克隆的工作副本执行一次 `codegraph init` 即可，无需手动重建或提交。
+
+下表是按领域的高频入口，用于确定探索起点；具体调用关系查图谱，不在本文展开。以下路径均相对于 `app/src/main/java/com/manga/translate/`：
 
 | 领域 | 入口与关键文件 |
 |---|---|
@@ -82,7 +94,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 | 后台任务 | `background/TranslationKeepAliveService.kt`、`ServiceLibraryUiCallbacks.kt`、`library/LibraryUiBridge.kt` |
 | 设置 | `settings/ui/SettingsFragment.kt`、`settings/SettingsStore.kt` 及同目录各领域 Store |
 | 持久化 | `storage/TranslationStore.kt`、`OcrStore.kt`、`GlossaryStore.kt`、`TranslationProgressStore.kt`、`TranslationTaskPersistence.kt` |
-| 平台能力 | `platform/AppLogger.kt`、`PromptAssetResolver.kt`、`ModelErrorDialogs.kt`、`ErrorDialogFormatter.kt` |
+| 平台能力 | `platform/AppLogger.kt`、`PromptAssetResolver.kt`、`ModelErrorDialogs.kt`、`ErrorDialogFormatter.kt`、`PerformanceTrace.kt`、`RequestPerfTrace.kt` |
 | 更新 | `app/UpdateChecker.kt`、根目录 `update.json` |
 
 ## 核心行为契约
@@ -155,6 +167,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 | 页级任务进度 | `TranslationProgressStore` |
 | `cache/floating_translate_cache.json` | `FloatingTranslationCacheStore`；清除应用缓存即可删除 |
 | `files/ai_provider_profiles.json` | `ProviderProfileStore` |
+| 应用备份包（ZIP） | `AppBackupManager`；包含 `manga_library/`、设置偏好、AI profile 和自定义字体 |
 | 当前后台任务描述 | `TranslationTaskPersistence` |
 | 阅读进度 | `ReadingProgressStore` |
 
@@ -178,6 +191,8 @@ Prompt 位于 `assets/prompts/`，基础文件包括 `llm_prompts.json`、`llm_p
 ## 日志与排查
 
 - 日志入口为 `platform/AppLogger.kt`；日志优先写外部私有目录上级的 `log/`，回退到 `files/logs/`。
+- 性能基线通过 `PerformanceTrace`（分阶段耗时 + `attribute()` 页面上下文）和 `RequestPerfTrace`（每请求重试次数、各次尝试的 HTTP 状态、耗时）以日志形式输出，两者共用 `loadModelIoLogging()` 开关，默认关闭。关闭时不采样时钟、不产生日志行。
+- 新增性能埋点应复用这两个类，不要在业务代码里另写计时与日志拼接；耗时数值属于一次性测量结果，不得记录到本文。
 - Java/Kotlin 未捕获异常会写 `crash_latest.log`；ONNX 等 native 崩溃不会进入 Java handler，使用 `adb logcat` 或 tombstone 排查。
 - 翻译问题依次检查 `TranslationPipeline`、`TextBubbleTranslationCoordinator`、`LlmClient` 和对应 `*.json` / `*.ocr.json`。
 - 翻译供应商问题检查 `SettingsStore.load()`、`TranslationPipeline` 和 `FolderTranslationCoordinator`。

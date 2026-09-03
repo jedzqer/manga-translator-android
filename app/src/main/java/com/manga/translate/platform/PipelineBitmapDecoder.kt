@@ -7,6 +7,7 @@ import android.graphics.ImageDecoder
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
+import android.util.LruCache
 import androidx.core.graphics.scale
 import java.io.Closeable
 import java.io.File
@@ -35,6 +36,16 @@ data class PipelineDetectionBitmap(
 
 internal object PipelineBitmapDecoder {
     private const val OCR_CROP_MAX_EDGE = 2048
+    private const val IMAGE_SIZE_CACHE_ENTRIES = 2048
+
+    private data class ImageSizeCacheEntry(
+        val lastModified: Long,
+        val fileSize: Long,
+        val size: PipelineImageSize
+    )
+
+    private val imageSizeCache =
+        LruCache<String, ImageSizeCacheEntry>(IMAGE_SIZE_CACHE_ENTRIES)
 
     suspend fun decodeForDetection(
         imageFile: File,
@@ -81,7 +92,35 @@ internal object PipelineBitmapDecoder {
         return PipelineDetectionBitmap(bitmap, sourceWidth, sourceHeight)
     }
 
+    /**
+     * Reads image dimensions, caching by path plus file fingerprint.
+     *
+     * Batch translation reads the size of every page at least twice: once while
+     * scanning a folder for pages that still need work (via the OCR cache mode in
+     * the expected metadata) and again while processing the page. Each read was a
+     * separate bounds decode, which on a 1000-page folder meant a long unresponsive
+     * stretch before the first page started. The cache is invalidated by
+     * `lastModified` and length, so an edited or replaced image is re-read.
+     */
     fun readImageSize(imageFile: File): PipelineImageSize? {
+        val path = imageFile.absolutePath
+        val lastModified = imageFile.lastModified()
+        val length = imageFile.length()
+        synchronized(imageSizeCache) {
+            imageSizeCache.get(path)?.let { cached ->
+                if (cached.lastModified == lastModified && cached.fileSize == length) {
+                    return cached.size
+                }
+            }
+        }
+        val size = decodeImageSize(imageFile) ?: return null
+        synchronized(imageSizeCache) {
+            imageSizeCache.put(path, ImageSizeCacheEntry(lastModified, length, size))
+        }
+        return size
+    }
+
+    private fun decodeImageSize(imageFile: File): PipelineImageSize? {
         if (ImageFileSupport.isAvifFile(imageFile.name)) {
             val size = AvifBitmapDecoder.getSize(imageFile) ?: return null
             return PipelineImageSize(size.width, size.height)
@@ -167,14 +206,6 @@ internal object PipelineBitmapDecoder {
         return max(sample, 1)
     }
 
-    private fun calculateCropSampleSize(width: Int, height: Int, maxEdge: Int): Int {
-        var sample = 1
-        while (width / (sample * 2) >= maxEdge || height / (sample * 2) >= maxEdge) {
-            sample *= 2
-        }
-        return max(sample, 1)
-    }
-
     internal fun calculateFallbackSampleSize(
         sourceWidth: Int,
         sourceHeight: Int,
@@ -206,7 +237,7 @@ internal object PipelineBitmapDecoder {
 
         override suspend fun decodeRegion(rect: RectF, maxEdge: Int): Bitmap? {
             val bounds = rect.toDecodeRect(width, height) ?: return null
-            val sampleSize = calculateCropSampleSize(bounds.width(), bounds.height(), maxEdge)
+            val sampleSize = calculateInSampleSizeForMaxEdge(bounds.width(), bounds.height(), maxEdge)
             val options = BitmapFactory.Options().apply {
                 inSampleSize = sampleSize
                 inPreferredConfig = Bitmap.Config.ARGB_8888

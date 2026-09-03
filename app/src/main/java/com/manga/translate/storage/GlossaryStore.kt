@@ -30,12 +30,7 @@ class GlossaryStore {
             json.put(key, value)
         }
         val file = glossaryFileFor(folder, targetKey)
-        val tmp = File(file.parentFile, "${file.name}.tmp")
-        tmp.writeText(json.toString())
-        if (!tmp.renameTo(file)) {
-            file.writeText(tmp.readText())
-            tmp.delete()
-        }
+        writeFileAtomically(file, json.toString())
     }
 
     fun glossaryFileFor(folder: File, targetKey: String = DEFAULT_TARGET_KEY): File {

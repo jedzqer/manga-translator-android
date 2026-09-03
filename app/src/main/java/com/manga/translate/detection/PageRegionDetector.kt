@@ -8,6 +8,7 @@ import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.TranslationCoreDefaults
 import com.manga.translate.ocr.PaddleTextLineDetector
 import com.manga.translate.platform.AppLogger
+import com.manga.translate.platform.PerformanceTrace
 import com.manga.translate.platform.BitmapCropSource
 import com.manga.translate.platform.DETECTION_MAX_EDGE
 import com.manga.translate.platform.PipelineBitmapDecoder
@@ -100,6 +101,57 @@ internal fun shouldUseLongImageTiling(pageWidth: Int, pageHeight: Int): Boolean 
     if (pageHeight < LONG_IMAGE_MIN_HEIGHT_PX) return false
     return pageHeight / pageWidth.toFloat() > LONG_IMAGE_ASPECT_THRESHOLD
 }
+
+/**
+ * Unified tiny region filter with configurable thresholds.
+ * Text detector uses 6x16px absolute bounds; bubble detector uses 12x28px scaled bounds.
+ */
+private fun isTinyErrorRegion(
+    rect: RectF,
+    imageWidth: Int,
+    imageHeight: Int,
+    minShortSidePx: Float,
+    minLongSidePx: Float,
+    shortSideRatio: Float,
+    longSideRatio: Float,
+    maxAreaRatio: Float
+): Boolean {
+    val width = rect.width().coerceAtLeast(0f)
+    val height = rect.height().coerceAtLeast(0f)
+    if (width <= 0f || height <= 0f) return true
+
+    val shortSide = min(width, height)
+    val longSide = max(width, height)
+    val imageArea = (imageWidth.toLong() * imageHeight.toLong())
+        .toFloat()
+        .coerceAtLeast(1f)
+    val areaRatio = (width * height) / imageArea
+
+    val imageMinSide = min(imageWidth, imageHeight).toFloat().coerceAtLeast(1f)
+    val maxShortSide = max(minShortSidePx, imageMinSide * shortSideRatio)
+    val maxLongSide = max(minLongSidePx, imageMinSide * longSideRatio)
+
+    return shortSide <= maxShortSide &&
+        longSide <= maxLongSide &&
+        areaRatio <= maxAreaRatio
+}
+
+internal fun isTinyTextErrorRegion(rect: RectF, imageWidth: Int, imageHeight: Int): Boolean {
+    return isTinyErrorRegion(
+        rect = rect,
+        imageWidth = imageWidth,
+        imageHeight = imageHeight,
+        minShortSidePx = TINY_TEXT_SHORT_SIDE_MAX_PX,
+        minLongSidePx = TINY_TEXT_LONG_SIDE_MAX_PX,
+        shortSideRatio = 0f,  // Text uses absolute bounds, no image-relative scaling
+        longSideRatio = 0f,
+        maxAreaRatio = TINY_TEXT_MAX_AREA_RATIO
+    )
+}
+
+private const val TINY_TEXT_SHORT_SIDE_MAX_PX = 6f
+private const val TINY_TEXT_LONG_SIDE_MAX_PX = 16f
+private const val TINY_TEXT_MAX_AREA_RATIO = 0.0002f
 
 internal fun planLongImageBubbleDetectionTiles(
     pageWidth: Int,
@@ -515,6 +567,112 @@ internal fun longImageMaxRegionHeight(pageWidth: Int, pageHeight: Int): Float {
     return pageWidth * LONG_IMAGE_MAX_REGION_HEIGHT_WIDTH_RATIO
 }
 
+/**
+ * Rejoins balloon boxes that the detector split into overlapping halves.
+ *
+ * A single detected text line cannot belong to two different balloons, so a line that
+ * straddles two mutually overlapping boxes without fitting inside either one is direct
+ * evidence they are two fragments of one balloon. This catches splits that the
+ * confidence-based NMS in [deduplicateBubbleDetections] leaves behind: the fragments'
+ * centers drift too far apart to look like duplicate predictions, and unioning them is
+ * the correct repair anyway, since suppressing one fragment would drop half the text.
+ */
+internal fun mergeBubblesSpannedByTextLines(
+    balloons: List<BubbleDetection>,
+    textLines: List<RectF>?,
+    pageWidth: Int,
+    pageHeight: Int
+): List<BubbleDetection> {
+    if (balloons.size <= 1 || textLines.isNullOrEmpty()) return balloons
+    val imageArea = (pageWidth.toFloat() * pageHeight.toFloat()).coerceAtLeast(1f)
+    val working = balloons.toMutableList()
+    // Iterate to a fixed point: a union can reach a third fragment.
+    var merged = true
+    while (merged) {
+        merged = false
+        outer@ for (i in working.indices) {
+            var j = i + 1
+            while (j < working.size) {
+                if (isBubblePairSpannedByAnyTextLine(working[i], working[j], textLines, imageArea)) {
+                    working[i] = unionBubbleDetections(working[i], working[j], pageHeight)
+                    working.removeAt(j)
+                    merged = true
+                    // Indices shifted; restart the scan rather than reasoning about them.
+                    break@outer
+                }
+                j++
+            }
+        }
+    }
+    return working
+}
+
+private fun isBubblePairSpannedByAnyTextLine(
+    a: BubbleDetection,
+    b: BubbleDetection,
+    textLines: List<RectF>,
+    imageArea: Float
+): Boolean {
+    if (a.classId != b.classId) return false
+    val rectA = a.rect
+    val rectB = b.rect
+    // Genuinely adjacent balloons barely overlap; fragments of one balloon share real area.
+    if (rectIntersectionArea(rectA, rectB) /
+        min(rectAreaValue(rectA), rectAreaValue(rectB)).coerceAtLeast(1f) <
+        BUBBLE_SPAN_MIN_PAIR_OVERLAP
+    ) {
+        return false
+    }
+    val union = RectF(
+        min(rectA.left, rectB.left),
+        min(rectA.top, rectB.top),
+        max(rectA.right, rectB.right),
+        max(rectA.bottom, rectB.bottom)
+    )
+    if (rectAreaValue(union) / imageArea > BUBBLE_SPAN_MAX_UNION_FRACTION) return false
+    return textLines.any { line -> isTextLineSpanningBubbles(line, rectA, rectB) }
+}
+
+private fun isTextLineSpanningBubbles(line: RectF, a: RectF, b: RectF): Boolean {
+    val lineWidth = line.width()
+    if (lineWidth <= 0f || line.height() <= 0f) return false
+    // A line already inside one box says nothing about the pair.
+    if (rectContainsHorizontally(a, line) || rectContainsHorizontally(b, line)) return false
+    val overlapA = max(0f, min(line.right, a.right) - max(line.left, a.left)) / lineWidth
+    val overlapB = max(0f, min(line.right, b.right) - max(line.left, b.left)) / lineWidth
+    if (overlapA < BUBBLE_SPAN_MIN_LINE_OVERLAP || overlapB < BUBBLE_SPAN_MIN_LINE_OVERLAP) {
+        return false
+    }
+    // The line must sit at a height both boxes actually cover, so stacked balloons that
+    // merely share a column are not joined by an unrelated line.
+    val centerY = (line.top + line.bottom) * 0.5f
+    return centerY in a.top..a.bottom && centerY in b.top..b.bottom
+}
+
+private fun rectContainsHorizontally(container: RectF, line: RectF): Boolean {
+    return container.left <= line.left && line.right <= container.right
+}
+
+private fun unionBubbleDetections(
+    a: BubbleDetection,
+    b: BubbleDetection,
+    pageHeight: Int
+): BubbleDetection {
+    val base = if (a.confidence >= b.confidence) a else b
+    return base.copy(
+        rect = RectF(
+            min(a.rect.left, b.rect.left),
+            min(a.rect.top, b.rect.top),
+            max(a.rect.right, b.rect.right),
+            max(a.rect.bottom, b.rect.bottom)
+        ),
+        maskContour = mergePageMaskContours(
+            listOfNotNull(a.maskContour, b.maskContour),
+            pageHeight
+        )
+    )
+}
+
 internal class PageRegionDetector(
     context: Context,
     private val settingsStore: SettingsStore = SettingsStore(context.applicationContext)
@@ -540,29 +698,57 @@ internal class PageRegionDetector(
         logTag: String = "PageRegionDetector",
         detectionSelection: RegionDetectionSelection = RegionDetectionSelection.BUBBLES_AND_TEXT
     ): PageRegionDetectionResult? {
-        if (!shouldUseLongImageTiling(pageWidth, pageHeight)) {
-            return detectFullPage(cropSource, pageWidth, pageHeight, logTag, detectionSelection)
-        }
-        return try {
-            detectLongImageTiledPage(cropSource, pageWidth, pageHeight, logTag, detectionSelection)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            AppLogger.log(logTag, "Tiled page detection failed; trying full-page fallback", e)
-            try {
-                detectFullPage(
-                    cropSource,
-                    pageWidth,
-                    pageHeight,
-                    "$logTag[fallback]",
-                    detectionSelection
-                )
-            } catch (fallbackCancellation: CancellationException) {
-                throw fallbackCancellation
-            } catch (fallbackError: Exception) {
-                AppLogger.log(logTag, "Full-page fallback detection failed", fallbackError)
-                null
+        val trace = PerformanceTrace(
+            tag = logTag,
+            operation = "detect:${pageWidth}x$pageHeight",
+            enabled = settingsStore.loadModelIoLogging()
+        )
+        trace.attribute("detection", detectionSelection.prefValue)
+        try {
+            return trace.measure("model") {
+                if (!shouldUseLongImageTiling(pageWidth, pageHeight)) {
+                    trace.attribute("mode", "full")
+                    return@measure detectFullPage(
+                        cropSource,
+                        pageWidth,
+                        pageHeight,
+                        logTag,
+                        detectionSelection
+                    )
+                }
+                trace.attribute("mode", "tiled")
+                try {
+                    detectLongImageTiledPage(
+                        cropSource,
+                        pageWidth,
+                        pageHeight,
+                        logTag,
+                        detectionSelection,
+                        trace
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLogger.log(logTag, "Tiled page detection failed; trying full-page fallback", e)
+                    trace.attribute("mode", "tiled_fallback_full")
+                    try {
+                        detectFullPage(
+                            cropSource,
+                            pageWidth,
+                            pageHeight,
+                            "$logTag[fallback]",
+                            detectionSelection
+                        )
+                    } catch (fallbackCancellation: CancellationException) {
+                        throw fallbackCancellation
+                    } catch (fallbackError: Exception) {
+                        AppLogger.log(logTag, "Full-page fallback detection failed", fallbackError)
+                        null
+                    }
+                }
             }
+        } finally {
+            trace.logSummary()
         }
     }
 
@@ -591,7 +777,8 @@ internal class PageRegionDetector(
         pageWidth: Int,
         pageHeight: Int,
         logTag: String,
-        detectionSelection: RegionDetectionSelection
+        detectionSelection: RegionDetectionSelection,
+        trace: PerformanceTrace? = null
     ): PageRegionDetectionResult? {
         val detectBubbles = detectionSelection.detectBubbles
         val detectText = detectionSelection.detectText
@@ -618,6 +805,9 @@ internal class PageRegionDetector(
             )
             return null
         }
+        trace?.attribute("bubbleTiles", bubbleDetection.tileCount)
+        trace?.attribute("bubbleTileFailures", bubbleDetection.failedTileCount)
+        trace?.attribute("bubbleCandidates", bubbleDetections.size)
         val bubbleDetectionSucceeded = bubbleDetection.succeeded
         val deduplicatedGroups = try {
             filterLongImageBubbleGroups(
@@ -654,6 +844,7 @@ internal class PageRegionDetector(
             )
         }
         val paddleTiles = planPaddleTextDetectionTiles(pageWidth, pageHeight)
+        trace?.attribute("textTiles", paddleTiles.size)
         if (paddleTiles.isEmpty()) {
             return buildDetectionResult(
                 width = pageWidth,
@@ -765,13 +956,26 @@ internal class PageRegionDetector(
             pageWidth,
             pageHeight
         )
+        val rejoinedBubbles = mergeBubblesSpannedByTextLines(
+            balloons = deduplicatedBubbles,
+            textLines = deduplicatedTextLines,
+            pageWidth = pageWidth,
+            pageHeight = pageHeight
+        )
+        if (rejoinedBubbles.size != deduplicatedBubbles.size) {
+            AppLogger.log(
+                logTag,
+                "Rejoined ${deduplicatedBubbles.size - rejoinedBubbles.size} split bubble(s) " +
+                    "using text lines"
+            )
+        }
         val supplementTextRects = filterOverlapping(
             textRects = TextBlockMerger.deduplicateLines(
                 supplementTextLines,
                 pageWidth,
                 pageHeight
             ),
-            bubbleRects = deduplicatedBubbles.map { it.rect },
+            bubbleRects = rejoinedBubbles.map { it.rect },
             threshold = TEXT_IOU_THRESHOLD
         )
         val sizeFilteredTextRects = if (detectBubbles) {
@@ -818,9 +1022,12 @@ internal class PageRegionDetector(
         return buildDetectionResult(
             width = pageWidth,
             height = pageHeight,
-            detections = deduplicatedBubbles,
+            detections = rejoinedBubbles,
             textBlocks = mergedTextBlocks,
             detectedTextLines = deduplicatedTextLines,
+            // Text tiles all succeeded to reach here, but the bubble detector may have been
+            // unavailable; that page is missing every balloon and must not be cached as complete.
+            detectionComplete = !detectBubbles || bubbleDetectionSucceeded,
             detectionMode = PageRegionDetectionMode.TILED_LONG
         )
     }
@@ -982,6 +1189,18 @@ internal class PageRegionDetector(
         detectionSelection: RegionDetectionSelection
     ): PageRegionDetectionResult? {
         val unified = detectUnifiedRegions(bitmap, logTag, detectionSelection) ?: return null
+        val balloons = mergeBubblesSpannedByTextLines(
+            balloons = unified.balloons,
+            textLines = unified.detectedTextLines,
+            pageWidth = bitmap.width,
+            pageHeight = bitmap.height
+        )
+        if (balloons.size != unified.balloons.size) {
+            AppLogger.log(
+                logTag,
+                "Rejoined ${unified.balloons.size - balloons.size} split bubble(s) using text lines"
+            )
+        }
         val rawTextRects = if (detectionSelection == RegionDetectionSelection.TEXT_ONLY) {
             // Keep the dedicated Paddle-only path equivalent to
             // experiment/paddle-ocr-text-blocks. These are genuine text-line boxes and
@@ -997,7 +1216,7 @@ internal class PageRegionDetector(
         }
         val filteredTextRects = filterOverlapping(
             textRects = rawTextRects,
-            bubbleRects = unified.balloons.map { it.rect },
+            bubbleRects = balloons.map { it.rect },
             threshold = TEXT_IOU_THRESHOLD
         )
         val textBlocks = TextBlockMerger.merge(
@@ -1011,7 +1230,7 @@ internal class PageRegionDetector(
         return buildDetectionResult(
             width = bitmap.width,
             height = bitmap.height,
-            detections = unified.balloons,
+            detections = balloons,
             textBlocks = textBlocks,
             detectedTextLines = unified.detectedTextLines,
             detectionComplete = unified.detectionComplete,
@@ -1073,7 +1292,11 @@ internal class PageRegionDetector(
             balloons = balloons,
             freeTextRects = textRects,
             detectedTextLines = detectedTextLines,
-            detectionComplete = !detectText || textDetectionSucceeded
+            // Both enabled detectors must have succeeded: a caught bubble-detection failure
+            // degrades to an empty list, and treating that as complete would persist a page
+            // missing all balloons into the OCR cache with no automatic retry.
+            detectionComplete = (!detectBubbles || bubbleDetectionSucceeded) &&
+                (!detectText || textDetectionSucceeded)
         )
     }
 
@@ -1446,7 +1669,7 @@ internal class PageRegionDetector(
     ): List<BubbleDetection> {
         if (detections.isEmpty()) return detections
         val filtered = detections.filterNot {
-            isTinyErrorRegion(it.rect, bitmap.width, bitmap.height)
+            isTinyBubbleErrorRegion(it.rect, bitmap.width, bitmap.height)
         }
         val removedCount = detections.size - filtered.size
         if (removedCount > 0) {
@@ -1465,7 +1688,10 @@ internal class PageRegionDetector(
         logTag: String
     ): List<RectF> {
         if (rects.isEmpty()) return rects
-        val filtered = rects.filterNot { isTinyErrorRegion(it, pageWidth, pageHeight) }
+        // Text lines use a much smaller threshold than bubble candidates. The bubble
+        // detector's 12x28px noise filter can otherwise remove legitimate small captions,
+        // annotations, and sound effects on regular pages.
+        val filtered = rects.filterNot { isTinyTextErrorRegion(it, pageWidth, pageHeight) }
         val removedCount = rects.size - filtered.size
         if (removedCount > 0) {
             AppLogger.log(
@@ -1525,23 +1751,17 @@ internal class PageRegionDetector(
         )
     }
 
-    private fun isTinyErrorRegion(rect: RectF, imageWidth: Int, imageHeight: Int): Boolean {
-        val width = rect.width().coerceAtLeast(0f)
-        val height = rect.height().coerceAtLeast(0f)
-        if (width <= 0f || height <= 0f) return true
-
-        val shortSide = min(width, height)
-        val longSide = max(width, height)
-        val imageMinSide = min(imageWidth, imageHeight).toFloat().coerceAtLeast(1f)
-        val imageArea = (imageWidth.toFloat() * imageHeight.toFloat()).coerceAtLeast(1f)
-        val areaRatio = (width * height) / imageArea
-
-        val maxShortSide = max(TINY_BUBBLE_SHORT_SIDE_MIN_PX, imageMinSide * TINY_BUBBLE_SHORT_SIDE_RATIO)
-        val maxLongSide = max(TINY_BUBBLE_LONG_SIDE_MIN_PX, imageMinSide * TINY_BUBBLE_LONG_SIDE_RATIO)
-
-        return shortSide <= maxShortSide &&
-            longSide <= maxLongSide &&
-            areaRatio <= TINY_BUBBLE_MAX_AREA_RATIO
+    private fun isTinyBubbleErrorRegion(rect: RectF, imageWidth: Int, imageHeight: Int): Boolean {
+        return isTinyErrorRegion(
+            rect = rect,
+            imageWidth = imageWidth,
+            imageHeight = imageHeight,
+            minShortSidePx = TINY_BUBBLE_SHORT_SIDE_MIN_PX,
+            minLongSidePx = TINY_BUBBLE_LONG_SIDE_MIN_PX,
+            shortSideRatio = TINY_BUBBLE_SHORT_SIDE_RATIO,
+            longSideRatio = TINY_BUBBLE_LONG_SIDE_RATIO,
+            maxAreaRatio = TINY_BUBBLE_MAX_AREA_RATIO
+        )
     }
 
     companion object {
@@ -1619,6 +1839,9 @@ private fun RectF.offsetBy(offsetX: Float, offsetY: Float): RectF {
     )
 }
 
+private const val BUBBLE_SPAN_MIN_PAIR_OVERLAP = 0.15f
+private const val BUBBLE_SPAN_MIN_LINE_OVERLAP = 0.25f
+private const val BUBBLE_SPAN_MAX_UNION_FRACTION = 0.35f
 private const val LONG_IMAGE_ASPECT_THRESHOLD = 2.0f
 private const val LONG_IMAGE_MIN_HEIGHT_PX = 2048
 // Cover 2.5 page widths per bubble tile, then compress Y by 20%. The model sees

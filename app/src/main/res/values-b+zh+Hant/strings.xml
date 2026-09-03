@@ -163,14 +163,13 @@
     <string name="floating_translate_settings_title">懸浮窗翻譯設定</string>
     <string name="normal_bubble_render_settings_button">普通氣泡框設定</string>
     <string name="normal_bubble_render_settings_title">普通氣泡框設定</string>
-    <string name="normal_bubble_render_settings_note">用於閱讀頁、條漫頁與匯出圖片的普通氣泡框繪製。可分別設定普通氣泡與游離氣泡的回縮與不透明度。文字會根據氣泡大小自動適配字號；當文字密度過高時自動擴大氣泡。游離氣泡僅指普通模式下由文字檢測補出的框，不包含使用者手動新增氣泡。字型請在單獨的「字型設定」中統一調整。</string>
+    <string name="normal_bubble_render_settings_note">用於閱讀頁、條漫頁與匯出圖片的普通氣泡框繪製。可分別設定普通氣泡與游離氣泡的回縮與不透明度。文字會根據氣泡大小自動適配字號；文字會盡量填滿氣泡，不改變氣泡大小。游離氣泡僅指普通模式下由文字檢測補出的框，不包含使用者手動新增氣泡。字型請在單獨的「字型設定」中統一調整。</string>
     <string name="normal_bubble_shrink_percent_hint">氣泡框回縮 (0–30)</string>
     <string name="normal_bubble_opacity_percent_hint">普通氣泡不透明度 (0–100)</string>
     <string name="normal_bubble_free_shrink_percent_hint">游離氣泡回縮 (0–30)</string>
     <string name="normal_bubble_free_opacity_percent_hint">游離氣泡不透明度 (0–100)</string>
+    <string name="normal_bubble_auto_adapt_color">普通氣泡自適應背景色</string>
     <string name="normal_bubble_free_auto_adapt_color">游離氣泡自適應背景色</string>
-    <string name="normal_bubble_min_area_per_char_label">文字密度下限（值越大文字越大，可能擴大氣泡）</string>
-    <string name="normal_bubble_min_area_value">當前: %d sp² / 字</string>
     <string name="bubble_font_settings_button">字型設定</string>
     <string name="bubble_font_settings_button_uploaded">字型設定（已上傳）</string>
     <string name="bubble_font_settings_title">字型設定</string>
@@ -191,7 +190,7 @@
     <string name="bubble_font_bold">字型加粗</string>
     <string name="floating_bubble_render_settings_button">懸浮窗氣泡設定</string>
     <string name="floating_bubble_render_settings_title">懸浮窗氣泡設定</string>
-    <string name="floating_bubble_render_settings_note">用於懸浮窗翻譯結果覆蓋層。大小支援外擴或內縮，形狀支援矩形或內接橢圓。文字會根據氣泡大小自動適配字號；當文字密度過高時自動擴大氣泡。字型請在單獨的「字型設定」中統一調整。</string>
+    <string name="floating_bubble_render_settings_note">用於懸浮窗翻譯結果覆蓋層。大小支援外擴或內縮，形狀支援矩形或內接橢圓。文字會根據氣泡大小自動適配字號；文字會盡量填滿氣泡，不改變氣泡大小。字型請在單獨的「字型設定」中統一調整。</string>
     <string name="floating_bubble_size_adjust_percent_hint">氣泡框大小 (-30–30，正數外擴)</string>
     <string name="floating_bubble_opacity_percent_hint">氣泡框不透明度 (0–100)</string>
     <string name="floating_bubble_auto_adapt_color">氣泡自適應背景色</string>
@@ -199,8 +198,6 @@
     <string name="floating_bubble_shape_rectangle">預設矩形</string>
     <string name="floating_bubble_shape_inscribed_ellipse">內接橢圓</string>
     <string name="floating_bubble_horizontal_text">懸浮窗使用橫向排版</string>
-    <string name="floating_bubble_min_area_per_char_label">文字密度下限（值越大文字越大，可能擴大氣泡）</string>
-    <string name="floating_bubble_min_area_value">當前: %d sp² / 字</string>
     <string name="floating_api_url_hint">懸浮窗翻譯 API 位址</string>
     <string name="floating_api_key_hint">懸浮窗翻譯 API Key</string>
     <string name="floating_model_name_hint">懸浮窗翻譯模型名稱</string>
@@ -211,6 +208,10 @@
     <string name="floating_proofreading_mode_note">開啟後，懸浮窗翻譯完成會自動進入現有編輯模式，方便手動增刪和調整氣泡。</string>
     <string name="floating_auto_close_on_screen_change">自動清除氣泡</string>
     <string name="floating_auto_close_on_screen_change_note">開啟後，可以在翻頁時自動關閉翻譯氣泡，但會增加一些效能消耗。</string>
+    <string name="floating_detection_region_title">翻譯檢測區域</string>
+    <string name="floating_detection_region_note">可設定頂部和底部留空比例，用於避開閱讀器狀態列、日期和時間（0–90%）。</string>
+    <string name="floating_detection_top_inset_hint">頂部留空比例（%）</string>
+    <string name="floating_detection_bottom_inset_hint">底部留空比例（%）</string>
     <string name="floating_gesture_settings_title">懸浮球手勢</string>
     <string name="floating_gesture_settings_note">為單擊、雙擊、長按、三擊分別指定操作。允許重複，三擊預設為無操作。</string>
     <string name="floating_single_tap_action_hint">單擊</string>
@@ -226,6 +227,8 @@
     <string name="floating_ai_api_concurrency_hint">懸浮窗 AI API 並行上限 (1–50)</string>
     <string name="floating_translate_settings_note">留空某一項則使用主設定中的對應配置。</string>
     <string name="ocr_use_local">使用本地 OCR</string>
+    <string name="ocr_use_xnnpack">啟用 XNNPACK 本地推論加速（實驗性）</string>
+    <string name="ocr_use_xnnpack_note">僅影響本地 ONNX 模型。已載入的模型需重新啟動軟體後生效；部分裝置可能不相容、變慢或在載入模型時崩潰，遇到異常請關閉後重新啟動。</string>
     <string name="ocr_api_format_openai_compatible">OpenAI 相容</string>
     <string name="ocr_api_format_hint">OCR API 格式</string>
     <string name="ocr_api_url_hint">OCR API 位址</string>
@@ -361,6 +364,7 @@
     <string name="folder_read">開始閱讀</string>
     <string name="folder_back">返回</string>
     <string name="folder_image_count">%1$d 張圖片</string>
+    <string name="folder_stats_unknown">—</string>
     <string name="folder_collection_meta">%1$d 個章節 · %2$d 張圖片</string>
     <string name="folder_delete">刪除</string>
     <string name="folder_rename">重新命名</string>
@@ -423,7 +427,7 @@
     <string name="folder_glossary_processing_note">關閉譯名處理後可並發翻譯，速度更快。</string>
     <string name="folder_bubble_detection_info_title">區域檢測模式說明</string>
     <string name="folder_bubble_detection_info_desc">區域檢測模式說明</string>
-    <string name="folder_bubble_detection_info">僅氣泡只使用氣泡分割模型；僅文字只使用 Paddle OCR 檢測並合併全部文字塊，識別速度最快；氣泡和游離文字會同時檢測普通氣泡，並用 Paddle OCR 補充和合併氣泡外文字，識別速度最慢。</string>
+    <string name="folder_bubble_detection_info">僅氣泡只使用氣泡分割模型；僅文字只使用 Paddle OCR 檢測並合併全部文字塊，識別速度最快；氣泡和游離文字會同時檢測普通氣泡，並用 Paddle OCR 補充和合併氣泡外文字，識別速度最慢。如果出現氣泡亂飛、位置明顯偏移等情況，建議切換為「僅氣泡」模式識別。</string>
     <string name="folder_detection_mode_bubbles">僅氣泡</string>
     <string name="folder_detection_mode_text">僅文字</string>
     <string name="folder_detection_mode_bubbles_and_text">氣泡和游離文字</string>
@@ -529,6 +533,7 @@
 %1$s</string>
     <string name="model_response_failed_clear_advanced_params">高級 LLM 參數可能不受目前介面支援。請在「LLM 參數」裡把可選高級參數留空後重試。</string>
     <string name="model_response_empty_content">模型返回空回應，無法提取有效內容。</string>
+    <string name="model_response_truncated">模型返回內容被截斷（已達到 max_output_tokens 上限），譯文不完整。請在「LLM 參數」中調大 max_output_tokens 後重試。</string>
     <string name="model_response_blank_bubbles">模型返回空白結果：%1$s 模式下有 %2$d 個氣泡未返回有效翻譯內容。</string>
     <string name="error_page_prefix">頁面：</string>
     <string name="translation_continue">重試</string>
@@ -595,6 +600,15 @@
 
     <!-- About / Crash / Permission -->
     <string name="about_button">關於軟體</string>
+    <string name="backup_export_button">匯出漫畫與設定</string>
+    <string name="backup_import_button">匯入漫畫與設定</string>
+    <string name="backup_export_success">應用程式備份匯出完成</string>
+    <string name="backup_export_failed">應用程式備份匯出失敗</string>
+    <string name="backup_import_success">應用程式備份匯入完成，共還原 %1$d 個漫畫檔案。重新進入漫畫庫即可查看。</string>
+    <string name="backup_import_failed">應用程式備份匯入失敗，請確認選擇有效的備份檔案</string>
+    <string name="backup_export_running">正在匯出應用程式備份，請稍候…</string>
+    <string name="backup_import_running">正在匯入應用程式備份，請稍候…</string>
+    <string name="backup_operation_canceled">備份操作已取消</string>
     <string name="about_dialog_title">關於</string>
     <string name="about_dialog_message">目前版本：%1$s</string>
     <string name="about_dialog_message_with_group">目前版本：%1$s

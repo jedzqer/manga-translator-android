@@ -51,6 +51,14 @@ internal class ApiSettingsStore(
             SettingsStore.MIN_FLOATING_OCR_CONCURRENCY,
             SettingsStore.MAX_FLOATING_OCR_CONCURRENCY
         )
+        val detectionTopInsetPercent = storage.prefs.getInt(
+            SettingsStore.KEY_FLOATING_DETECTION_TOP_INSET_PERCENT,
+            0
+        ).coerceIn(0, 90)
+        val detectionBottomInsetPercent = storage.prefs.getInt(
+            SettingsStore.KEY_FLOATING_DETECTION_BOTTOM_INSET_PERCENT,
+            0
+        ).coerceIn(0, 90 - detectionTopInsetPercent)
         return FloatingTranslateApiSettings(
             apiUrl = storage.prefs.getString(SettingsStore.KEY_FLOATING_API_URL, "") ?: "",
             apiKey = storage.prefs.getString(SettingsStore.KEY_FLOATING_API_KEY, "") ?: "",
@@ -91,7 +99,9 @@ internal class ApiSettingsStore(
             tripleTapAction = FloatingBallGestureAction.fromPref(
                 storage.prefs.getString(SettingsStore.KEY_FLOATING_TRIPLE_TAP_ACTION, null),
                 SettingsStore.DEFAULT_FLOATING_TRIPLE_TAP_ACTION
-            )
+            ),
+            detectionTopInsetPercent = detectionTopInsetPercent,
+            detectionBottomInsetPercent = detectionBottomInsetPercent
         )
     }
 
@@ -120,6 +130,11 @@ internal class ApiSettingsStore(
             SettingsStore.MIN_FLOATING_API_TIMEOUT_SECONDS,
             SettingsStore.MAX_FLOATING_API_TIMEOUT_SECONDS
         )
+        val normalizedTopInset = settings.detectionTopInsetPercent.coerceIn(0, 90)
+        val normalizedBottomInset = settings.detectionBottomInsetPercent.coerceIn(
+            0,
+            90 - normalizedTopInset
+        )
         storage.editSettings(
             setOf(
                 SettingsStore.KEY_FLOATING_API_URL,
@@ -134,7 +149,9 @@ internal class ApiSettingsStore(
                 SettingsStore.KEY_FLOATING_SINGLE_TAP_ACTION,
                 SettingsStore.KEY_FLOATING_DOUBLE_TAP_ACTION,
                 SettingsStore.KEY_FLOATING_LONG_PRESS_ACTION,
-                SettingsStore.KEY_FLOATING_TRIPLE_TAP_ACTION
+                SettingsStore.KEY_FLOATING_TRIPLE_TAP_ACTION,
+                SettingsStore.KEY_FLOATING_DETECTION_TOP_INSET_PERCENT,
+                SettingsStore.KEY_FLOATING_DETECTION_BOTTOM_INSET_PERCENT
             )
         ) {
             putString(SettingsStore.KEY_FLOATING_API_URL, settings.apiUrl)
@@ -174,6 +191,8 @@ internal class ApiSettingsStore(
                     SettingsStore.KEY_FLOATING_TRIPLE_TAP_ACTION,
                     settings.tripleTapAction.prefValue
                 )
+                .putInt(SettingsStore.KEY_FLOATING_DETECTION_TOP_INSET_PERCENT, normalizedTopInset)
+                .putInt(SettingsStore.KEY_FLOATING_DETECTION_BOTTOM_INSET_PERCENT, normalizedBottomInset)
         }
     }
 

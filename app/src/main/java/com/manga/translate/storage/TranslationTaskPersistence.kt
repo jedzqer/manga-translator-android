@@ -75,28 +75,10 @@ internal class TranslationTaskPersistence(context: Context) {
         private const val PREFS_NAME = "translation_task_persistence"
         private const val KEY_ACTIVE_TASK = "active_task"
 
-        fun fromFolder(
-            folder: File,
-            images: List<File>,
-            force: Boolean,
-            fullTranslate: Boolean,
-            glossaryProcessingEnabled: Boolean,
-            useVlDirectTranslate: Boolean,
-            language: TranslationLanguage
-        ): TranslationTaskDescriptor {
+        fun fromFolder(task: FolderTranslationTask): TranslationTaskDescriptor {
             return TranslationTaskDescriptor(
                 mode = MODE_SINGLE,
-                tasks = listOf(
-                    FolderTranslationTaskDescriptor(
-                        folderPath = folder.absolutePath,
-                        imagePaths = images.map(File::getAbsolutePath),
-                        force = force,
-                        fullTranslate = fullTranslate,
-                        glossaryProcessingEnabled = glossaryProcessingEnabled,
-                        useVlDirectTranslate = useVlDirectTranslate,
-                        language = language
-                    )
-                )
+                tasks = listOf(task.toDescriptor())
             )
         }
 

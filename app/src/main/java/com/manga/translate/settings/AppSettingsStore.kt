@@ -203,4 +203,14 @@ internal class AppSettingsStore(
             putString(SettingsStore.KEY_LINK_SOURCE, source.prefValue)
         }
     }
+
+    fun hasShownTutorialPrompt(): Boolean {
+        return storage.prefs.getBoolean(SettingsStore.KEY_TUTORIAL_PROMPT_SHOWN, false)
+    }
+
+    fun markTutorialPromptShown() {
+        storage.editSettings(setOf(SettingsStore.KEY_TUTORIAL_PROMPT_SHOWN)) {
+            putBoolean(SettingsStore.KEY_TUTORIAL_PROMPT_SHOWN, true)
+        }
+    }
 }

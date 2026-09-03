@@ -16,6 +16,7 @@ import com.manga.translate.platform.cropBitmap
 import com.manga.translate.platform.recycleSafely
 import com.manga.translate.settings.ApiSettings
 import com.manga.translate.settings.SettingsStore
+import com.manga.translate.storage.FloatingCacheScope
 import com.manga.translate.storage.FloatingTranslationCacheStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -61,10 +62,11 @@ internal class FloatingBubbleTranslationCoordinator(
         val cacheMisses = ArrayList<BubbleTranslation>(translatable.size)
         var exactCacheHits = 0
         var similarityCacheHits = 0
+        val cacheScope = buildCacheScope(apiSettings, language, promptAsset)
         for (bubble in translatable) {
             val cached = floatingTranslationCacheStore.findTextTranslation(
                 text = bubble.sourceText,
-                language = language
+                scope = cacheScope
             )
             if (cached == null) {
                 cacheMisses.add(bubble)
@@ -82,16 +84,8 @@ internal class FloatingBubbleTranslationCoordinator(
             "Text cache exactHits=$exactCacheHits similarityHits=$similarityCacheHits misses=${cacheMisses.size}"
         )
 
-        fun merge(): List<BubbleTranslation> {
-            return bubbles.filterNot { it.id in removedBubbleIds }.map { bubble ->
-                translatedMap[bubble.id]?.let { translated ->
-                    bubble.withTranslationResult(translated)
-                } ?: bubble
-            }
-        }
-
         if (cacheMisses.isEmpty()) {
-            return merge()
+            return mergeBubbleTranslations(bubbles, translatedMap, removedBubbleIds)
         }
 
         return try {
@@ -114,11 +108,11 @@ internal class FloatingBubbleTranslationCoordinator(
                     floatingTranslationCacheStore.putTextTranslation(
                         text = source.sourceText,
                         translation = bubble.translatedText,
-                        language = language
+                        scope = cacheScope
                     )
                 }
             }
-            val merged = merge()
+            val merged = mergeBubbleTranslations(bubbles, translatedMap, removedBubbleIds)
             AppLogger.log(logTag, "Translate success segments=${translatedMap.size}")
             merged
         } catch (e: LlmRequestException) {
@@ -150,6 +144,7 @@ internal class FloatingBubbleTranslationCoordinator(
         logTag: String = "FloatingOCR"
     ): FloatingBubbleImageTranslateOutcome = coroutineScope {
         val semaphore = Semaphore(concurrency.coerceIn(1, maxConcurrency))
+        val cacheScope = buildCacheScope(apiSettings, language, promptAsset)
         val tasks = bubbles.map { bubble ->
             async(Dispatchers.IO) {
                 semaphore.withPermit {
@@ -165,7 +160,7 @@ internal class FloatingBubbleTranslationCoordinator(
                         null
                     }
                     val cachedTranslation = imageCacheKey?.let {
-                        floatingTranslationCacheStore.findImageTranslation(it, language)
+                        floatingTranslationCacheStore.findImageTranslation(it, cacheScope)
                     }
                     if (useCache && !cachedTranslation.isNullOrBlank()) {
                         AppLogger.log("FloatingCache", "VL cache hit bubble=${bubble.id}")
@@ -211,7 +206,7 @@ internal class FloatingBubbleTranslationCoordinator(
                         floatingTranslationCacheStore.putImageTranslation(
                             imageKey = imageCacheKey,
                             translation = translatedText,
-                            language = language
+                            scope = cacheScope
                         )
                     }
                     if (translatedText.isBlank()) {
@@ -243,6 +238,23 @@ internal class FloatingBubbleTranslationCoordinator(
         val translated = results.mapNotNull { it.bubble }
         AppLogger.log(logTag, "VL direct translate success segments=${translated.size}")
         return@coroutineScope FloatingBubbleImageTranslateOutcome(bubbles = translated)
+    }
+
+    /**
+     * Builds the cache scope for the configuration actually used by this request, so a
+     * cached translation is never reused after the provider, model or prompt changed.
+     */
+    private fun buildCacheScope(
+        apiSettings: ApiSettings,
+        language: TranslationLanguage,
+        promptAsset: String
+    ): FloatingCacheScope {
+        return FloatingCacheScope(
+            language = language,
+            providerId = apiSettings.providerId,
+            modelName = apiSettings.modelName,
+            promptAsset = promptAsset
+        )
     }
 
     fun looksLikeVisionModelError(error: LlmRequestException): Boolean {

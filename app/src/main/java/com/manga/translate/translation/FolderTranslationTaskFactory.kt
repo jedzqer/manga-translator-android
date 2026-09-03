@@ -65,16 +65,7 @@ internal class FolderTranslationTaskFactory(
         images: List<File>,
         force: Boolean
     ): TranslationTaskDescriptor {
-        val task = buildFolderTask(folder, images, force)
-        return TranslationTaskPersistence.fromFolder(
-            folder = task.folder,
-            images = task.images,
-            force = task.force,
-            fullTranslate = task.fullTranslate,
-            glossaryProcessingEnabled = task.glossaryProcessingEnabled,
-            useVlDirectTranslate = task.useVlDirectTranslate,
-            language = task.language
-        )
+        return TranslationTaskPersistence.fromFolder(buildFolderTask(folder, images, force))
     }
 
     fun buildCollectionDescriptor(

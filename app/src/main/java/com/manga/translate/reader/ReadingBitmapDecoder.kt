@@ -29,11 +29,7 @@ data class ReadingRegionImageSource(
      * Tiled path prefers 1 so zoom can request full-resolution tiles.
      */
     val layoutSampleSize: Int
-) {
-    @Deprecated("Use layoutSampleSize", ReplaceWith("layoutSampleSize"))
-    val sampleSize: Int
-        get() = layoutSampleSize
-}
+)
 
 internal data class ReadingSourceTile(
     val left: Int,
@@ -48,14 +44,15 @@ internal data class ReadingSourceTile(
 }
 
 object ReadingBitmapDecoder {
-    // Decode a modest amount of extra detail for the first paint. Tiled paths can request
-    // sharper data later, while a lower multiplier keeps initial page latency down.
-    private const val INITIAL_DETAIL_MULTIPLIER = 2
+    // Keep extra detail for the first paint. Tiled paths can request sharper data later,
+    // but whole-image pages have no later refinement pass once their bitmap is displayed.
+    private const val INITIAL_DETAIL_MULTIPLIER = 3
     private const val MAX_LONG_EDGE = 8192
     private const val MAX_FULL_DECODE_PIXELS = 12_000_000
     private const val MAX_TOTAL_PIXELS = 16_777_216 // ~16MP hard cap for whole-image decode
     private const val TILE_DECODE_MIN_SOURCE_HEIGHT = 6144
     private const val TILE_OUTPUT_PIXEL_BUDGET = 4_194_304 // ~4MP per tile plan unit
+    private const val TILE_DETAIL_MULTIPLIER = 1.5f
 
     suspend fun decode(imageFile: java.io.File, targetWidth: Int, targetHeight: Int): DecodedReadingBitmap? {
         val safeTargetWidth = targetWidth.coerceAtLeast(1)
@@ -179,7 +176,7 @@ object ReadingBitmapDecoder {
             sample *= 2
         }
         while (
-            sourceWidth.toLong() * sourceHeight.toLong() / ((sample * 2).toLong() * (sample * 2).toLong())
+            sourceWidth.toLong() * sourceHeight.toLong() / (sample.toLong() * sample.toLong())
             > MAX_TOTAL_PIXELS
         ) {
             if (preserveReadableWidth && sourceWidth / (sample * 2) < minReadableWidth) {
@@ -191,13 +188,13 @@ object ReadingBitmapDecoder {
     }
 
     /**
-     * Decode sample for region tiles: keep ~1 decoded pixel per screen pixel under current zoom.
+     * Decode sample for region tiles with modest detail headroom under current zoom.
      * layout maps source -> display by layoutSampleSize; displayScale is screen px per display px.
      */
     fun calculateDecodeSampleSize(layoutSampleSize: Int, displayScale: Float): Int {
         val safeLayout = layoutSampleSize.coerceAtLeast(1)
         val scale = displayScale.coerceAtLeast(0.05f)
-        val target = safeLayout / scale
+        val target = safeLayout / (scale * TILE_DETAIL_MULTIPLIER)
         var sample = 1
         while (sample * 2 <= target + 0.001f) {
             sample *= 2

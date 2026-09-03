@@ -2,6 +2,7 @@ package com.manga.translate
 
 import android.app.Application
 import android.graphics.RectF
+import com.manga.translate.detection.BubbleDetection
 import com.manga.translate.detection.BubblePriorityCandidate
 import com.manga.translate.detection.DetectionTile
 import com.manga.translate.detection.RectGeometryDeduplicator
@@ -17,8 +18,10 @@ import com.manga.translate.detection.longImageMaxRegionHeight
 import com.manga.translate.detection.longImageTextDetectionTileHeight
 import com.manga.translate.detection.lineBelongsToRegion
 import com.manga.translate.detection.mapPageLineRectsToCrop
+import com.manga.translate.detection.mergeBubblesSpannedByTextLines
 import com.manga.translate.detection.isDetectionAtInternalTileBottom
 import com.manga.translate.detection.isDetectionAtReplayTileTop
+import com.manga.translate.detection.isTinyTextErrorRegion
 import com.manga.translate.detection.mergePageMaskContours
 import com.manga.translate.detection.planLongImageBubbleDetectionTiles
 import com.manga.translate.detection.planLongImageTextDetectionTiles
@@ -177,6 +180,56 @@ class PageRegionDetectorTest {
             blocks.single().maskContour,
             1e-4f
         )
+    }
+
+    @Test
+    fun `Paddle block merge suppresses a substantially overlapping weaker block`() {
+        val blocks = TextBlockMerger.merge(
+            lineRects = listOf(
+                RectF(0f, 0f, 200f, 20f),
+                RectF(0f, 40f, 200f, 60f),
+                RectF(60f, 10f, 120f, 70f)
+            ),
+            imageWidth = 400,
+            imageHeight = 400
+        )
+
+        assertEquals(1, blocks.size)
+        assertEquals(2, blocks.single().lines.size)
+        assertEquals(RectF(0f, 0f, 200f, 60f), blocks.single().rect)
+    }
+
+    @Test
+    fun `Paddle block merge attaches centered first line to following paragraph`() {
+        val blocks = TextBlockMerger.merge(
+            lineRects = listOf(
+                RectF(430f, 900f, 850f, 936f),
+                RectF(70f, 952f, 870f, 988f),
+                RectF(70f, 1002f, 870f, 1038f)
+            ),
+            imageWidth = 940,
+            imageHeight = 1830
+        )
+
+        assertEquals(1, blocks.size)
+        assertEquals(3, blocks.single().lines.size)
+        assertEquals(RectF(70f, 900f, 870f, 1038f), blocks.single().rect)
+    }
+
+    @Test
+    fun `Paddle overlapping text blocks are combined instead of rendered twice`() {
+        val blocks = TextBlockMerger.merge(
+            lineRects = listOf(
+                RectF(100f, 100f, 700f, 140f),
+                RectF(100f, 160f, 700f, 200f),
+                RectF(140f, 120f, 660f, 180f)
+            ),
+            imageWidth = 1000,
+            imageHeight = 1000
+        )
+
+        assertEquals(1, blocks.size)
+        assertEquals(RectF(100f, 100f, 700f, 200f), blocks.single().rect)
     }
 
     @Test
@@ -402,6 +455,24 @@ class PageRegionDetectorTest {
                 RectF(100f, 100f, 900f, 2050f),
                 pageWidth = 1400,
                 pageHeight = 2800
+            )
+        )
+    }
+
+    @Test
+    fun `tiny text filter keeps small captions but removes pixel noise`() {
+        assertFalse(
+            isTinyTextErrorRegion(
+                RectF(0f, 0f, 8f, 30f),
+                imageWidth = 800,
+                imageHeight = 1200
+            )
+        )
+        assertTrue(
+            isTinyTextErrorRegion(
+                RectF(0f, 0f, 4f, 10f),
+                imageWidth = 800,
+                imageHeight = 1200
             )
         )
     }
@@ -672,6 +743,100 @@ class PageRegionDetectorTest {
         assertEquals(
             "det_vertical_tiled_yolo26nseg1472_paddle_blocks_v3",
             buildDetectionStrategyTag(pageWidth = 1000, pageHeight = 2200)
+        )
+    }
+
+    @Test
+    fun `text line spanning two overlapping bubbles rejoins them`() {
+        // Geometry from real_images/bubble_overlap_case.jpg, where the detector split one
+        // balloon into overlapping halves and the middle text line crossed both.
+        val leftHalf = BubbleDetection(
+            rect = RectF(0f, 857.30f, 710.61f, 1139.42f),
+            confidence = 0.81f,
+            classId = 0
+        )
+        val rightHalf = BubbleDetection(
+            rect = RectF(262.59f, 848.07f, 939f, 1078.38f),
+            confidence = 0.86f,
+            classId = 0
+        )
+        val unrelatedBubble = BubbleDetection(
+            rect = RectF(7.70f, 0f, 581.31f, 355.60f),
+            confidence = 0.9f,
+            classId = 0
+        )
+        val spanningLine = RectF(59.12f, 952.22f, 877.07f, 988.46f)
+
+        val merged = mergeBubblesSpannedByTextLines(
+            balloons = listOf(leftHalf, rightHalf, unrelatedBubble),
+            textLines = listOf(spanningLine),
+            pageWidth = 940,
+            pageHeight = 1830
+        )
+
+        assertEquals(2, merged.size)
+        val rejoined = merged.first { it.rect.top > 500f }
+        assertEquals(0f, rejoined.rect.left, 0.01f)
+        assertEquals(848.07f, rejoined.rect.top, 0.01f)
+        assertEquals(939f, rejoined.rect.right, 0.01f)
+        assertEquals(1139.42f, rejoined.rect.bottom, 0.01f)
+        // The union keeps the stronger fragment's confidence.
+        assertEquals(0.86f, rejoined.confidence, 0.001f)
+        assertTrue(merged.any { it.rect == unrelatedBubble.rect })
+    }
+
+    @Test
+    fun `text lines do not rejoin bubbles that merely sit side by side`() {
+        val left = BubbleDetection(RectF(0f, 100f, 400f, 400f), 0.9f, 0)
+        val right = BubbleDetection(RectF(420f, 100f, 820f, 400f), 0.9f, 0)
+        // A line crossing the gap must not join balloons that share no area.
+        val crossingLine = RectF(300f, 240f, 520f, 280f)
+
+        assertEquals(
+            2,
+            mergeBubblesSpannedByTextLines(
+                balloons = listOf(left, right),
+                textLines = listOf(crossingLine),
+                pageWidth = 940,
+                pageHeight = 1830
+            ).size
+        )
+    }
+
+    @Test
+    fun `line contained in one bubble does not trigger rejoin`() {
+        val big = BubbleDetection(RectF(0f, 100f, 700f, 500f), 0.9f, 0)
+        val overlapping = BubbleDetection(RectF(300f, 120f, 900f, 460f), 0.8f, 0)
+        // Fully inside `big`, so it is no evidence about the pair.
+        val innerLine = RectF(40f, 300f, 380f, 330f)
+
+        assertEquals(
+            2,
+            mergeBubblesSpannedByTextLines(
+                balloons = listOf(big, overlapping),
+                textLines = listOf(innerLine),
+                pageWidth = 940,
+                pageHeight = 1830
+            ).size
+        )
+    }
+
+    @Test
+    fun `vertically stacked bubbles are not rejoined by an unrelated line`() {
+        val upper = BubbleDetection(RectF(100f, 100f, 600f, 400f), 0.9f, 0)
+        val lower = BubbleDetection(RectF(120f, 360f, 620f, 700f), 0.9f, 0)
+        // Overlaps both in x and lands in the shared band, but only 40px of vertical overlap
+        // exists; the line center must fall inside both boxes.
+        val lineBelow = RectF(60f, 500f, 700f, 540f)
+
+        assertEquals(
+            2,
+            mergeBubblesSpannedByTextLines(
+                balloons = listOf(upper, lower),
+                textLines = listOf(lineBelow),
+                pageWidth = 940,
+                pageHeight = 1830
+            ).size
         )
     }
 }

@@ -11,6 +11,9 @@ import org.json.JSONObject
  *
  * OpenAI Responses 优先读 output_text，再解析 output[].content[].text；
  * chat 读 choices/message/content；错误与错误码映射语义与原始实现一致。
+ *
+ * 截断检测（[isTruncatedResponse]）覆盖三家协议的 max token 截断信号，
+ * 由 LlmClient 在内容解析成功后调用，避免截断响应被静默当作完整译文。
  */
 internal class ResponseParser {
     fun parseResponseContent(body: String, apiFormat: ApiFormat): String? {
@@ -19,6 +22,41 @@ internal class ResponseParser {
             ApiFormat.OPENAI_RESPONSES -> parseOpenAiResponsesContent(body)
             ApiFormat.GEMINI -> parseGeminiResponseContent(body)
         }
+    }
+
+    /**
+     * 响应是否因达到最大输出 Token 而被截断：
+     * - OpenAI 兼容 chat：choices[].finish_reason == "length"；
+     * - OpenAI Responses：status == "incomplete"（当前唯一原因是 max_output_tokens）；
+     * - Gemini：candidates[].finishReason == "MAX_TOKENS"。
+     *
+     * 解析失败一律返回 false（未截断），交由内容解析路径按原有错误分类处理。
+     */
+    fun isTruncatedResponse(body: String, apiFormat: ApiFormat): Boolean {
+        return try {
+            val json = JSONObject(body)
+            when (apiFormat) {
+                ApiFormat.OPENAI_COMPATIBLE ->
+                    hasTruncationMarker(json.optJSONArray("choices"), "finish_reason", "length")
+                ApiFormat.OPENAI_RESPONSES ->
+                    json.optString("status").trim().equals("incomplete", ignoreCase = true)
+                ApiFormat.GEMINI ->
+                    hasTruncationMarker(json.optJSONArray("candidates"), "finishReason", "MAX_TOKENS")
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun hasTruncationMarker(array: JSONArray?, key: String, truncatedValue: String): Boolean {
+        if (array == null) return false
+        for (i in 0 until array.length()) {
+            val item = array.optJSONObject(i) ?: continue
+            if (item.optString(key).trim().equals(truncatedValue, ignoreCase = true)) {
+                return true
+            }
+        }
+        return false
     }
 
     fun parseTranslationContent(content: String): LlmTranslationResult {

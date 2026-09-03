@@ -57,6 +57,14 @@ internal class FloatingBitmapController {
     fun discardTransientCapture(capture: Bitmap?) {
         if (capture != null && capture !== sessionBitmap) {
             capture.recycleSafely()
+        } else if (capture === sessionBitmap) {
+            // This branch should never be reached under the correct calling convention
+            // (caller must null the local reference immediately after adoptSessionFrame).
+            // If hit, a caller forgot to null the reference, violating the ownership contract.
+            AppLogger.error(
+                "FloatingBitmapController",
+                "discardTransientCapture called with adopted session bitmap; caller violated ownership contract"
+            )
         }
     }
 

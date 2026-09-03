@@ -11,6 +11,7 @@ import com.manga.translate.detection.mapPageLineRectsToCrop
 import com.manga.translate.detection.shouldUseLongImageTiling
 import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.BubbleTranslation
+import com.manga.translate.model.FolderReadingMode
 import com.manga.translate.model.OcrMetadata
 import com.manga.translate.model.OcrBubble
 import com.manga.translate.model.OcrRecognitionResult
@@ -33,6 +34,7 @@ import com.manga.translate.platform.AvifBitmapDecoder
 import com.manga.translate.platform.BitmapCropSource
 import com.manga.translate.platform.ImageFileSupport
 import com.manga.translate.platform.PipelineBitmapDecoder
+import com.manga.translate.platform.PerformanceTrace
 import com.manga.translate.platform.PromptAssetResolver
 import com.manga.translate.platform.recycleSafely
 import com.manga.translate.settings.OCR_PROVIDER_ID
@@ -129,6 +131,12 @@ internal class TranslationPipeline(
         language: TranslationLanguage = TranslationLanguage.JA_TO_ZH,
         onProgress: (String) -> Unit
     ): PipelinePageTranslationOutcome? = withContext(Dispatchers.Default) {
+        val trace = PerformanceTrace(
+            tag = "Pipeline",
+            operation = "translate:${imageFile.name}",
+            enabled = settingsStore.loadModelIoLogging()
+        )
+        try {
         val resolvedApiSettings = settingsStore.load()
         val metadata = buildTranslationMetadata(
             imageFile = imageFile,
@@ -140,6 +148,9 @@ internal class TranslationPipeline(
         AppLogger.log("Pipeline", "Translate image ${imageFile.name}")
         val ocrPage = page.withRecognizedTextBubblesOnly("Pipeline")
         val translatable = ocrPage.bubbles
+        trace.attribute("size", "${ocrPage.width}x${ocrPage.height}")
+        trace.attribute("bubbles", translatable.size)
+        trace.attribute("ocrMode", page.cacheMode)
         if (translatable.isEmpty()) {
             val emptyTranslations = ocrPage.bubbles.map {
                 BubbleTranslation.pending(it.id, it.rect, "", it.source, it.maskContour)
@@ -155,8 +166,9 @@ internal class TranslationPipeline(
         onProgress(appContext.getString(R.string.translating_bubbles))
         val promptAsset = STANDARD_PROMPT_ASSET
         val translatedBatch = try {
-            val translated = executeWithModelResponseRetries("Pipeline") {
-                textBubbleTranslationCoordinator.translateBubbles(
+            val translated = trace.measure("llm") {
+                executeWithModelResponseRetries("Pipeline") {
+                    textBubbleTranslationCoordinator.translateBubbles(
                     bubbles = translatable.map {
                         BubbleTranslation.pending(
                             id = it.id,
@@ -172,7 +184,8 @@ internal class TranslationPipeline(
                     language = language,
                     logTag = "Pipeline",
                     translationMode = "standard"
-                )
+                    )
+                }
             } ?: return@withContext null
             translated
         } catch (e: LlmResponseException) {
@@ -194,6 +207,9 @@ internal class TranslationPipeline(
             result = resultBase.copy(metadata = metadata.copy(status = resultBase.deriveStatus())),
             glossaryUsed = translatedBatch.glossaryUsed
         )
+        } finally {
+            trace.logSummary()
+        }
     }
 
     suspend fun ocrImage(
@@ -203,6 +219,12 @@ internal class TranslationPipeline(
         detectionSelection: RegionDetectionSelection = RegionDetectionSelection.BUBBLES_AND_TEXT,
         onProgress: (String) -> Unit
     ): PageOcrResult? = withContext(Dispatchers.Default) {
+        val trace = PerformanceTrace(
+            tag = "Pipeline",
+            operation = "ocr:${imageFile.name}",
+            enabled = settingsStore.loadModelIoLogging()
+        )
+        try {
         val ocrSettings = settingsStore.loadOcrApiSettings()
         val resolvedLanguage = TranslationLanguage.resolveForOcr(language, ocrSettings.useLocalOcr)
         val effectiveUseLocalOcr = ocrSettings.useLocalOcr && resolvedLanguage.supportsLocalOcr()
@@ -216,6 +238,8 @@ internal class TranslationPipeline(
         if (!forceOcr) {
             val cached = ocrStore.load(imageFile, expectedMetadata = expectedMetadata)
             if (cached != null) {
+                trace.attribute("cache", "reuse")
+                trace.attribute("bubbles", cached.bubbles.size)
                 AppLogger.log("Pipeline", "Reuse OCR for ${imageFile.name}")
                 return@withContext cached
             }
@@ -234,16 +258,23 @@ internal class TranslationPipeline(
         if (useLocalOcr && ocrEngine == null) {
             return@withContext null
         }
-        PipelineBitmapDecoder.openCropSource(imageFile)?.use { cropSource ->
+        trace.measure("decode") { PipelineBitmapDecoder.openCropSource(imageFile) }?.use { cropSource ->
+            trace.attribute("size", "${cropSource.width}x${cropSource.height}")
+            trace.attribute("longImage", shouldUseLongImageTiling(cropSource.width, cropSource.height))
+            trace.attribute("ocrMode", if (useLocalOcr) "local" else "api")
+            trace.attribute("detection", detectionSelection.prefValue)
             onProgress(appContext.getString(R.string.detecting_bubbles))
-            val pageRegions = pageRegionDetector.detect(
-                cropSource = cropSource,
-                pageWidth = cropSource.width,
-                pageHeight = cropSource.height,
-                logTag = "Pipeline",
-                detectionSelection = detectionSelection
-            ) ?: return@withContext null
+            val pageRegions = trace.measure("detection") {
+                pageRegionDetector.detect(
+                    cropSource = cropSource,
+                    pageWidth = cropSource.width,
+                    pageHeight = cropSource.height,
+                    logTag = "Pipeline",
+                    detectionSelection = detectionSelection
+                )
+            } ?: return@withContext null
             val regions = pageRegions.regions
+            trace.attribute("regions", regions.size)
             AppLogger.log("Pipeline", "Detected ${regions.size} regions in ${imageFile.name}")
             if (regions.isEmpty()) {
                 val emptyResult = PageOcrResult(
@@ -255,7 +286,7 @@ internal class TranslationPipeline(
                     expectedMetadata
                 )
                 if (pageRegions.detectionComplete) {
-                    ocrStore.save(imageFile, emptyResult)
+                    trace.measure("persist") { ocrStore.save(imageFile, emptyResult) }
                 } else {
                     AppLogger.log("Pipeline", "Skipping OCR cache for incomplete page detection")
                 }
@@ -264,12 +295,14 @@ internal class TranslationPipeline(
             onProgress(
                 appContext.getString(R.string.recognizing_bubbles, regions.size)
             )
-            val bubbles = recognizeBubblesIndividually(
-                cropSource = cropSource,
-                regions = regions,
-                language = resolvedLanguage,
-                useLocalOcr = useLocalOcr
-            )
+            val bubbles = trace.measure("ocr") {
+                recognizeBubblesIndividually(
+                    cropSource = cropSource,
+                    regions = regions,
+                    language = resolvedLanguage,
+                    useLocalOcr = useLocalOcr
+                )
+            }
             val result = PageOcrResult(
                 imageFile,
                 pageRegions.width,
@@ -278,8 +311,9 @@ internal class TranslationPipeline(
                 cacheMode,
                 expectedMetadata
             )
+            trace.attribute("recognized", bubbles.count { it.text.isNotBlank() })
             if (pageRegions.detectionComplete) {
-                ocrStore.save(imageFile, result)
+                trace.measure("persist") { ocrStore.save(imageFile, result) }
             } else {
                 AppLogger.log("Pipeline", "Skipping OCR cache for incomplete page detection")
             }
@@ -287,6 +321,9 @@ internal class TranslationPipeline(
         } ?: run {
             AppLogger.log("Pipeline", "Failed to open crop source for ${imageFile.name}")
             null
+        }
+        } finally {
+            trace.logSummary()
         }
     }
 
@@ -473,13 +510,17 @@ internal class TranslationPipeline(
         imageFile: File,
         fullTranslate: Boolean,
         useVlDirectTranslate: Boolean,
-        language: TranslationLanguage
+        language: TranslationLanguage,
+        detectionSelection: RegionDetectionSelection = RegionDetectionSelection.BUBBLES_AND_TEXT,
+        readingMode: FolderReadingMode = FolderReadingMode.STANDARD
     ): Boolean {
         val translation = loadValidTranslation(
             imageFile = imageFile,
             fullTranslate = fullTranslate,
             useVlDirectTranslate = useVlDirectTranslate,
-            language = language
+            language = language,
+            detectionSelection = detectionSelection,
+            readingMode = readingMode
         ) ?: return false
         if (translation.metadata.isManual()) return true
         return translation.metadata.status == PageTranslationStatus.SUCCESS
@@ -489,15 +530,28 @@ internal class TranslationPipeline(
         imageFile: File,
         fullTranslate: Boolean,
         useVlDirectTranslate: Boolean,
-        language: TranslationLanguage
+        language: TranslationLanguage,
+        detectionSelection: RegionDetectionSelection = RegionDetectionSelection.BUBBLES_AND_TEXT,
+        readingMode: FolderReadingMode = FolderReadingMode.STANDARD
     ): TranslationResult? {
         val expected = buildExpectedTranslationMetadata(
             imageFile = imageFile,
             fullTranslate = fullTranslate,
             useVlDirectTranslate = useVlDirectTranslate,
-            language = language
+            language = language,
+            detectionSelection = detectionSelection
         )
-        return store.load(imageFile, expectedMetadata = expected)
+        val result = store.load(imageFile, expectedMetadata = expected) ?: return null
+        // 条漫模式翻译产生的跨页合并坐标在普通模式下无法正确渲染，必须视为缓存未命中重新翻译。
+        if (readingMode != FolderReadingMode.WEBTOON_SCROLL && result.hasCrossPageBubbleGeometry()) {
+            AppLogger.log(
+                "Pipeline",
+                "Discarding cross-page merged translation for ${imageFile.name}: " +
+                    "reading mode is $readingMode"
+            )
+            return null
+        }
+        return result
     }
 
     fun loadAnyTranslation(imageFile: File): TranslationResult? {
@@ -505,13 +559,19 @@ internal class TranslationPipeline(
     }
 
     fun saveResult(imageFile: File, result: TranslationResult): File {
-        val saved = store.save(imageFile, result)
+        val trace = PerformanceTrace(
+            tag = "Pipeline",
+            operation = "save:${imageFile.name}",
+            enabled = settingsStore.loadModelIoLogging()
+        )
+        val saved = trace.measureBlocking("persist") { store.save(imageFile, result) }
         if (result.metadata.status == PageTranslationStatus.SUCCESS) {
             val ocrFile = ocrStore.ocrFileFor(imageFile)
             if (ocrFile.exists()) {
-                ocrFile.delete()
+                trace.measureBlocking("cleanup_ocr") { ocrFile.delete() }
             }
         }
+        trace.logSummary()
         return saved
     }
 
@@ -714,11 +774,20 @@ internal class TranslationPipeline(
         private const val MODEL_RESPONSE_SILENT_RETRY_COUNT = 3
     }
 
-    private fun buildExpectedTranslationMetadata(
+    /**
+     * 按当前请求与设置构建“本次翻译将会写入”的期望 [TranslationMetadata]。
+     *
+     * 这是期望值的唯一来源：常规缓存读取（[loadValidTranslation]）与批量补填
+     * 的 metadata 匹配都必须经由此函数构建期望值，再交给
+     * [TranslationStore.matchesTranslationRequest] 比较，保证期望值与写入路径
+     * 永远一致，新增影响译文的维度时不会在调用方漂移。
+     */
+    fun buildExpectedTranslationMetadata(
         imageFile: File,
         fullTranslate: Boolean,
         useVlDirectTranslate: Boolean,
-        language: TranslationLanguage
+        language: TranslationLanguage,
+        detectionSelection: RegionDetectionSelection
     ): TranslationMetadata {
         val baseMetadata = when {
             useVlDirectTranslate -> buildTranslationMetadata(
@@ -736,7 +805,8 @@ internal class TranslationPipeline(
                 ocrCacheMode = buildOcrCacheMode(
                     imageFile,
                     settingsStore.loadOcrApiSettings().useLocalOcr,
-                    language
+                    language,
+                    detectionSelection
                 )
             )
             else -> buildTranslationMetadata(
@@ -747,7 +817,8 @@ internal class TranslationPipeline(
                 ocrCacheMode = buildOcrCacheMode(
                     imageFile,
                     settingsStore.loadOcrApiSettings().useLocalOcr,
-                    language
+                    language,
+                    detectionSelection
                 )
             )
         }

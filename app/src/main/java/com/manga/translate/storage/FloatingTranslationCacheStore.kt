@@ -19,6 +19,21 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Scope of a floating-window translation cache entry.
+ *
+ * Reusing a translation across a different provider, model or prompt silently returns
+ * output the current configuration would never have produced, and the similarity
+ * matcher makes that worse by accepting near-miss source text. Every lookup and write
+ * is therefore scoped to the configuration that produced the translation.
+ */
+data class FloatingCacheScope(
+    val language: TranslationLanguage,
+    val providerId: String = "",
+    val modelName: String = "",
+    val promptAsset: String = ""
+)
+
 class FloatingTranslationCacheStore(context: Context) {
     private val appContext = context.applicationContext
     private val cacheFile = File(context.cacheDir, CACHE_FILE_NAME)
@@ -36,9 +51,9 @@ class FloatingTranslationCacheStore(context: Context) {
     @Synchronized
     fun findTextTranslation(
         text: String,
-        language: TranslationLanguage = TranslationLanguage.JA_TO_ZH
+        scope: FloatingCacheScope
     ): CacheLookupResult? {
-        val exactKey = buildExactTextKey(text, language)
+        val exactKey = buildExactTextKey(text, scope)
         if (exactKey.isBlank()) return null
         val exact = textEntries[exactKey]
         if (exact != null) {
@@ -48,7 +63,7 @@ class FloatingTranslationCacheStore(context: Context) {
         if (normalized.isBlank() || normalized.length < MIN_SIMILARITY_TEXT_LENGTH) {
             return null
         }
-        val scopePrefix = buildScopePrefix(language)
+        val scopePrefix = buildScopePrefix(scope)
         val bestEntry = textEntries.entries
             .asSequence()
             .filter { (key, _) -> key.startsWith(scopePrefix) }
@@ -75,9 +90,9 @@ class FloatingTranslationCacheStore(context: Context) {
     fun putTextTranslation(
         text: String,
         translation: String,
-        language: TranslationLanguage = TranslationLanguage.JA_TO_ZH
+        scope: FloatingCacheScope
     ) {
-        val exactKey = buildExactTextKey(text, language)
+        val exactKey = buildExactTextKey(text, scope)
         val normalized = buildSimilarityTextKey(text)
         val value = translation.trim()
         if (exactKey.isBlank() || normalized.isBlank() || value.isBlank()) return
@@ -93,18 +108,18 @@ class FloatingTranslationCacheStore(context: Context) {
     @Synchronized
     fun findImageTranslation(
         imageKey: String,
-        language: TranslationLanguage = TranslationLanguage.JA_TO_ZH
+        scope: FloatingCacheScope
     ): String? {
-        return imageEntries[buildImageEntryKey(imageKey, language)]?.translation
+        return imageEntries[buildImageEntryKey(imageKey, scope)]?.translation
     }
 
     @Synchronized
     fun putImageTranslation(
         imageKey: String,
         translation: String,
-        language: TranslationLanguage = TranslationLanguage.JA_TO_ZH
+        scope: FloatingCacheScope
     ) {
-        val key = buildImageEntryKey(imageKey, language)
+        val key = buildImageEntryKey(imageKey, scope)
         val value = translation.trim()
         if (key.isBlank() || value.isBlank()) return
         imageEntries[key] = ImageCacheEntry(
@@ -134,8 +149,8 @@ class FloatingTranslationCacheStore(context: Context) {
                 !root.has("version") -> LEGACY_CACHE_VERSION
                 else -> root.optInt("version", LEGACY_CACHE_VERSION)
             }
-            if (version !in LEGACY_CACHE_VERSION..CACHE_SCHEMA_VERSION) {
-                AppLogger.log("FloatingCache", "Skip cache load for unsupported version=$version")
+            if (version !in MIN_SUPPORTED_CACHE_VERSION..CACHE_SCHEMA_VERSION) {
+                AppLogger.log("FloatingCache", "Discard cache for unsupported version=$version")
                 return
             }
             val textArray = root.optJSONArray("text_entries") ?: JSONArray()
@@ -217,25 +232,41 @@ class FloatingTranslationCacheStore(context: Context) {
         }
     }
 
-    private fun buildExactTextKey(text: String, language: TranslationLanguage): String {
+    private fun buildExactTextKey(text: String, scope: FloatingCacheScope): String {
         val normalizedText = text.trim()
             .replace(Regex("\\s+"), " ")
         if (normalizedText.isBlank()) return ""
-        return buildScopedKey(language, normalizedText)
+        return buildScopedKey(scope, normalizedText)
     }
 
-    private fun buildImageEntryKey(imageKey: String, language: TranslationLanguage): String {
+    private fun buildImageEntryKey(imageKey: String, scope: FloatingCacheScope): String {
         val normalizedKey = imageKey.trim()
         if (normalizedKey.isBlank()) return ""
-        return buildScopedKey(language, normalizedKey)
+        return buildScopedKey(scope, normalizedKey)
     }
 
-    private fun buildScopedKey(language: TranslationLanguage, rawKey: String): String {
-        return buildScopePrefix(language) + rawKey
+    private fun buildScopedKey(scope: FloatingCacheScope, rawKey: String): String {
+        return buildScopePrefix(scope) + rawKey
     }
 
-    private fun buildScopePrefix(language: TranslationLanguage): String {
-        return PromptAssetResolver.translationTargetKey(appContext) + "|" + language.name + "|"
+    /**
+     * Scope prefix for cache keys. Similarity matching only considers candidates
+     * sharing this prefix, so every dimension that can change a translation must be
+     * part of it.
+     */
+    private fun buildScopePrefix(scope: FloatingCacheScope): String {
+        return buildString {
+            append(PromptAssetResolver.translationTargetKey(appContext))
+            append('|')
+            append(scope.language.name)
+            append('|')
+            append(scope.providerId)
+            append('|')
+            append(scope.modelName)
+            append('|')
+            append(scope.promptAsset)
+            append('|')
+        }
     }
 
     private fun buildSimilarityTextKey(text: String): String {
@@ -296,7 +327,11 @@ class FloatingTranslationCacheStore(context: Context) {
     companion object {
         private const val CACHE_FILE_NAME = "floating_translate_cache.json"
         private const val LEGACY_CACHE_VERSION = 1
-        private const val CACHE_SCHEMA_VERSION = 2
+        // v3 added provider/model/prompt to the key scope. v1/v2 keys carry only the
+        // target language, so reusing them would defeat the new scoping; they are
+        // dropped on load. This is a rebuildable cache in cacheDir, not user data.
+        private const val MIN_SUPPORTED_CACHE_VERSION = 3
+        private const val CACHE_SCHEMA_VERSION = 3
         private const val SAVE_DEBOUNCE_MS = 300L
         private const val TEXT_CACHE_LIMIT = 300
         private const val IMAGE_CACHE_LIMIT = 128

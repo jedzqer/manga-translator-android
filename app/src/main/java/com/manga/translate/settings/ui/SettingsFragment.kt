@@ -1,6 +1,7 @@
 package com.manga.translate.settings.ui
 
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.manga.translate.R
+import com.manga.translate.background.TranslationKeepAliveService
 import com.manga.translate.databinding.FragmentSettingsBinding
 import com.manga.translate.di.appContainer
 import com.manga.translate.model.ApiFormat
@@ -28,6 +30,8 @@ import com.manga.translate.settings.CustomRequestParameter
 import com.manga.translate.settings.SettingsMainForm
 import com.manga.translate.settings.SettingsStore
 import com.manga.translate.settings.ui.dialogs.AboutDialog
+import com.manga.translate.settings.ui.dialogs.BackupOperationCancelHost
+import com.manga.translate.settings.ui.dialogs.BackupProgressDialog
 import com.manga.translate.settings.ui.dialogs.AiProviderProfilesDialog
 import com.manga.translate.settings.ui.dialogs.ApiFormatDialog
 import com.manga.translate.settings.ui.dialogs.BubbleFontSettingsDialog
@@ -48,7 +52,9 @@ import com.manga.translate.settings.ui.dialogs.ThinkingLengthDialog
 import com.manga.translate.settings.ui.dialogs.TranslationStyleDialog
 import java.text.NumberFormat
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -59,10 +65,13 @@ import kotlinx.coroutines.withContext
  * This class keeps the entry methods, the main view binding and the button
  * label refreshers that mutate [binding].
  */
-class SettingsFragment : Fragment() {
+class SettingsFragment : Fragment(), BackupOperationCancelHost {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
     internal val fragmentBinding: FragmentSettingsBinding get() = binding
+
+    /** Runs the current locked backup export/import; canceled by the lock dialog. */
+    private var backupOperationJob: Job? = null
 
     private val appContainer by lazy(LazyThreadSafetyMode.NONE) { requireContext().appContainer }
     private val settingsStore by lazy(LazyThreadSafetyMode.NONE) { appContainer.settingsStore }
@@ -114,6 +123,90 @@ class SettingsFragment : Fragment() {
                 getString(R.string.bubble_font_upload_success, importedFileName),
                 Toast.LENGTH_SHORT
             ).show()
+        }
+    }
+
+    private val createBackupLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val appContext = requireContext().applicationContext
+        runLockedBackupOperation(getString(R.string.backup_export_running)) {
+            try {
+                dataController.exportBackup(uri)
+                Toast.makeText(appContext, R.string.backup_export_success, Toast.LENGTH_SHORT).show()
+            } catch (e: CancellationException) {
+                // User aborted mid-export: drop the partially written archive.
+                runCatching { DocumentsContract.deleteDocument(appContext.contentResolver, uri) }
+                throw e
+            } catch (e: Exception) {
+                AppLogger.log("Settings", "Failed to export app backup", e)
+                Toast.makeText(appContext, R.string.backup_export_failed, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private val openBackupLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val appContext = requireContext().applicationContext
+        runLockedBackupOperation(getString(R.string.backup_import_running)) {
+            try {
+                val result = dataController.importBackup(uri)
+                if (_binding != null) {
+                    reloadSettingsUiFromStore()
+                }
+                Toast.makeText(
+                    appContext,
+                    appContext.getString(R.string.backup_import_success, result.mangaFiles),
+                    Toast.LENGTH_LONG
+                ).show()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLogger.log("Settings", "Failed to import app backup", e)
+                Toast.makeText(appContext, R.string.backup_import_failed, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    override fun onBackupOperationCancelRequested() {
+        backupOperationJob?.cancel()
+        context?.applicationContext?.let {
+            Toast.makeText(it, R.string.backup_operation_canceled, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Runs a backup export/import behind a modal lock dialog so the library
+     * and preferences cannot be touched while files are being zipped or
+     * restored. Any active background translation task is canceled first —
+     * it would otherwise write into the library concurrently.
+     */
+    private fun runLockedBackupOperation(message: CharSequence, operation: suspend () -> Unit) {
+        if (backupOperationJob?.isActive == true ||
+            childFragmentManager.findFragmentByTag(BACKUP_LOCK_DIALOG_TAG) != null
+        ) {
+            return
+        }
+        val appContext = requireContext().applicationContext
+        backupOperationJob = lifecycleScope.launch {
+            BackupProgressDialog.newInstance(message)
+                .showAllowingStateLoss(childFragmentManager, BACKUP_LOCK_DIALOG_TAG)
+            try {
+                if (!TranslationKeepAliveService.awaitTranslationStopped(appContext)) {
+                    AppLogger.log(
+                        "Settings",
+                        "Background translation still running after cancel timeout — continuing with backup"
+                    )
+                }
+                operation()
+            } finally {
+                backupOperationJob = null
+                (childFragmentManager.findFragmentByTag(BACKUP_LOCK_DIALOG_TAG) as? BackupProgressDialog)
+                    ?.dismissAllowingStateLoss()
+            }
         }
     }
 
@@ -256,6 +349,15 @@ class SettingsFragment : Fragment() {
             showLogFilesDialog()
         }
 
+        binding.exportBackupButton.setOnClickListener {
+            persistSettings()
+            createBackupLauncher.launch("manga-translator-backup.zip")
+        }
+
+        binding.importBackupButton.setOnClickListener {
+            openBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+        }
+
         binding.aboutButton.setOnClickListener {
             showAboutDialog()
         }
@@ -265,6 +367,10 @@ class SettingsFragment : Fragment() {
         super.onDestroyView()
         activeBubbleFontDialog = null
         _binding = null
+    }
+
+    private companion object {
+        private const val BACKUP_LOCK_DIALOG_TAG = "backup_lock_dialog"
     }
 
     override fun onPause() {

@@ -113,7 +113,6 @@ class WebtoonReadingAdapter(
         opacityPercent = 100,
         freeBubbleShrinkPercent = 0,
         freeBubbleOpacityPercent = 100,
-        minAreaPerCharSp = 48f,
         useHorizontalText = true
     )
     private val runtimeCacheLimit = computeRuntimeCacheLimit()

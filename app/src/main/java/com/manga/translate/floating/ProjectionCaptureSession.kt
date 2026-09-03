@@ -3,6 +3,7 @@ package com.manga.translate.floating
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.Image
@@ -31,6 +32,7 @@ internal class ProjectionCaptureSession(
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+    private var pixelFormat: Int = PixelFormat.RGBA_8888
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             onProjectionStopped()
@@ -53,6 +55,7 @@ internal class ProjectionCaptureSession(
         val width = metrics.widthPixels.coerceAtLeast(1)
         val height = metrics.heightPixels.coerceAtLeast(1)
         val densityDpi = metrics.densityDpi.coerceAtLeast(1)
+        this.pixelFormat = pixelFormat
         val reader = ImageReader.newInstance(width, height, pixelFormat, 2)
         projection.registerCallback(projectionCallback, mainHandler)
         val display = try {
@@ -87,6 +90,70 @@ internal class ProjectionCaptureSession(
         virtualDisplay = display
         AppLogger.log("FloatingOCR", "Projection ready ${width}x${height}@${densityDpi}dpi")
         return true
+    }
+
+    /**
+     * Rebuilds the [VirtualDisplay] / [ImageReader] pair with the given metrics while
+     * keeping the current [MediaProjection] authorization alive. Used after the display
+     * size or orientation changed (rotation, split screen, foldables) so captures keep
+     * matching the real screen instead of the stale aspect ratio. Serialized with
+     * [captureCurrentScreen] through [captureMutex].
+     */
+    suspend fun reconfigure(metrics: DisplayMetrics): Boolean = captureMutex.withLock {
+        val projection = mediaProjection ?: return@withLock false
+        val reader = imageReader
+        if (reader != null &&
+            reader.width == metrics.widthPixels &&
+            reader.height == metrics.heightPixels
+        ) {
+            return@withLock true
+        }
+        val width = metrics.widthPixels.coerceAtLeast(1)
+        val height = metrics.heightPixels.coerceAtLeast(1)
+        val densityDpi = metrics.densityDpi.coerceAtLeast(1)
+        try {
+            virtualDisplay?.release()
+        } catch (_: Exception) {
+        }
+        try {
+            imageReader?.let {
+                clearImageReaderListener(it)
+                it.close()
+            }
+        } catch (_: Exception) {
+        }
+        virtualDisplay = null
+        imageReader = null
+        val newReader = ImageReader.newInstance(width, height, pixelFormat, 2)
+        val newDisplay = try {
+            projection.createVirtualDisplay(
+                "floating-ocr-capture",
+                width,
+                height,
+                densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                newReader.surface,
+                null,
+                null
+            )
+        } catch (error: Exception) {
+            try {
+                newReader.close()
+            } catch (_: Exception) {
+            }
+            // The old pipeline is already gone; stop the projection so the host
+            // falls back to the not-ready flow instead of capturing stale frames.
+            try {
+                projection.stop()
+            } catch (_: Exception) {
+            }
+            AppLogger.log("FloatingOCR", "Projection virtual display reconfigure failed", error)
+            return@withLock false
+        }
+        virtualDisplay = newDisplay
+        imageReader = newReader
+        AppLogger.log("FloatingOCR", "Projection reconfigured ${width}x${height}@${densityDpi}dpi")
+        true
     }
 
     suspend fun captureCurrentScreen(

@@ -7,7 +7,6 @@ import android.graphics.RectF
 import com.manga.translate.detection.shouldTreatRectsAsSameBubbleForDedup
 import com.manga.translate.model.BubbleSource
 import com.manga.translate.platform.AppLogger
-import com.manga.translate.storage.OcrStore
 import kotlin.math.max
 import kotlin.math.min
 
@@ -28,13 +27,12 @@ internal object CrossPageBubbleMerger {
     private const val CROSS_PAGE_EDGE_MAX_PX = 600f
 
     /**
-     * 对相邻页面执行跨页气泡合并，并落盘被修改过的 OCR 缓存。
+     * 对相邻页面执行跨页气泡合并。
      *
      * @param pages 按阅读顺序排列的 OCR 结果。
-     * @param ocrStore 用于保存合并后的 OCR 结果；如果为 null 则只返回修改后的列表不落盘。
      * @return 合并后的 OCR 结果列表，长度与输入一致。
      */
-    fun merge(pages: List<PageOcrResult>, ocrStore: OcrStore? = null): List<PageOcrResult> {
+    fun merge(pages: List<PageOcrResult>): List<PageOcrResult> {
         if (pages.size < 2) {
             return pages.map { it.copy(bubbles = it.bubbles.toList()) }
         }
@@ -55,11 +53,6 @@ internal object CrossPageBubbleMerger {
                 "CrossPageBubbleMerger",
                 "Merged $mergeCount cross-page bubble(s) across ${pages.size} pages"
             )
-            ocrStore?.let { store ->
-                working.forEach { page ->
-                    store.save(page.imageFile, page)
-                }
-            }
         }
         return working
     }

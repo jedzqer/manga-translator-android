@@ -6,6 +6,7 @@ import com.manga.translate.platform.AppLogger
 import com.manga.translate.rendering.BubbleFontResolver
 import com.manga.translate.settings.AiProviderProfilesState
 import com.manga.translate.settings.SettingsStore
+import com.manga.translate.storage.AppBackupManager
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,6 +24,13 @@ internal class SettingsDataController(
     private val contextProvider: () -> Context,
     private val settingsStore: SettingsStore
 ) {
+    private val backupManager by lazy { AppBackupManager(contextProvider()) }
+
+    suspend fun exportBackup(uri: Uri) = backupManager.exportTo(uri)
+
+    suspend fun importBackup(uri: Uri): AppBackupManager.ImportResult =
+        backupManager.importFrom(uri).also { settingsStore.notifyImportedSettings() }
+
     // Log files -------------------------------------------------------------
 
     fun readLogs(): String = AppLogger.readLogs()
@@ -53,9 +61,6 @@ internal class SettingsDataController(
 
     fun overwriteActiveAiProviderProfile(): Boolean =
         settingsStore.overwriteActiveAiProviderProfile()
-
-    fun canApplyAiProviderProfile(name: String): Boolean =
-        settingsStore.canApplyAiProviderProfile(name)
 
     fun applyAiProviderProfile(name: String): Boolean =
         settingsStore.applyAiProviderProfile(name)

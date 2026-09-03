@@ -198,12 +198,7 @@ class TranslationStore {
             bubbles.put(item)
         }
         json.put("bubbles", bubbles)
-        val tmp = File(jsonFile.parentFile, "${jsonFile.name}.tmp")
-        tmp.writeText(json.toString())
-        if (!tmp.renameTo(jsonFile)) {
-            jsonFile.writeText(tmp.readText())
-            tmp.delete()
-        }
+        writeFileAtomically(jsonFile, json.toString())
         synchronized(loadCache) {
             loadCache.put(
                 jsonFile.absolutePath,
@@ -261,6 +256,34 @@ class TranslationStore {
         imageFile: File,
         actual: TranslationMetadata,
         expected: TranslationMetadata
+    ): Boolean = matchesTranslationRequest(imageFile, actual, expected)
+
+    private fun isLegacyTranslationMetadata(metadata: TranslationMetadata): Boolean {
+        return metadata.mode.isNotBlank() &&
+            (metadata.language.isBlank() ||
+                metadata.promptAsset.isBlank() ||
+                metadata.apiFormat.isBlank() ||
+                (metadata.mode != TranslationMetadata.MODE_VL_DIRECT && metadata.ocrCacheMode.isBlank()))
+    }
+
+    /**
+     * Checks if [actual] metadata matches [expected] translation request parameters.
+     *
+     * Used by both [isMetadataUsable] (full result reuse) and partial translation refill
+     * to ensure consistent validation across all cache/reuse paths. Tolerates legacy
+     * metadata (missing fields from older versions), but requires strict equality when
+     * both sides have values.
+     *
+     * This is the single source of truth for "does this cached result match the current
+     * request?" New translation-affecting dimensions MUST be added here to avoid silent
+     * mismatches across different code paths. `apiFormat` is deliberately excluded:
+     * it records which provider protocol produced the result but never makes an
+     * existing translation invalid, so switching providers keeps results usable.
+     */
+    internal fun matchesTranslationRequest(
+        imageFile: File,
+        actual: TranslationMetadata,
+        expected: TranslationMetadata
     ): Boolean {
         if (!actual.matchesSource(imageFile)) {
             return false
@@ -271,15 +294,15 @@ class TranslationStore {
         if (isLegacyTranslationMetadata(actual)) {
             return true
         }
+        // Strict equality on all translation-affecting dimensions.
+        // apiFormat is intentionally NOT compared: it only selects the wire protocol
+        // of the provider that produced the translation and never changes the
+        // meaning of a result already on disk. Switching providers must not
+        // invalidate existing translations; apiFormat is persisted for provenance.
         return actual.version == expected.version &&
-            actual.language == expected.language
-    }
-
-    private fun isLegacyTranslationMetadata(metadata: TranslationMetadata): Boolean {
-        return metadata.mode.isNotBlank() &&
-            (metadata.language.isBlank() ||
-                metadata.promptAsset.isBlank() ||
-                metadata.apiFormat.isBlank() ||
-                (metadata.mode != TranslationMetadata.MODE_VL_DIRECT && metadata.ocrCacheMode.isBlank()))
+            actual.language == expected.language &&
+            actual.mode == expected.mode &&
+            actual.promptAsset == expected.promptAsset &&
+            actual.ocrCacheMode == expected.ocrCacheMode
     }
 }

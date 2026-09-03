@@ -3,9 +3,6 @@
     <external-files-path
         name="external_logs"
         path="log/" />
-    <external-path
-        name="external_app_logs"
-        path="Android/data/com.manga.translate.v3/log/" />
     <files-path
         name="logs"
         path="logs/" />

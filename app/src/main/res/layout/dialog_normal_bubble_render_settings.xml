@@ -47,6 +47,14 @@
                 android:inputType="number" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/normal_bubble_auto_adapt_color_switch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="@string/normal_bubble_auto_adapt_color"
+            android:textColor="?attr/dialogTextColor" />
+
         <com.google.android.material.textfield.TextInputLayout
             style="@style/Widget.MangaTranslator.Input"
             android:layout_width="match_parent"
@@ -84,28 +92,6 @@
             android:layout_marginTop="14dp"
             android:text="@string/normal_bubble_free_auto_adapt_color"
             android:textColor="?attr/dialogTextColor" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="@string/normal_bubble_min_area_per_char_label"
-            android:textColor="?attr/dialogTextColor"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/normal_bubble_min_area_value_label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="?attr/dialogHintTextColor"
-            android:textSize="12sp" />
-
-        <SeekBar
-            android:id="@+id/normal_bubble_min_area_seekbar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:max="100" />
 
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/normal_bubble_vertical_text_switch"

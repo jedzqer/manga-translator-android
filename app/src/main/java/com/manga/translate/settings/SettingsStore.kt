@@ -140,7 +140,9 @@ data class FloatingTranslateApiSettings(
     val singleTapAction: FloatingBallGestureAction,
     val doubleTapAction: FloatingBallGestureAction,
     val longPressAction: FloatingBallGestureAction,
-    val tripleTapAction: FloatingBallGestureAction
+    val tripleTapAction: FloatingBallGestureAction,
+    val detectionTopInsetPercent: Int = 0,
+    val detectionBottomInsetPercent: Int = 0
 )
 
 data class NormalBubbleRenderSettings(
@@ -148,8 +150,8 @@ data class NormalBubbleRenderSettings(
     val opacityPercent: Int,
     val freeBubbleShrinkPercent: Int,
     val freeBubbleOpacityPercent: Int,
-    val minAreaPerCharSp: Float,
     val useHorizontalText: Boolean,
+    val autoAdaptBubbleColor: Boolean = false,
     val autoAdaptFreeBubbleColor: Boolean = true,
     val font: BubbleFont = BubbleFont.SYSTEM_DEFAULT,
     val customFontUrl: String = "",
@@ -179,7 +181,6 @@ data class FloatingBubbleRenderSettings(
     val opacityPercent: Int,
     val shape: FloatingBubbleShape,
     val useHorizontalText: Boolean,
-    val minAreaPerCharSp: Float,
     val autoAdaptBubbleColor: Boolean = true,
     val font: BubbleFont = BubbleFont.SYSTEM_DEFAULT,
     val customFontUrl: String = "",
@@ -396,6 +397,10 @@ class SettingsStore(context: Context) {
         appSettingsStore.saveLinkSource(source)
     }
 
+    fun hasShownTutorialPrompt(): Boolean = appSettingsStore.hasShownTutorialPrompt()
+
+    fun markTutorialPromptShown() = appSettingsStore.markTutorialPromptShown()
+
     fun loadLlmParameters(): LlmParameterSettings = llmParameterStore.loadLlmParameters()
 
     fun saveLlmParameters(settings: LlmParameterSettings) {
@@ -408,6 +413,10 @@ class SettingsStore(context: Context) {
 
     fun saveCustomRequestParameters(parameters: List<CustomRequestParameter>) {
         providerProfileStore.saveCustomRequestParameters(parameters)
+    }
+
+    internal fun notifyImportedSettings() {
+        storage.notifyImportedSettings()
     }
 
     fun loadAiProviderProfilesState(): AiProviderProfilesState {
@@ -424,10 +433,6 @@ class SettingsStore(context: Context) {
 
     fun applyAiProviderProfile(name: String): Boolean {
         return providerProfileStore.applyAiProviderProfile(name)
-    }
-
-    fun canApplyAiProviderProfile(name: String): Boolean {
-        return providerProfileStore.canApplyAiProviderProfile(name)
     }
 
     fun deleteAiProviderProfile(name: String): Boolean {
@@ -460,13 +465,15 @@ class SettingsStore(context: Context) {
         internal const val KEY_FLOATING_DOUBLE_TAP_ACTION = "floating_double_tap_action"
         internal const val KEY_FLOATING_LONG_PRESS_ACTION = "floating_long_press_action"
         internal const val KEY_FLOATING_TRIPLE_TAP_ACTION = "floating_triple_tap_action"
+        internal const val KEY_FLOATING_DETECTION_TOP_INSET_PERCENT =
+            "floating_detection_top_inset_percent"
+        internal const val KEY_FLOATING_DETECTION_BOTTOM_INSET_PERCENT =
+            "floating_detection_bottom_inset_percent"
         internal const val KEY_FLOATING_BUBBLE_SIZE_ADJUST_PERCENT =
             "floating_bubble_size_adjust_percent"
         internal const val KEY_FLOATING_BUBBLE_OPACITY_PERCENT = "floating_bubble_opacity_percent"
         internal const val KEY_FLOATING_BUBBLE_SHAPE = "floating_bubble_shape"
         internal const val KEY_FLOATING_BUBBLE_HORIZONTAL_TEXT = "floating_bubble_horizontal_text"
-        internal const val KEY_FLOATING_BUBBLE_MIN_AREA_PER_CHAR_SP =
-            "floating_bubble_min_area_per_char_sp"
         internal const val KEY_FLOATING_BUBBLE_AUTO_ADAPT_COLOR =
             "floating_bubble_auto_adapt_color"
         internal const val KEY_OCR_API_TIMEOUT_SECONDS = "ocr_api_timeout_seconds"
@@ -475,14 +482,15 @@ class SettingsStore(context: Context) {
         internal const val KEY_OCR_API_FORMAT = "ocr_api_format"
         internal const val KEY_HORIZONTAL_TEXT = "horizontal_text_layout"
         internal const val KEY_NORMAL_BUBBLE_SHRINK_PERCENT = "normal_bubble_shrink_percent"
-        internal const val KEY_NORMAL_BUBBLE_MIN_AREA_PER_CHAR_SP =
-            "normal_bubble_min_area_per_char_sp"
         internal const val KEY_NORMAL_FREE_BUBBLE_SHRINK_PERCENT =
-            "normal_free_bubble_shrink_percent"
+            // Versioned intentionally so the old non-zero setting is discarded.
+            "normal_free_bubble_shrink_percent_v2"
         internal const val KEY_NORMAL_FREE_BUBBLE_OPACITY_PERCENT =
             "normal_free_bubble_opacity_percent"
         internal const val KEY_NORMAL_FREE_BUBBLE_AUTO_ADAPT_COLOR =
             "normal_free_bubble_auto_adapt_color"
+        internal const val KEY_NORMAL_BUBBLE_AUTO_ADAPT_COLOR =
+            "normal_bubble_auto_adapt_color"
         internal const val KEY_BUBBLE_FONT = "bubble_font"
         internal const val KEY_BUBBLE_CUSTOM_FONT_FILE = "bubble_custom_font_file"
         internal const val KEY_BUBBLE_FONT_BOLD = "bubble_font_bold"
@@ -513,6 +521,7 @@ class SettingsStore(context: Context) {
         internal const val KEY_BUBBLE_CONF_THRESHOLD_PERCENT =
             "comic_bubble_conf_threshold_percent_v3"
         internal const val KEY_LINK_SOURCE = "link_source"
+        internal const val KEY_TUTORIAL_PROMPT_SHOWN = "tutorial_prompt_shown"
         internal const val KEY_LLM_TEMPERATURE = "llm_temperature"
         internal const val KEY_LLM_TOP_P = "llm_top_p"
         internal const val KEY_LLM_TOP_K = "llm_top_k"
@@ -524,6 +533,7 @@ class SettingsStore(context: Context) {
         internal const val KEY_LLM_PRESENCE_PENALTY = "llm_presence_penalty"
         internal const val KEY_CUSTOM_REQUEST_PARAMETERS = "custom_request_parameters"
         internal const val KEY_TRANSLATION_STYLE = "translation_style"
+        // 仅作变更通知 topic id 使用，实际数据存于 ai_provider_profiles.json
         internal const val KEY_AI_PROVIDER_PROFILES_STATE = "ai_provider_profiles_state"
         internal const val LEGACY_SETTINGS_JSON_VERSION = 1
         internal const val SETTINGS_JSON_SCHEMA_VERSION = 2
@@ -541,7 +551,7 @@ class SettingsStore(context: Context) {
         internal const val DEFAULT_OCR_API_TIMEOUT_SECONDS = 300
         const val MIN_OCR_API_TIMEOUT_SECONDS = 30
         const val MAX_OCR_API_TIMEOUT_SECONDS = 1200
-        internal const val DEFAULT_OCR_API_CONCURRENCY = 1
+        internal const val DEFAULT_OCR_API_CONCURRENCY = 3
         const val MIN_OCR_API_CONCURRENCY = 1
         const val MAX_OCR_API_CONCURRENCY = 50
         internal const val DEFAULT_LOCAL_OCR_CONCURRENCY = 0
@@ -550,7 +560,7 @@ class SettingsStore(context: Context) {
         internal const val DEFAULT_FLOATING_OCR_CONCURRENCY = 1
         internal const val MIN_FLOATING_OCR_CONCURRENCY = 1
         internal const val MAX_FLOATING_OCR_CONCURRENCY = 50
-        internal const val DEFAULT_FLOATING_AI_API_CONCURRENCY = 15
+        internal const val DEFAULT_FLOATING_AI_API_CONCURRENCY = 20
         internal const val MIN_FLOATING_AI_API_CONCURRENCY = 1
         internal const val MAX_FLOATING_AI_API_CONCURRENCY = 50
         internal val DEFAULT_FLOATING_SINGLE_TAP_ACTION = FloatingBallGestureAction.START_TRANSLATE
@@ -564,20 +574,15 @@ class SettingsStore(context: Context) {
         internal const val DEFAULT_FLOATING_BUBBLE_OPACITY_PERCENT = 100
         internal const val MIN_FLOATING_BUBBLE_SIZE_ADJUST_PERCENT = -30
         internal const val MAX_FLOATING_BUBBLE_SIZE_ADJUST_PERCENT = 30
-        internal const val DEFAULT_FLOATING_MIN_AREA_PER_CHAR_SP = 48f
         internal const val DEFAULT_FLOATING_BUBBLE_AUTO_ADAPT_COLOR = true
-        internal const val MIN_FLOATING_MIN_AREA_PER_CHAR_SP = 16f
-        internal const val MAX_FLOATING_MIN_AREA_PER_CHAR_SP = 256f
         internal const val DEFAULT_NORMAL_BUBBLE_SHRINK_PERCENT = 10
         internal const val MIN_NORMAL_BUBBLE_SHRINK_PERCENT = 0
         internal const val MAX_NORMAL_BUBBLE_SHRINK_PERCENT = 30
-        internal const val DEFAULT_NORMAL_FREE_BUBBLE_SHRINK_PERCENT = 10
+        internal const val DEFAULT_NORMAL_FREE_BUBBLE_SHRINK_PERCENT = 0
         internal const val DEFAULT_NORMAL_FREE_BUBBLE_OPACITY_PERCENT = 90
         internal const val DEFAULT_NORMAL_FREE_BUBBLE_AUTO_ADAPT_COLOR = true
-        internal const val DEFAULT_NORMAL_MIN_AREA_PER_CHAR_SP = 48f
-        internal const val MIN_NORMAL_MIN_AREA_PER_CHAR_SP = 16f
-        internal const val MAX_NORMAL_MIN_AREA_PER_CHAR_SP = 256f
-        internal const val DEFAULT_MAX_CONCURRENCY = 3
+        internal const val DEFAULT_NORMAL_BUBBLE_AUTO_ADAPT_COLOR = false
+        internal const val DEFAULT_MAX_CONCURRENCY = 8
         internal const val MIN_MAX_CONCURRENCY = 1
         internal const val MAX_MAX_CONCURRENCY = 200
         internal const val DEFAULT_API_RETRY_COUNT = 3

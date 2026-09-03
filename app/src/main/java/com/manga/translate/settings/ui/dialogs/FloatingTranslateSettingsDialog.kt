@@ -37,6 +37,12 @@ internal class FloatingTranslateSettingsDialog(
             currentSettings.proofreadingModeEnabled
         dialogBinding.floatingAutoCloseOnScreenChangeSwitch.isChecked =
             currentSettings.autoCloseOnScreenChangeEnabled
+        dialogBinding.floatingDetectionTopInsetInput.setText(
+            fragment.formatNumber(currentSettings.detectionTopInsetPercent)
+        )
+        dialogBinding.floatingDetectionBottomInsetInput.setText(
+            fragment.formatNumber(currentSettings.detectionBottomInsetPercent)
+        )
         setupFloatingGestureActionDropdown(
             dialogBinding.floatingSingleTapActionInput,
             currentSettings.singleTapAction
@@ -87,6 +93,12 @@ internal class FloatingTranslateSettingsDialog(
                 val aiApiConcurrencyLimit = fragment.parseIntInput(aiApiConcurrencyInput)
                     ?.coerceIn(1, 50)
                     ?: currentSettings.aiApiConcurrencyLimit
+                val detectionTopInsetPercent = fragment.parseIntInput(
+                    dialogBinding.floatingDetectionTopInsetInput.text?.toString()?.trim()
+                )?.coerceIn(0, 90) ?: currentSettings.detectionTopInsetPercent
+                val detectionBottomInsetPercent = fragment.parseIntInput(
+                    dialogBinding.floatingDetectionBottomInsetInput.text?.toString()?.trim()
+                )?.coerceIn(0, 90) ?: currentSettings.detectionBottomInsetPercent
                 settingsStore.saveFloatingTranslateApiSettings(
                     FloatingTranslateApiSettings(
                         apiUrl = dialogBinding.floatingApiUrlInput.text?.toString()?.trim().orEmpty(),
@@ -116,7 +128,9 @@ internal class FloatingTranslateSettingsDialog(
                         tripleTapAction = parseFloatingGestureAction(
                             dialogBinding.floatingTripleTapActionInput,
                             currentSettings.tripleTapAction
-                        )
+                        ),
+                        detectionTopInsetPercent = detectionTopInsetPercent,
+                        detectionBottomInsetPercent = detectionBottomInsetPercent
                     )
                 )
                 AppLogger.log("Settings", "Floating translate API settings updated")

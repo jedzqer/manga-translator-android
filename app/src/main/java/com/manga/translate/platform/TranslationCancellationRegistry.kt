@@ -1,21 +1,46 @@
 package com.manga.translate.platform
 
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * Routes cancel requests (notification action, Service entry points) to the
+ * component that currently owns a running translation.
+ *
+ * Each [register] call creates an independent slot and returns a
+ * [Registration]; unregistering removes exactly that slot, so one owner can
+ * never overwrite or clear another owner's handler.
+ */
 internal object TranslationCancellationRegistry {
-    private val handlerRef = AtomicReference<(() -> Unit)?>(null)
+    private val handlers = ConcurrentHashMap<Long, () -> Boolean>()
+    private val nextKey = AtomicLong(1L)
 
-    fun register(handler: () -> Unit) {
-        handlerRef.set(handler)
+    fun register(handler: () -> Boolean): Registration {
+        val key = nextKey.getAndIncrement()
+        handlers[key] = handler
+        return Registration(key)
     }
 
-    fun clear() {
-        handlerRef.set(null)
-    }
-
+    /** Invokes every active handler; true if any of them routed a cancel. */
     fun requestCancel(): Boolean {
-        val handler = handlerRef.get() ?: return false
-        handler.invoke()
-        return true
+        var requested = false
+        for (handler in handlers.values) {
+            if (handler.invoke()) {
+                requested = true
+            }
+        }
+        return requested
+    }
+
+    class Registration internal constructor(private val key: Long) {
+        private val active = AtomicBoolean(true)
+
+        /** Removes exactly this registration; safe to call more than once. */
+        fun unregister() {
+            if (active.compareAndSet(true, false)) {
+                handlers.remove(key)
+            }
+        }
     }
 }

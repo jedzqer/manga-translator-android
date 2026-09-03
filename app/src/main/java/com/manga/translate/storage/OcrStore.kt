@@ -24,6 +24,8 @@ class OcrStore {
                 return null
             }
             val bubblesJson = json.optJSONArray("bubbles") ?: JSONArray()
+            val pageWidth = json.optInt("width", 0)
+            val pageHeight = json.optInt("height", 0)
             val bubbles = ArrayList<OcrBubble>(bubblesJson.length())
             for (i in 0 until bubblesJson.length()) {
                 val item = bubblesJson.optJSONObject(i) ?: continue
@@ -42,10 +44,21 @@ class OcrStore {
                 } else null
                 bubbles.add(OcrBubble(id, rect, text, source, maskContour))
             }
+            // Cross-page merging in older versions could persist a bubble whose
+            // rectangle spills outside its source page. Such a cache is not safe
+            // to reuse for a normal page, so force a fresh OCR pass instead of
+            // returning mixed page coordinates.
+            if (expectedMetadata != null && pageWidth > 0 && pageHeight > 0 && bubbles.any {
+                    it.rect.left < 0f || it.rect.top < 0f ||
+                        it.rect.right > pageWidth || it.rect.bottom > pageHeight
+                }) {
+                AppLogger.log("OcrStore", "Ignoring out-of-bounds OCR cache for ${imageFile.name}")
+                return null
+            }
             PageOcrResult(
                 imageFile = imageFile,
-                width = json.optInt("width", 0),
-                height = json.optInt("height", 0),
+                width = pageWidth,
+                height = pageHeight,
                 bubbles = bubbles,
                 cacheMode = metadata.cacheMode,
                 metadata = metadata
@@ -93,12 +106,7 @@ class OcrStore {
             bubbles.put(item)
         }
         json.put("bubbles", bubbles)
-        val tmp = File(jsonFile.parentFile, "${jsonFile.name}.tmp")
-        tmp.writeText(json.toString())
-        if (!tmp.renameTo(jsonFile)) {
-            jsonFile.writeText(tmp.readText())
-            tmp.delete()
-        }
+        writeFileAtomically(jsonFile, json.toString())
         return jsonFile
     }
 

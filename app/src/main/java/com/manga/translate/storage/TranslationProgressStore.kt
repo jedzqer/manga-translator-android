@@ -28,16 +28,53 @@ data class PageProgressEntry(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
-internal class TranslationProgressStore {
-    private val mutexes = ConcurrentHashMap<String, Mutex>()
+/**
+ * Page-level progress for folder translation, used to resume interrupted tasks.
+ *
+ * The state of a folder is kept in an in-memory snapshot and flushed to disk on
+ * a throttle, so a 1000-page folder no longer reads and rewrites the whole file
+ * once per page transition (which grew quadratically with folder size and was
+ * the main cause of batch translation slowing down in its second half).
+ *
+ * Durability contract: translated pages are authoritative in their own `*.json`
+ * results, this file only records intent, so losing the last few unflushed
+ * transitions cannot invalidate a translation. Callers must still [flush] on
+ * task completion, cancellation, failure and Service teardown.
+ */
+internal class TranslationProgressStore(
+    private val throttleMillis: Long = DEFAULT_THROTTLE_MILLIS,
+    private val clock: () -> Long = System::currentTimeMillis
+) {
+    private class FolderState {
+        val mutex = Mutex()
+        var entries: LinkedHashMap<String, PageProgressEntry>? = null
+        var dirty = false
+        var lastWriteAt = 0L
+    }
 
-    private fun mutexFor(folder: File): Mutex {
-        return mutexes.computeIfAbsent(folder.absolutePath) { Mutex() }
+    private val states = ConcurrentHashMap<String, FolderState>()
+
+    private fun stateFor(folder: File): FolderState {
+        return states.computeIfAbsent(folder.absolutePath) { FolderState() }
     }
 
     fun fileFor(folder: File): File = File(folder, FILE_NAME)
 
-    fun load(folder: File): Map<String, PageProgressEntry> {
+    /**
+     * Returns the current page states, preferring the in-memory snapshot over disk
+     * so callers observe transitions that have not been flushed yet.
+     *
+     * Takes the folder mutex: the snapshot is mutated in place by [update], so
+     * copying it without the lock could race with a concurrent page transition.
+     */
+    suspend fun load(folder: File): Map<String, PageProgressEntry> {
+        val state = stateFor(folder)
+        return state.mutex.withLock {
+            state.entries?.let { LinkedHashMap(it) } ?: readFromDisk(folder)
+        }
+    }
+
+    private fun readFromDisk(folder: File): Map<String, PageProgressEntry> {
         val file = fileFor(folder)
         if (!file.exists()) return emptyMap()
         return try {
@@ -55,19 +92,63 @@ internal class TranslationProgressStore {
         error: String? = null
     ) {
         if (imageName.isBlank()) return
-        mutexFor(folder).withLock {
-            val current = LinkedHashMap(load(folder))
-            current[imageName] = PageProgressEntry(
+        val state = stateFor(folder)
+        state.mutex.withLock {
+            val entries = state.entries ?: LinkedHashMap(readFromDisk(folder)).also {
+                state.entries = it
+            }
+            entries[imageName] = PageProgressEntry(
                 status = status,
                 lastError = error,
-                updatedAt = System.currentTimeMillis()
+                updatedAt = clock()
             )
-            writeAtomic(folder, current)
+            state.dirty = true
+            val now = clock()
+            if (now - state.lastWriteAt >= throttleMillis) {
+                writeLocked(folder, state)
+            }
+        }
+    }
+
+    /**
+     * Flushes every folder with unflushed state, then drops the in-memory
+     * snapshots. Called on task teardown, where a batch or collection task may
+     * have touched many folders.
+     *
+     * Releasing keeps memory bounded across long sessions and makes the next
+     * [load] re-read from disk, so progress files changed from outside the task
+     * (import, export, manual restore) are not shadowed by a stale snapshot.
+     */
+    suspend fun flushAll() {
+        for (path in states.keys.toList()) {
+            val folder = File(path)
+            flush(folder)
+            states[path]?.let { state ->
+                state.mutex.withLock {
+                    if (!state.dirty) {
+                        state.entries = null
+                    }
+                }
+            }
+        }
+    }
+
+    /** Writes the pending snapshot if anything is unflushed. Safe to call repeatedly. */
+    suspend fun flush(folder: File) {
+        val state = states[folder.absolutePath] ?: return
+        state.mutex.withLock {
+            if (state.dirty) {
+                writeLocked(folder, state)
+            }
         }
     }
 
     suspend fun clear(folder: File) {
-        mutexFor(folder).withLock {
+        val state = stateFor(folder)
+        state.mutex.withLock {
+            state.entries = null
+            state.dirty = false
+            state.lastWriteAt = 0L
             val file = fileFor(folder)
             if (file.exists()) {
                 if (!file.delete()) {
@@ -77,6 +158,13 @@ internal class TranslationProgressStore {
         }
     }
 
+    private fun writeLocked(folder: File, state: FolderState) {
+        val entries = state.entries ?: return
+        writeAtomic(folder, entries)
+        state.dirty = false
+        state.lastWriteAt = clock()
+    }
+
     private fun writeAtomic(folder: File, entries: Map<String, PageProgressEntry>) {
         val file = fileFor(folder)
         val parent = file.parentFile
@@ -84,18 +172,12 @@ internal class TranslationProgressStore {
             AppLogger.log("Progress", "Cannot create parent directory for ${file.absolutePath}")
             return
         }
-        val tmp = File(file.parentFile, "$FILE_NAME.tmp")
         try {
-            tmp.writeText(serialize(entries))
-            if (!tmp.renameTo(file)) {
-                if (file.exists()) file.delete()
-                if (!tmp.renameTo(file)) {
-                    AppLogger.log("Progress", "Atomic rename failed for ${file.absolutePath}")
-                }
+            if (!writeFileAtomically(file, serialize(entries))) {
+                AppLogger.log("Progress", "Atomic rename failed for ${file.absolutePath}")
             }
         } catch (e: Exception) {
             AppLogger.log("Progress", "Failed to write progress for ${folder.name}", e)
-            tmp.delete()
         }
     }
 
@@ -135,5 +217,6 @@ internal class TranslationProgressStore {
     companion object {
         private const val FILE_NAME = ".translation_progress.json"
         private const val VERSION = 1
+        private const val DEFAULT_THROTTLE_MILLIS = 2_000L
     }
 }

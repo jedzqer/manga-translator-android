@@ -1419,7 +1419,9 @@ class ReadingFragment : Fragment() {
             imageFile = imageFile,
             fullTranslate = preferencesGateway.isFullTranslateEnabled(folder),
             useVlDirectTranslate = preferencesGateway.isVlDirectTranslateEnabled(folder),
-            language = preferencesGateway.getTranslationLanguage(folder)
+            language = preferencesGateway.getTranslationLanguage(folder),
+            detectionSelection = preferencesGateway.getRegionDetectionSelection(folder),
+            readingMode = preferencesGateway.getReadingMode(folder)
         )
     }
 

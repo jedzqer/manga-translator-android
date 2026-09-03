@@ -13,7 +13,6 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.AttributeSet
-import android.util.TypedValue
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
@@ -64,17 +63,6 @@ class FloatingTranslationView @JvmOverloads constructor(
         color = Color.WHITE
         style = Paint.Style.FILL
     }
-    private val hardMinTextSizePx: Float
-        get() = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            3f,
-            resources.displayMetrics
-        ) * contentZoomScale
-    private val textSizeStepPx = TypedValue.applyDimension(
-        TypedValue.COMPLEX_UNIT_SP,
-        0.5f,
-        resources.displayMetrics
-    ).coerceAtLeast(0.5f)
     private val deletePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xFFE53935.toInt()
         style = Paint.Style.STROKE
@@ -1075,10 +1063,7 @@ class FloatingTranslationView @JvmOverloads constructor(
             drawClippedPath(canvas, drawPath, pageClip)
             return
         }
-        val effectiveMinArea = bubbleRenderSettings.minAreaPerCharSp * contentZoomScale * contentZoomScale
-        val textRect = BubbleTextScaling.resolveAreaAdjustedTextRect(
-            bubble.text, Path(drawPath), effectiveMinArea, resources.displayMetrics.density
-        )
+        val textRect = BubbleTextScaling.resolveTextRect(Path(drawPath))
         drawClippedPath(canvas, drawPath, pageClip)
         if (textRect.width() <= 0f || textRect.height() <= 0f) return
         drawClippedContent(canvas, pageClip) {
@@ -1166,7 +1151,6 @@ class FloatingTranslationView @JvmOverloads constructor(
         hash = hash * 31 + shrinkPercent
         hash = hash * 31 + floatBits(contentZoomScale)
         hash = hash * 31 + bubble.text.hashCode()
-        hash = hash * 31 + floatBits(bubbleRenderSettings.minAreaPerCharSp)
         hash = hash * 31 + floatBits(bubble.rect.left)
         hash = hash * 31 + floatBits(bubble.rect.top)
         hash = hash * 31 + floatBits(bubble.rect.right)
@@ -1219,8 +1203,10 @@ class FloatingTranslationView @JvmOverloads constructor(
     }
 
     private fun resolveBubbleShrinkPercent(bubble: BubbleTranslation): Int {
-        return if (bubble.source.isFreeBubble) {
+        return if (bubble.source.usesFreeBubbleShrink) {
             bubbleRenderSettings.freeBubbleShrinkPercent
+        } else if (bubble.source == BubbleSource.MANUAL) {
+            0
         } else {
             bubbleRenderSettings.shrinkPercent
         }
@@ -1240,8 +1226,11 @@ class FloatingTranslationView @JvmOverloads constructor(
         offset: Pair<Float, Float>,
         opacityAlpha: Int
     ) {
-        val useAutoAdaptColor = bubble.source.isFreeBubble &&
+        val useAutoAdaptColor = if (bubble.source.isFreeBubble) {
             bubbleRenderSettings.autoAdaptFreeBubbleColor
+        } else {
+            bubbleRenderSettings.autoAdaptBubbleColor
+        }
         val bubbleFillColor = if (useAutoAdaptColor) {
             val identity = bubbleIdentity(bubble)
             bubbleColorCache[identity] ?: run {
@@ -1392,29 +1381,32 @@ class FloatingTranslationView @JvmOverloads constructor(
         startFromTop: Boolean
     ) {
         if (verticalLayoutEnabled) {
-            drawVerticalTextInRect(
-                canvas,
-                VerticalTextSymbolConverter.convert(text),
-                rect,
-                startFromTop
-            )
+            canvas.withClip(rect) {
+                drawVerticalTextInRect(
+                    this,
+                    VerticalTextSymbolConverter.convert(text),
+                    rect,
+                    startFromTop
+                )
+            }
         } else {
             val textSize = resolveHorizontalTextSize(rect, text)
             val layout = buildLayout(text, rect.width().toInt().coerceAtLeast(1), textSize)
             val left = BubbleTextPlacement.horizontalTextLeft(rect, layout.width)
             val top = BubbleTextPlacement.horizontalTextTop(rect, layout.height, startFromTop)
-            canvas.withTranslation(left, top) {
-                layout.draw(this)
+            canvas.withClip(rect) {
+                withTranslation(left, top) {
+                    layout.draw(this)
+                }
             }
         }
     }
 
     private fun resolveHorizontalTextSize(rect: RectF, text: String): Float {
-        return BubbleTextScaling.findDefaultHorizontalTextSize(
+        return BubbleTextScaling.findAutoHorizontalTextSize(
             text = text,
             maxWidth = rect.width().toInt().coerceAtLeast(1),
             maxHeight = rect.height().toInt().coerceAtLeast(1),
-            minTextSizePx = hardMinTextSizePx,
             buildLayout = ::buildLayout,
             layoutFits = BubbleTextScaling::layoutFits
         )
@@ -1476,7 +1468,7 @@ class FloatingTranslationView @JvmOverloads constructor(
     ) {
         val maxWidth = rect.width().toInt().coerceAtLeast(1)
         val maxHeight = rect.height().toInt().coerceAtLeast(1)
-        val textSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight, rect.width() / 2.2f)
+        val textSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight)
         val layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
         VerticalTextRenderer.draw(canvas, text, rect, textPaint, layout, startFromTop)
     }
@@ -1484,21 +1476,12 @@ class FloatingTranslationView @JvmOverloads constructor(
     private fun findDefaultVerticalTextSize(
         text: String,
         maxWidth: Int,
-        maxHeight: Int,
-        initialSize: Float
+        maxHeight: Int
     ): Float {
-        val maxTextSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            42f,
-            resources.displayMetrics
-        )
-        var textSize = initialSize.coerceIn(hardMinTextSizePx, maxTextSize)
-        var layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
-        while ((layout.columnWidth <= 0f || layout.lineHeight <= 0f || !layout.fits) && textSize > hardMinTextSizePx) {
-            textSize = (textSize - textSizeStepPx).coerceAtLeast(hardMinTextSizePx)
-            layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
+        return BubbleTextScaling.findLargestFittingTextSize(maxWidth, maxHeight) { textSize ->
+            val layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
+            layout.columnWidth > 0f && layout.lineHeight > 0f && layout.fits
         }
-        return textSize
     }
 
     private fun buildVerticalLayout(

@@ -43,14 +43,6 @@ internal class TextBubbleTranslationCoordinator(
         val translatedMap = HashMap<Int, String>(translatable.size)
         val removedBubbleIds = LinkedHashSet<Int>()
 
-        fun merge(): List<BubbleTranslation> {
-            return bubbles.filterNot { it.id in removedBubbleIds }.map { bubble ->
-                translatedMap[bubble.id]?.let { translated ->
-                    bubble.withTranslationResult(translated)
-                } ?: bubble
-            }
-        }
-
         AppLogger.log(logTag, "Translate request segments=${translatable.size}")
         val requestItems = translatable
             .sortedWith(compareBy({ it.rect.top }, { it.rect.left }, { it.id }))
@@ -107,7 +99,7 @@ internal class TextBubbleTranslationCoordinator(
         }
 
         return TextBubbleTranslationBatchResult(
-            bubbles = merge(),
+            bubbles = mergeBubbleTranslations(bubbles, translatedMap, removedBubbleIds),
             glossaryUsed = translated.glossaryUsed,
             removedBubbleIds = removedBubbleIds
         )

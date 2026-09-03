@@ -163,14 +163,13 @@
     <string name="floating_translate_settings_title">悬浮窗翻译设置</string>
     <string name="normal_bubble_render_settings_button">普通气泡框设置</string>
     <string name="normal_bubble_render_settings_title">普通气泡框设置</string>
-    <string name="normal_bubble_render_settings_note">用于阅读页、条漫页和导出图片的普通气泡框绘制。可分别设置普通气泡和游离气泡的回缩与不透明度。文字会根据气泡大小自动适配字号；当文字密度过高时自动扩大气泡。游离气泡仅指普通模式下由文本检测补出的框，不包含用户手动新增气泡。字体请在单独的“字体设置”中统一调整。</string>
+    <string name="normal_bubble_render_settings_note">用于阅读页、条漫页和导出图片的普通气泡框绘制。可分别设置普通气泡和游离气泡的回缩、不透明度和自适应背景色。文字会根据气泡大小自动适配字号；文字会尽量填满气泡，不改变气泡大小。游离气泡仅指普通模式下由文本检测补出的框，不包含用户手动新增气泡。字体请在单独的“字体设置”中统一调整。</string>
     <string name="normal_bubble_shrink_percent_hint">气泡框回缩 (0–30)</string>
     <string name="normal_bubble_opacity_percent_hint">普通气泡不透明度 (0–100)</string>
     <string name="normal_bubble_free_shrink_percent_hint">游离气泡回缩 (0–30)</string>
     <string name="normal_bubble_free_opacity_percent_hint">游离气泡不透明度 (0–100)</string>
+    <string name="normal_bubble_auto_adapt_color">普通气泡自适应背景色</string>
     <string name="normal_bubble_free_auto_adapt_color">游离气泡自适应背景色</string>
-    <string name="normal_bubble_min_area_per_char_label">文字密度下限（值越大文字越大，可能扩大气泡）</string>
-    <string name="normal_bubble_min_area_value">当前: %d sp² / 字</string>
     <string name="bubble_font_settings_button">字体设置</string>
     <string name="bubble_font_settings_button_uploaded">字体设置（已上传）</string>
     <string name="bubble_font_settings_title">字体设置</string>
@@ -191,7 +190,7 @@
     <string name="bubble_font_bold">字体加粗</string>
     <string name="floating_bubble_render_settings_button">悬浮窗气泡设置</string>
     <string name="floating_bubble_render_settings_title">悬浮窗气泡设置</string>
-    <string name="floating_bubble_render_settings_note">用于悬浮窗翻译结果覆盖层。大小支持外扩或内缩，形状支持矩形或内接椭圆。文字会根据气泡大小自动适配字号；当文字密度过高时自动扩大气泡。字体请在单独的“字体设置”中统一调整。</string>
+    <string name="floating_bubble_render_settings_note">用于悬浮窗翻译结果覆盖层。大小支持外扩或内缩，形状支持矩形或内接椭圆。文字会根据气泡大小自动适配字号；文字会尽量填满气泡，不改变气泡大小。字体请在单独的“字体设置”中统一调整。</string>
     <string name="floating_bubble_size_adjust_percent_hint">气泡框大小 (-30–30，正数外扩)</string>
     <string name="floating_bubble_opacity_percent_hint">气泡框不透明度 (0–100)</string>
     <string name="floating_bubble_auto_adapt_color">气泡自适应背景色</string>
@@ -199,8 +198,6 @@
     <string name="floating_bubble_shape_rectangle">默认矩形</string>
     <string name="floating_bubble_shape_inscribed_ellipse">内接椭圆</string>
     <string name="floating_bubble_horizontal_text">悬浮窗使用横向排版</string>
-    <string name="floating_bubble_min_area_per_char_label">文字密度下限（值越大文字越大，可能扩大气泡）</string>
-    <string name="floating_bubble_min_area_value">当前: %d sp² / 字</string>
     <string name="floating_api_url_hint">悬浮窗翻译 API 地址</string>
     <string name="floating_api_key_hint">悬浮窗翻译 API Key</string>
     <string name="floating_model_name_hint">悬浮窗翻译模型名称</string>
@@ -211,6 +208,10 @@
     <string name="floating_proofreading_mode_note">开启后，悬浮窗翻译完成会自动进入现有编辑模式，方便手动增删和调整气泡。</string>
     <string name="floating_auto_close_on_screen_change">自动清除气泡</string>
     <string name="floating_auto_close_on_screen_change_note">开启后，可以在翻页时自动关闭翻译气泡，但会增加一些性能消耗。</string>
+    <string name="floating_detection_region_title">翻译检测区域</string>
+    <string name="floating_detection_region_note">可设置顶部和底部留空比例，用于避开阅读器状态栏、日期和时间（0–90%）。</string>
+    <string name="floating_detection_top_inset_hint">顶部留空比例（%）</string>
+    <string name="floating_detection_bottom_inset_hint">底部留空比例（%）</string>
     <string name="floating_gesture_settings_title">悬浮球手势</string>
     <string name="floating_gesture_settings_note">为单击、双击、长按、三击分别指定操作。允许重复，三击默认无操作。</string>
     <string name="floating_single_tap_action_hint">单击</string>
@@ -365,7 +366,6 @@
     <string name="folder_image_count">%1$d 张图片</string>
     <string name="folder_stats_unknown">—</string>
     <string name="folder_collection_meta">%1$d 个章节 · %2$d 张图片</string>
-    <string name="folder_open_to_view">点击查看内容</string>
     <string name="folder_delete">删除</string>
     <string name="folder_rename">重命名</string>
     <string name="folder_more_actions">更多文件夹操作</string>
@@ -427,7 +427,7 @@
     <string name="folder_glossary_processing_note">关闭译名处理后可并发翻译，速度更快。</string>
     <string name="folder_bubble_detection_info_title">区域检测模式说明</string>
     <string name="folder_bubble_detection_info_desc">区域检测模式说明</string>
-    <string name="folder_bubble_detection_info">仅气泡只使用气泡分割模型，只能识别气泡内的文字，识别速度中等；仅文字只使用 Paddle OCR 检测并合并全部文字块，识别出的气泡形状不够精准，识别速度最快；气泡和游离文字会同时检测普通气泡，并用 Paddle OCR 补充和合并气泡外文字，识别速度最慢。</string>
+    <string name="folder_bubble_detection_info">仅气泡只使用气泡分割模型，只能识别气泡内的文字，识别速度中等；仅文字只使用 Paddle OCR 检测并合并全部文字块，识别出的气泡形状不够精准，识别速度最快；气泡和游离文字会同时检测普通气泡，并用 Paddle OCR 补充和合并气泡外文字，识别速度最慢。如果出现气泡乱飞、位置明显偏移等情况，建议切换为“仅气泡”模式识别。</string>
     <string name="folder_detection_mode_bubbles">仅气泡</string>
     <string name="folder_detection_mode_text">仅文字</string>
     <string name="folder_detection_mode_bubbles_and_text">气泡和游离文字</string>
@@ -533,6 +533,7 @@
 %1$s</string>
     <string name="model_response_failed_clear_advanced_params">高级 LLM 参数可能不受当前接口支持。请在“LLM 参数”里把可选高级参数留空后重试。</string>
     <string name="model_response_empty_content">模型返回空响应，无法提取有效内容。</string>
+    <string name="model_response_truncated">模型返回内容被截断（已达到 max_output_tokens 上限），译文不完整。请在“LLM 参数”中调大 max_output_tokens 后重试。</string>
     <string name="model_response_blank_bubbles">模型返回空白结果：%1$s 模式下有 %2$d 个气泡未返回有效翻译内容。</string>
     <string name="error_page_prefix">页面：</string>
     <string name="translation_continue">重试</string>
@@ -599,6 +600,15 @@
 
     <!-- About / Crash / Permission -->
     <string name="about_button">关于软件</string>
+    <string name="backup_export_button">导出漫画与设置</string>
+    <string name="backup_import_button">导入漫画与设置</string>
+    <string name="backup_export_success">应用备份导出完成</string>
+    <string name="backup_export_failed">应用备份导出失败</string>
+    <string name="backup_import_success">应用备份导入完成，共恢复 %1$d 个漫画文件。重新进入漫画库即可查看。</string>
+    <string name="backup_import_failed">应用备份导入失败，请确认选择的是有效备份文件</string>
+    <string name="backup_export_running">正在导出应用备份，请稍候…</string>
+    <string name="backup_import_running">正在导入应用备份，请稍候…</string>
+    <string name="backup_operation_canceled">备份操作已取消</string>
     <string name="about_dialog_title">关于</string>
     <string name="about_dialog_message">当前版本：%1$s</string>
     <string name="about_dialog_message_with_group">当前版本：%1$s

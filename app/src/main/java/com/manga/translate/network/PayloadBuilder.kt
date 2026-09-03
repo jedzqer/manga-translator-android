@@ -487,6 +487,11 @@ internal class PayloadBuilder(
         payload: JSONObject,
         llmParams: LlmParameterSettings
     ) {
+        // enable_thinking / thinking_budget 均非 OpenAI 官方字段，而是硅基流动、通义千问、
+        // 智谱 GLM 等兼容网关的扩展字段。与 fd47d62 对 Gemini 的处理不同：这里关闭思考时
+        // 仍要显式发送 enable_thinking: false，因为部分供应商默认开启思考，省略字段等于
+        // 关不掉；显式 false 才能保证关闭。该行为自 7fda9f4 起即为有意设计（不再按 URL
+        // 白名单限制）。thinking_budget 仅在开启思考时发送，避免出现无效的 0 预算。
         payload.put("enable_thinking", llmParams.enableThinking)
         if (llmParams.enableThinking) {
             payload.put("thinking_budget", llmParams.thinkingLength.openAiBudgetTokens())
@@ -554,7 +559,11 @@ internal class PayloadBuilder(
         llmParams.maxOutputTokens?.let { config.put("maxOutputTokens", it) }
         llmParams.frequencyPenalty?.let { config.put("frequencyPenalty", it) }
         llmParams.presencePenalty?.let { config.put("presencePenalty", it) }
-        config.put("thinkingConfig", buildGeminiThinkingConfig(llmParams))
+        // Gemini rejects thinkingConfig on models/requests where thinking is disabled.
+        // Omitting the block is also the API-compatible way to use the model default.
+        if (llmParams.enableThinking) {
+            config.put("thinkingConfig", buildGeminiThinkingConfig(llmParams))
+        }
         return config.takeIf { it.length() > 0 }
     }
 

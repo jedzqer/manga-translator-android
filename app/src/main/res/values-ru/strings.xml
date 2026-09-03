@@ -151,14 +151,13 @@
     <string name="floating_translate_settings_title">Настройки плавающего перевода</string>
     <string name="normal_bubble_render_settings_button">Обычные пузырьки</string>
     <string name="normal_bubble_render_settings_title">Обычные пузырьки</string>
-    <string name="normal_bubble_render_settings_note">Общий рисунок пузырьковой коробки для страниц чтения, страниц комиксов и экспортированных изображений. Втягивание и непрозрачность обычных и свободных пузырьков можно настроить отдельно. Текст автоматически адаптируется к размеру шрифта в соответствии с размером пузырька; когда плотность текста слишком высока, пузырь автоматически расширяется. Бесплатные пузырьки относятся только к полям, заполненным при обнаружении текста в обычном режиме, и не включают пузырьки, добавленные пользователями вручную. Пожалуйста, настройте шрифты одинаково в отдельных «Настройках шрифтов».</string>
+    <string name="normal_bubble_render_settings_note">Общий рисунок пузырьковой коробки для страниц чтения, страниц комиксов и экспортированных изображений. Втягивание и непрозрачность обычных и свободных пузырьков можно настроить отдельно. Текст автоматически адаптируется к размеру шрифта в соответствии с размером пузырька; текст старается заполнить пузырёк без изменения его размера. Бесплатные пузырьки относятся только к полям, заполненным при обнаружении текста в обычном режиме, и не включают пузырьки, добавленные пользователями вручную. Пожалуйста, настройте шрифты одинаково в отдельных «Настройках шрифтов».</string>
     <string name="normal_bubble_shrink_percent_hint">Втягивание пузыря (0–30)</string>
     <string name="normal_bubble_opacity_percent_hint">Нормальная непрозрачность пузырьков (0–100)</string>
     <string name="normal_bubble_free_shrink_percent_hint">Свободное втягивание пузырька (0–30)</string>
     <string name="normal_bubble_free_opacity_percent_hint">Непрозрачность свободных пузырьков (0–100)</string>
+    <string name="normal_bubble_auto_adapt_color">Адаптивный цвет фона обычных пузырьков</string>
     <string name="normal_bubble_free_auto_adapt_color">Бесплатный адаптивный цвет фона пузырьков</string>
-    <string name="normal_bubble_min_area_per_char_label">Нижний предел плотности текста (чем больше значение, тем крупнее текст, из-за чего могут расширяться пузырьки)</string>
-    <string name="normal_bubble_min_area_value">Текущее: %d sp² / символ</string>
     <string name="bubble_font_settings_button">Настройки шрифта</string>
     <string name="bubble_font_settings_button_uploaded">Настройки шрифта (загружено)</string>
     <string name="bubble_font_settings_title">Настройки шрифта</string>
@@ -179,7 +178,7 @@
     <string name="bubble_font_bold">Жирный шрифт</string>
     <string name="floating_bubble_render_settings_button">Пузырьки плавающего окна</string>
     <string name="floating_bubble_render_settings_title">Пузырьки плавающего окна</string>
-    <string name="floating_bubble_render_settings_note">Используется для наложения результатов перевода плавающего окна. Размер поддерживает расширение наружу или сжатие внутрь, а форма поддерживает прямоугольник или вписанный эллипс. Текст автоматически адаптируется к размеру шрифта в соответствии с размером пузырька; когда плотность текста слишком высока, пузырь автоматически расширяется. Пожалуйста, настройте шрифты одинаково в отдельных «Настройках шрифтов».</string>
+    <string name="floating_bubble_render_settings_note">Используется для наложения результатов перевода плавающего окна. Размер поддерживает расширение наружу или сжатие внутрь, а форма поддерживает прямоугольник или вписанный эллипс. Текст автоматически адаптируется к размеру шрифта в соответствии с размером пузырька; текст старается заполнить пузырёк без изменения его размера. Пожалуйста, настройте шрифты одинаково в отдельных «Настройках шрифтов».</string>
     <string name="floating_bubble_size_adjust_percent_hint">Размер пузырька (-30–30, положительное расширение)</string>
     <string name="floating_bubble_opacity_percent_hint">Непрозрачность пузырьковой рамки (0–100)</string>
     <string name="floating_bubble_auto_adapt_color">Адаптивный цвет фона пузырька</string>
@@ -187,8 +186,6 @@
     <string name="floating_bubble_shape_rectangle">Прямоугольник</string>
     <string name="floating_bubble_shape_inscribed_ellipse">Вписанный эллипс</string>
     <string name="floating_bubble_horizontal_text">Используйте горизонтальную компоновку для плавающих окон.</string>
-    <string name="floating_bubble_min_area_per_char_label">Нижний предел плотности текста (чем больше значение, тем крупнее текст, из-за чего могут расширяться пузырьки)</string>
-    <string name="floating_bubble_min_area_value">Текущее: %d sp² / символ</string>
     <string name="floating_api_url_hint">Трансляция плавающего окна адреса API</string>
     <string name="floating_api_key_hint">Перевод плавающего окна API Key</string>
     <string name="floating_model_name_hint">Название модели перевода плавающего окна</string>
@@ -199,6 +196,10 @@
     <string name="floating_proofreading_mode_note">После включения плавающее окно автоматически перейдет в существующий режим редактирования после завершения перевода, что облегчает ручное добавление, удаление и настройку пузырьков.</string>
     <string name="floating_auto_close_on_screen_change">Автоматически очищать пузырьки</string>
     <string name="floating_auto_close_on_screen_change_note">При включении пузырь перевода может автоматически закрываться при перелистывании страниц, но это приведет к некоторому увеличению потребления производительности.</string>
+    <string name="floating_detection_region_title">Область обнаружения перевода</string>
+    <string name="floating_detection_region_note">Задайте верхнее и нижнее поля, чтобы исключить строку состояния, даты и время (0–90%).</string>
+    <string name="floating_detection_top_inset_hint">Верхнее поле (%)</string>
+    <string name="floating_detection_bottom_inset_hint">Нижнее поле (%)</string>
     <string name="floating_gesture_settings_title">жест плавающего мяча</string>
     <string name="floating_gesture_settings_note">Укажите отдельные действия для одиночного щелчка, двойного щелчка, длительного нажатия и тройного щелчка. Повтор разрешен, и по умолчанию после трех кликов никаких действий предприниматься не будет.</string>
     <string name="floating_single_tap_action_hint">Одинарное нажатие</string>
@@ -214,6 +215,8 @@
     <string name="floating_ai_api_concurrency_hint">Плавающее окно AI API Верхний предел параллелизма (1–50)</string>
     <string name="floating_translate_settings_note">Оставьте поле пустым, чтобы использовать соответствующую конфигурацию в основных настройках.</string>
     <string name="ocr_use_local">Используйте локальный OCR</string>
+    <string name="ocr_use_xnnpack">Включить локальное ускорение вывода XNNPACK (экспериментально)</string>
+    <string name="ocr_use_xnnpack_note">Влияет только на локальные модели ONNX. Уже загруженные модели требуют перезапуска приложения; на некоторых устройствах возможна несовместимость, замедление или сбой при загрузке модели — при проблемах отключите и перезапустите.</string>
     <string name="ocr_api_format_openai_compatible">OpenAI совместим</string>
     <string name="ocr_api_format_hint">OCR API формат</string>
     <string name="ocr_api_url_hint">OCR API Адрес</string>
@@ -343,6 +346,7 @@
     <string name="folder_read">Начать чтение</string>
     <string name="folder_back">Назад</string>
     <string name="folder_image_count">%1$d фотографии</string>
+    <string name="folder_stats_unknown">—</string>
     <string name="folder_collection_meta">%1$d глав · %2$d изображений</string>
     <string name="folder_delete">Удалить</string>
     <string name="folder_rename">Переименовать</string>
@@ -403,7 +407,7 @@
     <string name="folder_glossary_processing_note">После отключения обработки перевода параллельный перевод может выполняться быстрее.</string>
     <string name="folder_bubble_detection_info_title">О режимах обнаружения областей</string>
     <string name="folder_bubble_detection_info_desc">О режимах обнаружения областей</string>
-    <string name="folder_bubble_detection_info">Только пузыри использует модель сегментации пузырей. Только текст использует Paddle OCR для поиска и объединения всех текстовых блоков и работает быстрее всего. Пузыри и отдельный текст обнаруживает обычные пузыри и дополняет их текстом вне пузырей с помощью Paddle OCR; этот режим работает медленнее всего.</string>
+    <string name="folder_bubble_detection_info">Только пузыри использует модель сегментации пузырей. Только текст использует Paddle OCR для поиска и объединения всех текстовых блоков и работает быстрее всего. Пузыри и отдельный текст обнаруживает обычные пузыри и дополняет их текстом вне пузырей с помощью Paddle OCR; этот режим работает медленнее всего. Если пузыри начинают заметно смещаться или «разлетаться», переключитесь на режим «Только пузыри».</string>
     <string name="folder_detection_mode_bubbles">Только пузыри</string>
     <string name="folder_detection_mode_text">Только текст</string>
     <string name="folder_detection_mode_bubbles_and_text">Пузыри и отдельный текст</string>
@@ -497,6 +501,7 @@
 %1$s</string>
     <string name="model_response_failed_clear_advanced_params">Расширенные параметры LLM могут не поддерживаться текущим интерфейсом. Оставьте необязательные дополнительные параметры пустыми в разделе «Параметры LLM» и повторите попытку.</string>
     <string name="model_response_empty_content">Модель вернула пустой ответ, и не удалось извлечь допустимый контент.</string>
+    <string name="model_response_truncated">Ответ модели был усечён, так как достигнут предел max_output_tokens, поэтому перевод неполный. Увеличьте значение max_output_tokens в разделе «Параметры LLM» и повторите попытку.</string>
     <string name="model_response_blank_bubbles">Модель вернула пустые результаты: пузырьки %2$d в режиме %1$s не возвращали действительных переводов.</string>
     <string name="error_page_prefix">страница:</string>
     <string name="translation_continue">Повторить</string>
@@ -555,6 +560,15 @@
     <string name="update_download_description">После скачивания вы можете установить его в панели уведомлений (%1$s)</string>
     <string name="update_download_failed_manual_tip">Если загрузка не удалась, вы можете вручную открыть страницу проекта, чтобы загрузить обновление.</string>
     <string name="about_button">О приложении</string>
+    <string name="backup_export_button">Экспорт манги и настроек</string>
+    <string name="backup_import_button">Импорт манги и настроек</string>
+    <string name="backup_export_success">Резервная копия экспортирована</string>
+    <string name="backup_export_failed">Не удалось экспортировать резервную копию</string>
+    <string name="backup_import_success">Резервная копия импортирована. Восстановлено файлов манги: %1$d. Откройте библиотеку снова.</string>
+    <string name="backup_import_failed">Не удалось импортировать резервную копию. Выберите корректный файл.</string>
+    <string name="backup_export_running">Экспорт резервной копии приложения, подождите…</string>
+    <string name="backup_import_running">Импорт резервной копии приложения, подождите…</string>
+    <string name="backup_operation_canceled">Операция резервного копирования отменена</string>
     <string name="about_dialog_title">О приложении</string>
     <string name="about_dialog_message">Текущая версия: %1$s</string>
     <string name="about_dialog_message_with_group">Текущая версия: %1$s

@@ -39,15 +39,22 @@ open class SafeNestedScrollView @JvmOverloads constructor(
     }
 
     private fun isFrameworkScrollBarCrash(error: NullPointerException): Boolean {
-        val message = error.message.orEmpty()
-        return message.contains("ScrollBarDrawable", ignoreCase = true)
+        // The known OEM/framework crash originates inside ScrollBarDrawable drawing.
+        // Some ROM variants only name the class in the message (field access NPEs),
+        // others only in the stack trace (method invocation NPEs), so check both.
+        if (error.message?.contains("ScrollBarDrawable", ignoreCase = true) == true) {
+            return true
+        }
+        return error.stackTrace.any { frame ->
+            frame.className.contains("ScrollBarDrawable", ignoreCase = true)
+        }
     }
 
     private fun disableScrollBarsAfterCrash(error: NullPointerException) {
         scrollBarCrashOccurred = true
-        AppLogger.log(
+        AppLogger.error(
             "SafeNestedScrollView",
-            "Recovered from framework scrollbar crash by disabling scrollbars",
+            "Intercepted framework scrollbar crash; scrollbars disabled",
             error
         )
         isVerticalScrollBarEnabled = false

@@ -13,10 +13,10 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.AttributeSet
-import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import androidx.core.graphics.withClip
 import androidx.core.graphics.withTranslation
 import com.manga.translate.R
 import com.manga.translate.model.BubbleTranslation
@@ -78,17 +78,6 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         color = DEFAULT_TEXT_COLOR
         textSize = resources.displayMetrics.density * resources.configuration.fontScale * 12f
     }
-    private val hardMinTextSizePx: Float
-        get() = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            3f,
-            resources.displayMetrics
-        )
-    private val textSizeStepPx = TypedValue.applyDimension(
-        TypedValue.COMPLEX_UNIT_SP,
-        0.5f,
-        resources.displayMetrics
-    ).coerceAtLeast(0.5f)
     private val sourceRect = RectF()
     private val tempRect = RectF()
     private val shapeRect = RectF()
@@ -460,16 +449,13 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
                 drawDeleteIcon(canvas, tempRect)
             }
             val text = bubble.text.ifBlank { context.getString(R.string.floating_bubble_placeholder) }
-            val textRect = BubbleTextScaling.resolveAreaAdjustedTextRect(
-                text, bubblePath, bubbleRenderSettings.minAreaPerCharSp, resources.displayMetrics.density
-            )
+            val textRect = BubbleTextScaling.resolveTextRect(bubblePath)
             if (textRect.width() <= 0f || textRect.height() <= 0f) continue
             if (bubbleRenderSettings.useHorizontalText) {
-                val textSize = BubbleTextScaling.findDefaultHorizontalTextSize(
+                val textSize = BubbleTextScaling.findAutoHorizontalTextSize(
                     text = text,
                     maxWidth = textRect.width().toInt().coerceAtLeast(1),
                     maxHeight = textRect.height().toInt().coerceAtLeast(1),
-                    minTextSizePx = hardMinTextSizePx,
                     buildLayout = { content, width, ts ->
                         buildLayout(text = content, paint = TextPaint(textPaint).apply { this.textSize = ts }, availableWidth = width)
                     },
@@ -480,12 +466,20 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
                     paint = TextPaint(textPaint).apply { this.textSize = textSize },
                     availableWidth = textRect.width().toInt().coerceAtLeast(1)
                 )
-                canvas.withTranslation(textRect.centerX(), textRect.centerY()) {
-                    translate(-textLayout.width / 2f, -textLayout.height / 2f)
-                    textLayout.draw(this)
+                canvas.withClip(textRect) {
+                    withTranslation(textRect.centerX(), textRect.centerY()) {
+                        translate(-textLayout.width / 2f, -textLayout.height / 2f)
+                        textLayout.draw(this)
+                    }
                 }
             } else {
-                drawVerticalTextInRect(canvas, VerticalTextSymbolConverter.convert(text), textRect)
+                canvas.withClip(textRect) {
+                    drawVerticalTextInRect(
+                        this,
+                        VerticalTextSymbolConverter.convert(text),
+                        textRect
+                    )
+                }
             }
         }
     }
@@ -494,6 +488,11 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
      * Builds [bubblePath] in view coordinates.
      * Balloon detections with maskContour use the shared contour path when available;
      * free-text / manual boxes keep floating shape settings (rect / ellipse).
+     *
+     * IMPORTANT: This is an interactive **editing overlay** — shrinkPercent is hardcoded to 0
+     * so users see the full detection bounds they're manipulating, NOT the final shrunk rendering.
+     * This intentionally differs from BubbleRenderer / FloatingTranslationView which apply
+     * user settings for final display.
      */
     private fun resolveBubbleDisplayPath(bubble: BubbleTranslation, radius: Float) {
         val contour = bubble.maskContour
@@ -507,7 +506,7 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
                 originY = 0f,
                 scaleX = scaleX(),
                 scaleY = scaleY(),
-                shrinkPercent = 0
+                shrinkPercent = 0  // No shrink in edit mode — show full detection bounds
             )
             applySizeAdjustToPath(bubblePath)
             return
@@ -654,9 +653,7 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
     private fun drawVerticalTextInRect(canvas: Canvas, text: String, rect: RectF) {
         val maxWidth = rect.width().toInt().coerceAtLeast(1)
         val maxHeight = rect.height().toInt().coerceAtLeast(1)
-        val minTextSizePx = hardMinTextSizePx
-        val defaultTextSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight, rect.width() / 2.2f)
-        val textSize = defaultTextSize.coerceAtLeast(minTextSizePx)
+        val textSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight)
         val layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
         textPaint.textSize = textSize
         VerticalTextRenderer.draw(canvas, text, rect, textPaint, layout)
@@ -665,19 +662,12 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
     private fun findDefaultVerticalTextSize(
         text: String,
         maxWidth: Int,
-        maxHeight: Int,
-        initialSize: Float
+        maxHeight: Int
     ): Float {
-        val minTextSizePx = hardMinTextSizePx
-        val maxTextSize = 42f * resources.displayMetrics.density / resources.configuration.fontScale
-        var textSize = initialSize.coerceIn(minTextSizePx, maxTextSize)
-        var layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
-        while ((layout.columnWidth <= 0f || layout.lineHeight <= 0f || !layout.fits) && textSize > minTextSizePx) {
-            textSize = (textSize - textSizeStepPx).coerceAtLeast(minTextSizePx)
-            layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
-            if (textSize <= minTextSizePx) break
+        return BubbleTextScaling.findLargestFittingTextSize(maxWidth, maxHeight) { textSize ->
+            val layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
+            layout.columnWidth > 0f && layout.lineHeight > 0f && layout.fits
         }
-        return textSize
     }
 
     private fun buildVerticalLayout(

@@ -82,26 +82,5 @@
             android:text="@string/bubble_vertical_text"
             android:textColor="?attr/dialogTextColor" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="@string/floating_bubble_min_area_per_char_label"
-            android:textColor="?attr/dialogTextColor"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/floating_bubble_min_area_value_label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="?attr/dialogHintTextColor"
-            android:textSize="12sp" />
-
-        <SeekBar
-            android:id="@+id/floating_bubble_min_area_seekbar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:max="100" />
     </LinearLayout>
 </ScrollView>

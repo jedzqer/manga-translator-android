@@ -1,15 +1,27 @@
 {
-  "versionCode": 85,
-  "versionName": "3.4.0",
+  "versionCode": 93,
+  "versionName": "3.4.8",
   "releaseChannel": "stable",
   "qqGroup": "1080302768",
-  "releasedAt": "2026-08-16",
-  "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v3.4.0/app-release.apk",
-  "changelog": "v3.4.0 更新内容：\n1. PDF 导入质量大幅提升，图片更清晰。\n2. 长图翻译体验优化：改善气泡检测准确度，修复新建、移动气泡时的卡顿，优化分块处理机制。\n3. 气泡检测增强：提升识别准确率，支持更多样的文本块形状。\n4. OCR 模型升级：韩文识别升级至 PP-OCRv5，日文识别改用 Paddle v6 通用模型。\n5. 修复条漫翻页画面闪烁、WebP 图片显示异常、跨页气泡文字被裁切等问题。\n6. 翻译设置中新增三个气泡检测选项\n7. 新增巴西葡萄牙语支持。\n8. 移除百度 OCR 支持。\n9. 修复大量bug",
-  "changelog_hant": "v3.4.0 更新內容：\n1. PDF 匯入品質大幅提升，圖片更清晰。\n2. 長圖翻譯體驗優化：改善氣泡檢測準確度，修復新建、移動氣泡時的卡頓，優化分塊處理機制。\n3. 氣泡檢測增強：提升識別準確率，支援更多樣的文字塊形狀。\n4. OCR 模型升級：韓文識別升級至 PP-OCRv5，日文識別改用 Paddle v6 通用模型。\n5. 修復條漫翻頁畫面閃爍、WebP 圖片顯示異常、跨頁氣泡文字被裁切等問題。\n6. 新增遊離文字檢測開關，可根據需要關閉以提升翻譯速度。\n7. 新增巴西葡萄牙語支援。\n8. 移除百度 OCR 支援。",
-  "changelog_en": "What's new in v3.4.0:\n1. Significantly improved PDF import quality with clearer images.\n2. Long-image translation improvements: better bubble detection accuracy, fixed lag when creating/moving bubbles, optimized tile processing.\n3. Enhanced bubble detection: improved recognition accuracy and support for more diverse text block shapes.\n4. OCR model upgrades: Korean OCR upgraded to PP-OCRv5, Japanese OCR switched to Paddle v6 universal model.\n5. Fixed comic strip page-flip flickering, WebP image display issues, and cross-page bubble text clipping.\n6. Added floating text detection toggle to improve translation speed when disabled.\n7. Added Brazilian Portuguese support.\n8. Removed Baidu OCR support.",
-  "changelog_ru": "Что нового в v3.4.0:\n1. Значительно улучшено качество импорта PDF — изображения стали чётче.\n2. Улучшения перевода длинных изображений: повышена точность обнаружения пузырей, исправлены подвисания при создании/перемещении пузырей, оптимизирована обработка блоков.\n3. Улучшенное обнаружение пузырей: повышена точность распознавания и поддержка более разнообразных форм текстовых блоков.\n4. Обновление OCR-моделей: корейский OCR обновлён до PP-OCRv5, японский OCR переведён на универсальную модель Paddle v6.\n5. Исправлены мерцание при перелистывании комикс-ленты, проблемы отображения WebP-изображений и обрезка текста пузырей на развороте.\n6. Добавлен переключатель обнаружения свободного текста для повышения скорости перевода при отключении.\n7. Добавлена поддержка бразильского португальского.\n8. Удалена поддержка Baidu OCR.",
+  "releasedAt": "2026-09-03",
+  "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v3.4.8/app-release.apk",
+  "changelog": "v3.4.8 更新内容：\n1. 新增“漫画与设置”备份与还原：可导出包含完整漫画库、翻译结果、术语表、阅读进度、软件设置、AI 供应商配置和自定义字体的 ZIP 备份包；导入时不会覆盖已有漫画文件，换机迁移更方便。\n2. 漫画库首页显示各文件夹的图片数量，合集显示章节数和图片总数。\n3. 普通气泡设置新增“自适应背景色”开关，可根据气泡背景自动匹配文字颜色（默认关闭）。\n4. 翻译固定使用主 AI 供应商，简化多供应商调度设置；OCR 设置新增 XNNPACK 加速开关。\n5. 批量/文件夹翻译性能优化：并发调度、进度与词表写入开销降低，文件夹加载更快。\n6. 阅读画质提升：长图、大图解码保留更多细节，修复过度降采样导致的画面发虚。\n7. 气泡检测与排版优化：四格等宽幅短图检测更准；密集页去重更稳，可识别更小的游离文字；气泡文字改为自动缩放以填满气泡；手动框选的气泡不再自动回缩。\n8. 修复混合检测模式下普通气泡漏翻错翻、开启游离文字识别时气泡漏检、条漫跨页气泡文字丢失、密集气泡被误删等问题。\n9. 修复 Gemini 关闭思考模式后请求报 HTTP 400、悬浮窗翻译缓存跨配置误命中、还原备份后翻译失效、阅读页检测模式滑块失控、长图解码内存超限、导入完成后 UI 崩溃、悬浮球菜单残留等多项问题。",
+  "changelog_hant": "v3.4.8 更新內容：\n1. 新增「漫畫與設定」備份與還原：可匯出包含完整漫畫庫、翻譯結果、術語表、閱讀進度、軟體設定、AI 供應商設定和自訂字體的 ZIP 備份檔；匯入時不會覆蓋已有漫畫檔案，換機遷移更方便。\n2. 漫畫庫首頁顯示各資料夾的圖片數量，合集顯示章節數和圖片總數。\n3. 普通氣泡設定新增「自適應背景色」開關，可根據氣泡背景自動匹配文字顏色（預設關閉）。\n4. 翻譯固定使用主 AI 供應商，簡化多供應商調度設定；OCR 設定新增 XNNPACK 加速開關。\n5. 批次/資料夾翻譯效能優化：並發調度、進度與詞表寫入開銷降低，資料夾載入更快。\n6. 閱讀畫質提升：長圖、大圖解碼保留更多細節，修復過度降取樣導致的畫面模糊。\n7. 氣泡偵測與排版優化：四格等寬幅短圖偵測更準；密集頁去重更穩定，可識別更小的遊離文字；氣泡文字改為自動縮放以填滿氣泡；手動框選的氣泡不再自動回縮。\n8. 修復混合偵測模式下普通氣泡漏翻錯翻、開啟遊離文字識別時氣泡漏偵測、條漫跨頁氣泡文字遺失、密集氣泡被誤刪等問題。\n9. 修復 Gemini 關閉思考模式後請求回報 HTTP 400、懸浮窗翻譯快取跨設定誤命中、還原備份後翻譯失效、閱讀頁偵測模式滑桿失控、長圖解碼記憶體超限、匯入完成後 UI 崩潰、懸浮球選單殘留等多項問題。",
+  "changelog_en": "What's new in v3.4.8:\n1. Added \"Manga & Settings\" backup and restore: export a ZIP archive containing your full manga library, translation results, glossary, reading progress, app settings, AI provider profiles, and custom fonts; importing never overwrites existing manga files, making device migration easier.\n2. The library home now shows the image count of each folder, and collections show their chapter and total image counts.\n3. Added an \"adaptive background color\" toggle for regular bubbles: text color is matched to each bubble's background automatically (off by default).\n4. Translation now always uses the primary AI provider, simplifying multi-provider scheduling; added an XNNPACK acceleration toggle in OCR settings.\n5. Performance improvements for batch and folder translation: lower overhead for concurrent scheduling, progress and glossary writes, plus faster folder loading.\n6. Improved reading image quality: long and large images retain more detail when decoded, fixing blur caused by excessive downsampling.\n7. Bubble detection and text layout improvements: more accurate detection on wide, short images such as 4-koma; more reliable de-duplication on dense pages and better recognition of small floating text; bubble text now auto-scales to fill the bubble; manually drawn bubbles no longer auto-shrink.\n8. Fixed regular bubbles being mistranslated or missed in mixed detection mode, bubbles being missed when floating text recognition is enabled, cross-page bubble text loss in webtoon mode, and dense bubbles being accidentally removed.\n9. Fixed Gemini HTTP 400 errors when reasoning mode is off, floating-window translation cache matching across configurations, translations failing after restoring a backup, an unresponsive detection-mode slider, excessive memory usage when decoding long images, UI crashes after imports finish, leftover floating-ball menus, and other issues.",
+  "changelog_ru": "Что нового в v3.4.8:\n1. Добавлены резервное копирование и восстановление «Манги и настроек»: экспортируйте ZIP-архив с полной библиотекой манги, результатами перевода, глоссарием, прогрессом чтения, настройками приложения, профилями AI-провайдеров и пользовательскими шрифтами; при импорте существующие файлы манги не перезаписываются, поэтому переносить данные на новое устройство стало удобнее.\n2. На главной странице библиотеки теперь отображается количество изображений в каждой папке, а для сборников — количество глав и общий объём изображений.\n3. В настройках обычных пузырей добавлен переключатель «Адаптивный цвет фона»: цвет текста автоматически подбирается под фон каждого пузыря (по умолчанию выключен).\n4. Перевод теперь всегда использует основного AI-провайдера — настройки мультипровайдерного планирования упрощены; в настройках OCR добавлен переключатель ускорения XNNPACK.\n5. Оптимизирована производительность пакетного перевода и перевода папок: снижены накладные расходы на параллельное планирование, запись прогресса и глоссария, папки загружаются быстрее.\n6. Повышено качество изображений при чтении: длинные и крупные изображения при декодировании сохраняют больше деталей, исправлено размытие из-за чрезмерного уменьшения.\n7. Улучшены обнаружение пузырей и вёрстка текста: точнее обнаружение на широких коротких изображениях (например, ёнкома); надёжнее удаление дубликатов на плотных страницах и распознавание мелкого свободного текста; текст пузыря теперь автоматически масштабируется, заполняя пузырь; пузыри, нарисованные вручную, больше не сжимаются автоматически.\n8. Исправлены пропуск и неверный перевод обычных пузырей в смешанном режиме обнаружения, пропуски пузырей при включённом распознавании свободного текста, потеря текста пузырей на развороте в режиме комикс-ленты и случайное удаление плотно расположенных пузырей.\n9. Исправлены ошибки HTTP 400 у Gemini при выключенном режиме рассуждений, ложные совпадения кэша перевода плавающего окна между конфигурациями, неработающий перевод после восстановления резервной копии, неуправляемый ползунок режима обнаружения, чрезмерное потребление памяти при декодировании длинных изображений, сбои интерфейса после завершения импорта и остаточные меню плавающего шара, а также другие проблемы.",
   "history": [
+    {
+      "versionCode": 85,
+      "versionName": "3.4.0",
+      "releaseChannel": "stable",
+      "qqGroup": "1080302768",
+      "releasedAt": "2026-08-16",
+      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v3.4.0/app-release.apk",
+      "changelog": "v3.4.0 更新内容：\n1. PDF 导入质量大幅提升，图片更清晰。\n2. 长图翻译体验优化：改善气泡检测准确度，修复新建、移动气泡时的卡顿，优化分块处理机制。\n3. 气泡检测增强：提升识别准确率，支持更多样的文本块形状。\n4. OCR 模型升级：韩文识别升级至 PP-OCRv5，日文识别改用 Paddle v6 通用模型。\n5. 修复条漫翻页画面闪烁、WebP 图片显示异常、跨页气泡文字被裁切等问题。\n6. 翻译设置中新增三个气泡检测选项\n7. 新增巴西葡萄牙语支持。\n8. 移除百度 OCR 支持。\n9. 修复大量bug",
+      "changelog_hant": "v3.4.0 更新內容：\n1. PDF 匯入品質大幅提升，圖片更清晰。\n2. 長圖翻譯體驗優化：改善氣泡檢測準確度，修復新建、移動氣泡時的卡頓，優化分塊處理機制。\n3. 氣泡檢測增強：提升識別準確率，支援更多樣的文字塊形狀。\n4. OCR 模型升級：韓文識別升級至 PP-OCRv5，日文識別改用 Paddle v6 通用模型。\n5. 修復條漫翻頁畫面閃爍、WebP 圖片顯示異常、跨頁氣泡文字被裁切等問題。\n6. 新增遊離文字檢測開關，可根據需要關閉以提升翻譯速度。\n7. 新增巴西葡萄牙語支援。\n8. 移除百度 OCR 支援。",
+      "changelog_en": "What's new in v3.4.0:\n1. Significantly improved PDF import quality with clearer images.\n2. Long-image translation improvements: better bubble detection accuracy, fixed lag when creating/moving bubbles, optimized tile processing.\n3. Enhanced bubble detection: improved recognition accuracy and support for more diverse text block shapes.\n4. OCR model upgrades: Korean OCR upgraded to PP-OCRv5, Japanese OCR switched to Paddle v6 universal model.\n5. Fixed comic strip page-flip flickering, WebP image display issues, and cross-page bubble text clipping.\n6. Added floating text detection toggle to improve translation speed when disabled.\n7. Added Brazilian Portuguese support.\n8. Removed Baidu OCR support.",
+      "changelog_ru": "Что нового в v3.4.0:\n1. Значительно улучшено качество импорта PDF — изображения стали чётче.\n2. Улучшения перевода длинных изображений: повышена точность обнаружения пузырей, исправлены подвисания при создании/перемещении пузырей, оптимизирована обработка блоков.\n3. Улучшенное обнаружение пузырей: повышена точность распознавания и поддержка более разнообразных форм текстовых блоков.\n4. Обновление OCR-моделей: корейский OCR обновлён до PP-OCRv5, японский OCR переведён на универсальную модель Paddle v6.\n5. Исправлены мерцание при перелистывании комикс-ленты, проблемы отображения WebP-изображений и обрезка текста пузырей на развороте.\n6. Добавлен переключатель обнаружения свободного текста для повышения скорости перевода при отключении.\n7. Добавлена поддержка бразильского португальского.\n8. Удалена поддержка Baidu OCR."
+    },
     {
       "versionCode": 79,
       "versionName": "3.3.8",
@@ -159,183 +171,6 @@
       "releasedAt": "2026-04-16",
       "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v3.0.2/app-release.apk",
       "changelog": "3.0.2 为大版本整合更新，推荐更新：重构翻译策略，改用 JSON 解析气泡并移除旧嵌字流程，新增气泡透明度调整，支持文件夹集合队列翻译和首页多选一键翻译多个文件夹，优化气泡框与整体 UI，并修复 VL 直译缓存语言硬编码、错误弹窗显示/崩溃等一批问题。"
-    },
-    {
-      "versionCode": 39,
-      "versionName": "2.4.1",
-      "releaseChannel": "stable",
-      "releasedAt": "2026-04-10",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.4.1/app-release.apk",
-      "changelog": "新增 AI 配置快捷切换，支持 PDF 导入导出和 AVIF 格式导入翻译，新增取消翻译与条漫状态可编辑功能，支持自动重载条漫/普通模式，修复悬浮窗排版并优化 ZIP 导入兼容性。"
-    },
-    {
-      "versionCode": 38,
-      "versionName": "2.4.0",
-      "releaseChannel": "stable",
-      "releasedAt": "2026-04-06",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.4.0/app-release.apk",
-      "changelog": "悬浮窗新增英语韩语，新增文件夹集合以及多文件夹导入"
-    },
-    {
-      "versionCode": 37,
-      "versionName": "2.3.13",
-      "releaseChannel": "stable",
-      "releasedAt": "2026-04-01",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.13/app-release.apk",
-      "changelog": "新增韩语翻译支持。修复鸿蒙设备悬浮窗相关问题，优化部分UI细节。"
-    },
-    {
-      "versionCode": 36,
-      "versionName": "2.3.12",
-      "releaseChannel": "preview",
-      "releasedAt": "2026-03-30",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.12/app-release.apk",
-      "changelog": "新增悬浮窗手势自定义，优化软件交互"
-    },
-    {
-      "versionCode": 35,
-      "versionName": "2.3.11",
-      "releaseChannel": "stable",
-      "releasedAt": "2026-03-23",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.11/app-release.apk",
-      "changelog": "普通模式新增VL直译。悬浮窗翻译新增校对模式、划屏翻译和划屏后自动关闭翻译功能，并优化超时设置。修复VL模型整气泡翻译解析错误、悬浮窗自动清屏不生效等问题，优化部分UI样式。"
-    },
-    {
-      "versionName": "2.3.10",
-      "releasedAt": "2026-03-23",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.10/app-release.apk",
-      "changelog": "修复部分机型启动后系统弹窗滚动条导致的闪退（恶性bug）"
-    },
-    {
-      "versionName": "2.3.9",
-      "releasedAt": "2026-03-22",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.9/app-release.apk",
-      "changelog": "修复错误弹窗导致的反复崩溃，优化多线程嵌字，修复悬浮窗翻译闪退。修复下载更新按钮不出现的问题（旧版本请前往 https://github.com/jedzqer/manga-translator-android/releases 手动更新）"
-    },
-    {
-      "versionName": "2.3.8",
-      "releasedAt": "2026-03-20",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.8/app-release.apk",
-      "changelog": "优化UI，优化动画，添加自定义AI参数功能"
-    },
-    {
-      "versionName": "2.3.7",
-      "releasedAt": "2026-03-19",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.7/app-release.apk",
-      "changelog": "新增翻页动画、悬浮窗气泡编辑功能，优化UI，提升软件稳定性，修复了一些bug，将EhViewer导入改为通用导入"
-    },
-    {
-      "versionName": "2.3.5",
-      "releasedAt": "2026-03-18",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.5/app-release.apk",
-      "changelog": "支持繁体中文，优化模型多选界面，支持Gemini格式"
-    },
-    {
-      "versionName": "2.3.4",
-      "releasedAt": "2026-03-08",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.4/app-release.apk",
-      "changelog": "重构UI界面（建议更新），优化嵌字效果"
-    },
-    {
-      "versionName": "2.3.3",
-      "releasedAt": "2026-03-08",
-      "apkUrl": "https://github.com/jedzqer/manga-translator-android/releases/download/v2.3.3/app-release.apk",
-      "changelog": "悬浮窗翻译支持VL模型一步翻译，跳过OCR、支持翻译缓存，相似内容复用翻译结果、支持轮询API"
-    },
-    {
-      "versionName": "2.3.2",
-      "releasedAt": "2026-03-08",
-      "changelog": "优化了一些体验细节（也有可能是负面优化）"
-    },
-    {
-      "versionName": "2.3.1",
-      "releasedAt": "2026-03-07",
-      "changelog": "大幅优化悬浮窗翻译交互"
-    },
-    {
-      "versionName": "2.3.0",
-      "releasedAt": "2026-02-25",
-      "changelog": "新增悬浮窗翻译功能，优化了一些细节"
-    },
-    {
-      "versionName": "2.2.4",
-      "releasedAt": "2026-02-25",
-      "changelog": "新增API OCR，支持多语言到中文翻译，只要API OCR和翻译模型支持该语言。大幅优化视觉效果"
-    },
-    {
-      "versionName": "2.2.3",
-      "releasedAt": "2026-02-24",
-      "changelog": "优化嵌字效果；自适应使用竖向排版符号；优化了一些体验细节"
-    },
-    {
-      "versionName": "2.2.2",
-      "releasedAt": "2026-02-10",
-      "changelog": "修复 CBZ 无法导入 bug"
-    },
-    {
-      "versionName": "2.2.1",
-      "releasedAt": "2026-02-10",
-      "changelog": "新增嵌字功能，嵌字前建议先使用新版本重新翻译漫画"
-    },
-    {
-      "versionName": "2.2.0",
-      "releasedAt": "2026-02-09",
-      "changelog": "添加一键分享错误日志，新增CBZ格式导入导出，支持多模型分流，添加国内镜像"
-    },
-    {
-      "versionName": "2.1.0",
-      "releasedAt": "2026-02-08",
-      "changelog": "大更新，优化编辑模式气泡交互体验，增加导出速度，优化了大量体验细节。"
-    },
-    {
-      "versionName": "2.0.0",
-      "releasedAt": "2026-01-22",
-      "changelog": "新增英文支持。新增气泡编辑功能，用户可以通过创建空白气泡，重新识别翻译没能识别的区域（具体方法查看软件教程）。新增漫画导出功能。"
-    },
-    {
-      "versionName": "1.3.4",
-      "releasedAt": "2026-01-19",
-      "changelog": "修复了边翻译边阅读时的闪退bug。"
-    },
-    {
-      "versionName": "1.3.3",
-      "releasedAt": "2026-01-18",
-      "changelog": "添加了一些可供调整的API参数，以改善翻译质量。"
-    },
-    {
-      "versionName": "1.3.2",
-      "releasedAt": "2026-01-16",
-      "changelog": "添加API超时设置，将普通翻译也改为整页翻译。"
-    },
-    {
-      "versionName": "1.3.1",
-      "releasedAt": "2026-01-16",
-      "changelog": "全文速译会跳过已经提取译名的图片，支持漫画图片缩放与等高显示，更新了软件图标。"
-    },
-    {
-      "versionName": "1.3.0",
-      "releasedAt": "2026-01-15",
-      "changelog": "优化性能，修复若干bug，添加主题系统，添加点击图片文件名跳转阅读功能。"
-    },
-    {
-      "versionName": "1.2.1",
-      "releasedAt": "2026-01-14",
-      "changelog": "真正修复了总是提示更新的错误，建议更新。修复了分享日志闪退的bug。"
-    },
-    {
-      "versionName": "1.2.0",
-      "releasedAt": "2026-01-14",
-      "changelog": "修复了总是提示更新的错误，尝试修复了不翻译的问题，完善了翻译效果，可以翻译非文字气泡内容，加强了翻译时的后台保活和进度保存。"
-    },
-    {
-      "versionName": "1.1.0",
-      "releasedAt": "2026-01-12",
-      "changelog": "支持HTTP，添加教程页面，优化了体验细节。"
-    },
-    {
-      "versionName": "1.0.0",
-      "releasedAt": "2026-01-11",
-      "changelog": "正式版更新，添加通知显示，新增全文速译、重译功能，新增并发翻译，添加从EhViewer的下载目录中导入漫画的功能（其实也可以从其它可访问目录导入）"
     }
   ]
 }

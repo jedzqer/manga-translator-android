@@ -47,7 +47,9 @@ class ReadingBitmapDecoderTest {
             targetHeight = 4800
         )
 
-        assertEquals(2, sample)
+        // After fixing the 4x overflow bug in the MAX_TOTAL_PIXELS loop:
+        // 12000×6000 = 72MP, cap is 16MP, so sample=4 (72/16=4.5)
+        assertEquals(4, sample)
     }
 
     @Test
@@ -60,11 +62,11 @@ class ReadingBitmapDecoderTest {
     }
 
     @Test
-    fun `decode sample size follows display scale for full-res layout`() {
-        assertEquals(4, ReadingBitmapDecoder.calculateDecodeSampleSize(layoutSampleSize = 1, displayScale = 0.2f))
-        assertEquals(2, ReadingBitmapDecoder.calculateDecodeSampleSize(layoutSampleSize = 1, displayScale = 0.5f))
+    fun `decode sample size follows display scale with detail headroom`() {
+        assertEquals(2, ReadingBitmapDecoder.calculateDecodeSampleSize(layoutSampleSize = 1, displayScale = 0.2f))
+        assertEquals(1, ReadingBitmapDecoder.calculateDecodeSampleSize(layoutSampleSize = 1, displayScale = 0.5f))
         assertEquals(1, ReadingBitmapDecoder.calculateDecodeSampleSize(layoutSampleSize = 1, displayScale = 1.0f))
         assertEquals(1, ReadingBitmapDecoder.calculateDecodeSampleSize(layoutSampleSize = 1, displayScale = 2.5f))
-        assertEquals(2, ReadingBitmapDecoder.calculateDecodeSampleSize(layoutSampleSize = 2, displayScale = 1.0f))
+        assertEquals(1, ReadingBitmapDecoder.calculateDecodeSampleSize(layoutSampleSize = 2, displayScale = 1.0f))
     }
 }

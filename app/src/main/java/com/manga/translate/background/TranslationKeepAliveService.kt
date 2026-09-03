@@ -12,6 +12,7 @@ import android.media.RingtoneManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.manga.translate.R
 import com.manga.translate.app.MainActivity
@@ -36,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class TranslationKeepAliveService : Service() {
@@ -170,6 +172,12 @@ class TranslationKeepAliveService : Service() {
         if (TranslationCancellationRegistry.requestCancel()) {
             cancelActionEnabled = false
             updateStatus(this, getString(R.string.translation_canceling))
+        } else {
+            // A cancel request arrived with nothing to cancel (e.g. a stale
+            // intent); stop the service only when no other task keeps it alive.
+            if (!taskRegistry.hasActiveTasks) {
+                stopSelf()
+            }
         }
     }
 
@@ -376,6 +384,9 @@ class TranslationKeepAliveService : Service() {
 
     companion object {
         private const val CHANNEL_ID = "translation_keepalive"
+        private const val TRANSLATION_STOP_TIMEOUT_MS = 30_000L
+        private const val CANCEL_RESEND_INTERVAL_MS = 2_000L
+        private const val TRANSLATION_STOP_POLL_INTERVAL_MS = 250L
         private const val ALERT_CHANNEL_ID = "translation_alerts"
         private const val RESULT_CHANNEL_ID = "translation_results"
         private const val SUCCESS_RESULT_CHANNEL_ID = "translation_success_results"
@@ -400,6 +411,63 @@ class TranslationKeepAliveService : Service() {
         private const val ACTION_START_EXPORT_TASK = "com.manga.translate.action.START_EXPORT_TASK"
         private const val ACTION_UPDATE_EXPORT_TASK = "com.manga.translate.action.UPDATE_EXPORT_TASK"
         private const val ACTION_FINISH_EXPORT_TASK = "com.manga.translate.action.FINISH_EXPORT_TASK"
+
+        /**
+         * Asks the service to cancel the active translation task (same routing
+         * as the notification cancel action). Safe to call when no translation
+         * is running; also safe while the app is in the foreground only — a
+         * background start would throw and is swallowed and logged here.
+         */
+        fun requestCancelTranslation(context: Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, TranslationKeepAliveService::class.java).apply {
+                        action = ACTION_CANCEL_TRANSLATION
+                    }
+                )
+            }.onFailure {
+                AppLogger.log("TranslationKeepAlive", "Failed to deliver translation cancel request", it)
+            }
+        }
+
+        /**
+         * Cancels the active background translation task, if any, and suspends
+         * until the service has fully wound it down (the persisted task
+         * descriptor is cleared when the job completes). Callers that read or
+         * rewrite the whole library — e.g. app backup import/export — use this
+         * so they never race translation writes.
+         *
+         * The cancel request is re-sent periodically: between persisting the
+         * task descriptor and registering the cancellation handler there is a
+         * short window where a single request could be lost.
+         *
+         * @return false when a task was still running after [timeoutMs].
+         */
+        suspend fun awaitTranslationStopped(
+            context: Context,
+            timeoutMs: Long = TRANSLATION_STOP_TIMEOUT_MS
+        ): Boolean {
+            val persistence = TranslationTaskPersistence(context)
+            if (persistence.load() == null) {
+                // The service persists the descriptor as its very first step;
+                // one settle re-check closes the start-up race without delaying
+                // the normal path.
+                delay(TRANSLATION_STOP_POLL_INTERVAL_MS)
+                if (persistence.load() == null) return true
+            }
+            val deadline = SystemClock.elapsedRealtime() + timeoutMs
+            var lastCancelRequestAt = -CANCEL_RESEND_INTERVAL_MS
+            while (SystemClock.elapsedRealtime() < deadline) {
+                if (persistence.load() == null) return true
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastCancelRequestAt >= CANCEL_RESEND_INTERVAL_MS) {
+                    requestCancelTranslation(context)
+                    lastCancelRequestAt = now
+                }
+                delay(TRANSLATION_STOP_POLL_INTERVAL_MS)
+            }
+            return persistence.load() == null
+        }
 
         const val EXTRA_OPEN_LIBRARY_TAB = "extra_open_library_tab"
         @Volatile

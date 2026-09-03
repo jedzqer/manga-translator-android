@@ -21,7 +21,6 @@ import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
-import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -103,7 +102,7 @@ class LibraryFragment : Fragment() {
     private var folderContentLoadJob: Job? = null
     private var folderContentLoadGeneration: Long = 0L
     private var pendingFloatingTranslateLanguage: TranslationLanguage? = null
-    private var isRegionDetectionIndicatorPositioned: Boolean = false
+    private var regionDetectionModeIndicator: RegionDetectionModeIndicator? = null
     private var suppressRegionDetectionIndicatorAnimation: Boolean = false
     private val modelErrorController by lazy(LazyThreadSafetyMode.NONE) {
         ModelErrorDialogController(this, dialogs)
@@ -392,7 +391,6 @@ class LibraryFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        isRegionDetectionIndicatorPositioned = false
         _binding = FragmentLibraryBinding.inflate(inflater, container, false)
         return binding.root
     }
@@ -468,6 +466,12 @@ class LibraryFragment : Fragment() {
             )
         }
         binding.tutorialButton.setOnClickListener { openTutorial() }
+        if (!settingsStore.hasShownTutorialPrompt()) {
+            settingsStore.markTutorialPromptShown()
+            view.post {
+                if (isAdded && _binding != null) openTutorial()
+            }
+        }
         binding.librarySelectAll.setOnClickListener { selectionManager.toggleSelectAllLibraryFolders() }
         binding.libraryTranslateSelected.setOnClickListener { translateSelectedLibraryFolders() }
         binding.libraryDeleteSelected.setOnClickListener { confirmDeleteSelectedLibraryFolders() }
@@ -521,11 +525,9 @@ class LibraryFragment : Fragment() {
         binding.folderGlossaryProcessingSwitch.setOnCheckedChangeListener { _, isChecked ->
             currentFolder?.let { preferencesGateway.setGlossaryProcessingEnabled(it, isChecked) }
         }
+        setupRegionDetectionModeIndicator()
         binding.folderBubbleDetectionModeGroup.setOnCheckedChangeListener { _, checkedId ->
-            updateRegionDetectionModeIndicator(
-                checkedId = checkedId,
-                animate = !suppressRegionDetectionIndicatorAnimation
-            )
+            updateRegionDetectionModeIndicator(checkedId)
             val selection = when (checkedId) {
                 R.id.folder_detection_mode_bubbles -> RegionDetectionSelection.BUBBLES_ONLY
                 R.id.folder_detection_mode_text -> RegionDetectionSelection.TEXT_ONLY
@@ -687,6 +689,7 @@ class LibraryFragment : Fragment() {
         imageConversionDialog = null
         LibraryUiBridge.unregister(uiCallbacks)
         modelErrorController.onDestroy()
+        regionDetectionModeIndicator = null
         super.onDestroyView()
         _binding = null
     }
@@ -694,7 +697,10 @@ class LibraryFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         modelErrorController.onResume()
-        currentFolder?.let(::syncExportActionState)
+        currentFolder?.let { folder ->
+            syncExportActionState(folder)
+            syncRegionDetectionMode(folder)
+        }
     }
 
     private fun showFolderList() {
@@ -725,19 +731,7 @@ class LibraryFragment : Fragment() {
         binding.folderFullTranslateSwitch.isChecked = preferencesGateway.isFullTranslateEnabled(folder)
         binding.folderGlossaryProcessingSwitch.isChecked =
             preferencesGateway.isGlossaryProcessingEnabled(folder)
-        suppressRegionDetectionIndicatorAnimation = true
-        try {
-            when (preferencesGateway.getRegionDetectionSelection(folder)) {
-                RegionDetectionSelection.BUBBLES_ONLY ->
-                    binding.folderBubbleDetectionModeGroup.check(R.id.folder_detection_mode_bubbles)
-                RegionDetectionSelection.TEXT_ONLY ->
-                    binding.folderBubbleDetectionModeGroup.check(R.id.folder_detection_mode_text)
-                RegionDetectionSelection.BUBBLES_AND_TEXT ->
-                    binding.folderBubbleDetectionModeGroup.check(R.id.folder_detection_mode_bubbles_and_text)
-            }
-        } finally {
-            suppressRegionDetectionIndicatorAnimation = false
-        }
+        syncRegionDetectionMode(folder)
         binding.folderVlDirectTranslateSwitch.isChecked =
             preferencesGateway.isVlDirectTranslateEnabled(folder)
         updateFolderTranslationSwitchStates(folder)
@@ -758,31 +752,38 @@ class LibraryFragment : Fragment() {
         AppLogger.log("Library", "Opened folder ${folder.name}")
     }
 
-    private fun updateRegionDetectionModeIndicator(checkedId: Int, animate: Boolean) {
-        val target = binding.folderBubbleDetectionModeGroup.findViewById<View>(checkedId) ?: return
-        binding.folderBubbleDetectionModeGroup.doOnLayout {
-            val currentBinding = _binding ?: return@doOnLayout
-            val indicator = currentBinding.folderBubbleDetectionModeIndicator
-            val targetWidth = target.width
-            if (targetWidth <= 0) return@doOnLayout
-
-            if (indicator.layoutParams.width != targetWidth) {
-                indicator.layoutParams = indicator.layoutParams.apply { width = targetWidth }
-            }
-
-            val targetX = target.left.toFloat()
-            indicator.animate().cancel()
-            if (animate && isRegionDetectionIndicatorPositioned) {
-                indicator.animate()
-                    .translationX(targetX)
-                    .setDuration(REGION_DETECTION_INDICATOR_ANIMATION_MS)
-                    .setInterpolator(FastOutSlowInInterpolator())
-                    .start()
-            } else {
-                indicator.translationX = targetX
-            }
-            isRegionDetectionIndicatorPositioned = true
+    private fun syncRegionDetectionMode(folder: File) {
+        val checkedId = when (preferencesGateway.getRegionDetectionSelection(folder)) {
+            RegionDetectionSelection.BUBBLES_ONLY -> R.id.folder_detection_mode_bubbles
+            RegionDetectionSelection.TEXT_ONLY -> R.id.folder_detection_mode_text
+            RegionDetectionSelection.BUBBLES_AND_TEXT -> R.id.folder_detection_mode_bubbles_and_text
         }
+        // Restoring persisted state should never animate: the control may be
+        // re-attached (returning from the reading tab) with the indicator at its
+        // default position, and sliding it in from the left looks like a glitch.
+        suppressRegionDetectionIndicatorAnimation = true
+        try {
+            if (binding.folderBubbleDetectionModeGroup.checkedRadioButtonId != checkedId) {
+                binding.folderBubbleDetectionModeGroup.check(checkedId)
+            }
+            regionDetectionModeIndicator?.setChecked(checkedId, animate = false)
+        } finally {
+            suppressRegionDetectionIndicatorAnimation = false
+        }
+    }
+
+    private fun setupRegionDetectionModeIndicator() {
+        regionDetectionModeIndicator = RegionDetectionModeIndicator(
+            group = binding.folderBubbleDetectionModeGroup,
+            indicator = binding.folderBubbleDetectionModeIndicator
+        )
+    }
+
+    private fun updateRegionDetectionModeIndicator(checkedId: Int) {
+        regionDetectionModeIndicator?.setChecked(
+            checkedId = checkedId,
+            animate = !suppressRegionDetectionIndicatorAnimation
+        )
     }
 
     private fun animateFolderTransition(showDetail: Boolean) {
@@ -1034,17 +1035,26 @@ class LibraryFragment : Fragment() {
         return items
     }
 
-    private fun loadAndCacheFolderStats(item: FolderItem): FolderItem {
-        val chapters = if (item.isCollection) repository.listChildFolders(item.folder) else emptyList()
-        val imageCount = if (item.isCollection) {
+    /**
+     * Unified folder stats computation: counts images and chapters, caches the result, and
+     * returns the counts. Used by all three stats-loading paths to ensure consistency.
+     */
+    private fun computeAndCacheFolderStats(folder: File, isCollection: Boolean): Pair<Int, Int> {
+        val chapters = if (isCollection) repository.listChildFolders(folder) else emptyList()
+        val imageCount = if (isCollection) {
             chapters.sumOf { chapter -> repository.listImages(chapter).size }
         } else {
-            repository.listImages(item.folder).size
+            repository.listImages(folder).size
         }
-        preferencesGateway.setCachedFolderStats(item.folder, imageCount, chapters.size)
+        preferencesGateway.setCachedFolderStats(folder, imageCount, chapters.size)
+        return imageCount to chapters.size
+    }
+
+    private fun loadAndCacheFolderStats(item: FolderItem): FolderItem {
+        val (imageCount, chapterCount) = computeAndCacheFolderStats(item.folder, item.isCollection)
         return item.copy(
             imageCount = imageCount,
-            chapterCount = chapters.size,
+            chapterCount = chapterCount,
             statsLoaded = true
         )
     }
@@ -1097,11 +1107,7 @@ class LibraryFragment : Fragment() {
             val content = withContext(Dispatchers.IO) {
                 if (repository.isCollectionFolder(folder)) {
                     val items = buildFolderItems(repository.listChildFolders(folder))
-                    preferencesGateway.setCachedFolderStats(
-                        folder,
-                        imageCount = items.sumOf { it.imageCount },
-                        chapterCount = items.size
-                    )
+                    val (imageCount, chapterCount) = computeAndCacheFolderStats(folder, isCollection = true)
                     preferencesGateway.setCachedFolderStatus(
                         folder,
                         resolveFolderStatus(items.map { it.status })
@@ -1111,7 +1117,7 @@ class LibraryFragment : Fragment() {
                     val items = repository.listImages(folder).map { file ->
                         ImageItem(file = file, translated = isImageTranslated(file, folder))
                     }
-                    preferencesGateway.setCachedFolderStats(folder, imageCount = items.size)
+                    computeAndCacheFolderStats(folder, isCollection = false)
                     preferencesGateway.setCachedFolderStatus(
                         folder,
                         resolveFolderStatus(items.map { item ->
@@ -1772,18 +1778,18 @@ class LibraryFragment : Fragment() {
     }
 
     private fun buildFolderItem(folder: File): FolderItem {
-        val chapters = repository.listChildFolders(folder)
         val isCollection = repository.isCollectionFolder(folder)
+        val chapters = if (isCollection) repository.listChildFolders(folder) else emptyList()
         val images = if (isCollection) {
             chapters.flatMap { repository.listImages(it) }
         } else {
             repository.listImages(folder)
         }
-        preferencesGateway.setCachedFolderStats(folder, images.size, chapters.size)
+        val (imageCount, chapterCount) = computeAndCacheFolderStats(folder, isCollection)
         return FolderItem(
             folder = folder,
-            imageCount = images.size,
-            chapterCount = chapters.size,
+            imageCount = imageCount,
+            chapterCount = chapterCount,
             isCollection = isCollection,
             status = resolveFolderStatus(folder, images),
             customTags = preferencesGateway.getFolderTags(folder)
@@ -1987,10 +1993,6 @@ class LibraryFragment : Fragment() {
     private sealed interface FolderFilter {
         data class Status(val status: FolderStatus) : FolderFilter
         data class CustomTag(val tag: String) : FolderFilter
-    }
-
-    private companion object {
-        const val REGION_DETECTION_INDICATOR_ANIMATION_MS = 200L
     }
 
 }

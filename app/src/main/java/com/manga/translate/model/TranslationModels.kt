@@ -10,6 +10,9 @@ enum class BubbleSource(val jsonValue: String) {
 
     val isFreeBubble: Boolean get() = this == TEXT_DETECTOR || this == MANUAL
 
+    /** Only text-detector bubbles are subject to the free-bubble shrink setting. */
+    val usesFreeBubbleShrink: Boolean get() = this == TEXT_DETECTOR
+
     companion object {
         fun fromJson(value: String?): BubbleSource {
             return entries.firstOrNull { it.jsonValue.equals(value, ignoreCase = true) } ?: UNKNOWN
@@ -249,7 +252,23 @@ data class TranslationResult(
     val height: Int,
     val bubbles: List<BubbleTranslation>,
     val metadata: TranslationMetadata = TranslationMetadata()
-)
+) {
+    /**
+     * 是否含跨页合并产生的坐标。条漫模式下 [CrossPageBubbleMerger] 会把下一页气泡并入本页，
+     * 合并后的 `rect.bottom` 超出本页高度；这类坐标在普通阅读模式渲染时会错位或跑出页面，
+     * 故缓存校验需按阅读模式拒绝复用。
+     */
+    fun hasCrossPageBubbleGeometry(): Boolean {
+        if (height <= 0) return false
+        val limit = height + CROSS_PAGE_GEOMETRY_TOLERANCE_PX
+        return bubbles.any { it.rect.bottom > limit }
+    }
+
+    private companion object {
+        /** 允许少量越界（渲染留白 / 浮点误差），只把明显跨页的坐标判为合并结果。 */
+        const val CROSS_PAGE_GEOMETRY_TOLERANCE_PX = 2f
+    }
+}
 
 fun TranslationResult.deriveStatus(): PageTranslationStatus {
     if (bubbles.isEmpty()) return PageTranslationStatus.SUCCESS

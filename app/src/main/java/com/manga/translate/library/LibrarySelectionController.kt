@@ -91,6 +91,14 @@ internal class LibrarySelectionController(
                     )
                 }
             }
+            if (failedFiles.size < selected.size) {
+                // Any successful deletion changes the chapter count, which also feeds the
+                // parent collection's aggregated card, so both caches must be invalidated.
+                preferencesGateway.invalidateCachedFolderStats(folder)
+                folder.parentFile
+                    ?.takeIf(repository::isCollectionFolder)
+                    ?.let(preferencesGateway::invalidateCachedFolderStats)
+            }
             if (failedFiles.isNotEmpty()) {
                 AppLogger.log(
                     "Library",
@@ -102,7 +110,6 @@ internal class LibrarySelectionController(
             } else {
                 AppLogger.log("Library", "Deleted ${selected.size} images from ${folder.name}")
                 preferencesGateway.setCachedFolderStatus(folder, FolderStatus.UNTRANSLATED)
-                preferencesGateway.invalidateCachedFolderStats(folder)
                 exitSelectionMode()
             }
             ui.refreshImages(folder)

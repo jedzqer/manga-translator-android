@@ -124,18 +124,30 @@ object RectGeometryDeduplicator {
 
     private fun isDenseNeighbor(a: RectF, b: RectF): Boolean {
         if (RectF.intersects(a, b)) return true
-        val expandedA = RectF(
-            a.left - DENSE_CLUSTER_PAD,
-            a.top - DENSE_CLUSTER_PAD,
-            a.right + DENSE_CLUSTER_PAD,
-            a.bottom + DENSE_CLUSTER_PAD
-        )
-        val expandedB = RectF(
-            b.left - DENSE_CLUSTER_PAD,
-            b.top - DENSE_CLUSTER_PAD,
-            b.right + DENSE_CLUSTER_PAD,
-            b.bottom + DENSE_CLUSTER_PAD
-        )
+
+        // Reuse first-stage adaptive padding and yGap limit to prevent倒挂:
+        // second stage was more permissive (fixed 56px pad, no yGap, 28% union)
+        // than first stage (8-56px adaptive, yGap 36-140, 20% union), causing
+        // link chains to merge independent bubbles in dense layouts.
+        val areaA = max(0f, a.width()) * max(0f, a.height())
+        val areaB = max(0f, b.width()) * max(0f, b.height())
+        if (areaA <= 0f || areaB <= 0f) return false
+        val minArea = min(areaA, areaB)
+
+        // Use the same sizeT formula as shouldMergeRects (line 278):
+        // small fragments get generous pad, large rects get strict pad.
+        val imageArea = (areaA + areaB) * 5f // Rough estimate for sizeT denominator
+        val sizeT = sqrt((minArea / imageArea) / MERGE_SIZE_REF_AREA).coerceIn(0f, 1f)
+        val pad = lerp(MERGE_PAD_MAX, MERGE_PAD_MIN, sizeT)
+
+        val centerAY = (a.top + a.bottom) * 0.5f
+        val centerBY = (b.top + b.bottom) * 0.5f
+        val yGap = abs(centerAY - centerBY)
+        val yGapLimit = lerp(MERGE_Y_GAP_MAX, MERGE_Y_GAP_MIN, sizeT)
+        if (yGap > yGapLimit) return false
+
+        val expandedA = RectF(a.left - pad, a.top - pad, a.right + pad, a.bottom + pad)
+        val expandedB = RectF(b.left - pad, b.top - pad, b.right + pad, b.bottom + pad)
         return RectF.intersects(expandedA, b) || RectF.intersects(expandedB, a)
     }
 

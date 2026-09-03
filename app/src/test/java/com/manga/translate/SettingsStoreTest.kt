@@ -13,6 +13,7 @@ import com.manga.translate.settings.ApiSettingsStore
 import com.manga.translate.settings.ApiSettings
 import com.manga.translate.settings.CustomThemeColors
 import com.manga.translate.settings.LlmParameterStore
+import com.manga.translate.settings.NormalBubbleRenderSettings
 import com.manga.translate.settings.OcrSettingsStore
 import com.manga.translate.settings.ProviderProfileStore
 import com.manga.translate.settings.SettingsStore
@@ -210,6 +211,29 @@ class SettingsStoreTest {
         prefs.edit().putInt("translation_bubble_opacity_percent", 21).commit()
         assertEquals(21, store.loadNormalBubbleRenderSettings().opacityPercent)
         assertEquals(64, store.loadFloatingBubbleRenderSettings().opacityPercent)
+    }
+
+    @Test
+    fun `free bubble shrink ignores legacy value and defaults to zero`() {
+        val prefs = context.getSharedPreferences("manga_translate_settings", Context.MODE_PRIVATE)
+        prefs.edit().putInt("normal_free_bubble_shrink_percent", 24).commit()
+
+        val settings = SettingsStore(context).loadNormalBubbleRenderSettings()
+
+        assertEquals(0, settings.freeBubbleShrinkPercent)
+        assertEquals(24, prefs.getInt("normal_free_bubble_shrink_percent", -1))
+    }
+
+    @Test
+    fun `normal bubble adaptive color setting persists independently`() {
+        val store = SettingsStore(context)
+
+        assertFalse(store.loadNormalBubbleRenderSettings().autoAdaptBubbleColor)
+
+        val enabled = store.loadNormalBubbleRenderSettings().copy(autoAdaptBubbleColor = true)
+        store.saveNormalBubbleRenderSettings(enabled)
+
+        assertTrue(SettingsStore(context).loadNormalBubbleRenderSettings().autoAdaptBubbleColor)
     }
 
     @Test

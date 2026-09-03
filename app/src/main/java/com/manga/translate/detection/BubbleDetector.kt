@@ -321,9 +321,9 @@ class BubbleDetector(
     ): Pair<Float, Float> {
         val inputX = x / maskWidth * preprocessed.inputWidth
         val inputY = y / maskHeight * preprocessed.inputHeight
-        val originalX = ((inputX - preprocessed.padX) / preprocessed.gain)
+        val originalX = OnnxImagePreprocessor.toOriginalX(inputX, preprocessed)
             .coerceIn(0f, max(0f, originalWidth - 1f))
-        val originalY = ((inputY - preprocessed.padY) / preprocessed.gain)
+        val originalY = OnnxImagePreprocessor.toOriginalY(inputY, preprocessed)
             .coerceIn(0f, max(0f, originalHeight - 1f))
         return (
             if (originalWidth > 0) originalX / originalWidth else 0f
@@ -374,10 +374,10 @@ private data class RawDetection(
         originalWidth: Int,
         originalHeight: Int
     ): RectF {
-        val left = (cx - width / 2f - preprocessed.padX) / preprocessed.gain
-        val top = (cy - height / 2f - preprocessed.padY) / preprocessed.gain
-        val right = (cx + width / 2f - preprocessed.padX) / preprocessed.gain
-        val bottom = (cy + height / 2f - preprocessed.padY) / preprocessed.gain
+        val left = OnnxImagePreprocessor.toOriginalX(cx - width / 2f, preprocessed)
+        val top = OnnxImagePreprocessor.toOriginalY(cy - height / 2f, preprocessed)
+        val right = OnnxImagePreprocessor.toOriginalX(cx + width / 2f, preprocessed)
+        val bottom = OnnxImagePreprocessor.toOriginalY(cy + height / 2f, preprocessed)
         val maxX = max(0f, originalWidth - 1f)
         val maxY = max(0f, originalHeight - 1f)
         return RectF(

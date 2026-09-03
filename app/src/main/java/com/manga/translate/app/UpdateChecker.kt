@@ -38,7 +38,7 @@ enum class ReleaseChannel {
 
 object UpdateChecker {
     private const val UPDATE_URL_GITHUB =
-        "https://raw.githubusercontent.com/jedzqer/manga-translator/main/update.json"
+        "https://raw.githubusercontent.com/jedzqer/manga-translator-android/main/update.json"
     private const val UPDATE_URL_GITEE =
         "https://gitee.com/jedzqer/manga-translator/raw/main/update.json"
     private val updateUrls = listOf(UPDATE_URL_GITHUB, UPDATE_URL_GITEE)

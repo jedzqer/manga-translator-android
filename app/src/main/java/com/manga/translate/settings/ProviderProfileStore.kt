@@ -155,13 +155,6 @@ internal class ProviderProfileStore(
         return true
     }
 
-    fun canApplyAiProviderProfile(name: String): Boolean {
-        return loadAiProviderProfilesState().profiles
-            .firstOrNull { it.name == name }
-            ?.let(::canApplyAiProviderProfile)
-            ?: false
-    }
-
     fun deleteAiProviderProfile(name: String): Boolean {
         val currentState = loadAiProviderProfilesState()
         val updatedProfiles = currentState.profiles.filterNot { it.name == name }
@@ -270,6 +263,14 @@ internal class ProviderProfileStore(
                     .put(
                         "autoCloseOnScreenChangeEnabled",
                         profile.floatingTranslateSettings.autoCloseOnScreenChangeEnabled
+                    )
+                    .put(
+                        "detectionTopInsetPercent",
+                        profile.floatingTranslateSettings.detectionTopInsetPercent
+                    )
+                    .put(
+                        "detectionBottomInsetPercent",
+                        profile.floatingTranslateSettings.detectionBottomInsetPercent
                     )
                     .put(
                         "singleTapAction",
@@ -434,6 +435,17 @@ internal class ProviderProfileStore(
                 autoCloseOnScreenChangeEnabled = floatingJson.optBoolean(
                     "autoCloseOnScreenChangeEnabled",
                     false
+                ),
+                detectionTopInsetPercent = floatingJson.optInt(
+                    "detectionTopInsetPercent",
+                    0
+                ).coerceIn(0, 90),
+                detectionBottomInsetPercent = floatingJson.optInt(
+                    "detectionBottomInsetPercent",
+                    0
+                ).coerceIn(
+                    0,
+                    90 - floatingJson.optInt("detectionTopInsetPercent", 0).coerceIn(0, 90)
                 ),
                 singleTapAction = FloatingBallGestureAction.fromPref(
                     floatingJson.optStringOrNull("singleTapAction"),

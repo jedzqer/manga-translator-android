@@ -24,19 +24,44 @@ object AppLogger {
     private var logFile: File? = null
 
     fun init(context: Context) {
-        val externalRoot = context.getExternalFilesDir(null)?.parentFile
-        val dir = if (externalRoot != null) {
-            File(externalRoot, "log")
+        val externalFilesDir = context.getExternalFilesDir(null)
+        val dir = if (externalFilesDir != null) {
+            // Keep logs below the app-specific external-files root so FileProvider
+            // can resolve them without embedding the applicationId in resources.
+            File(externalFilesDir, "log")
         } else {
             File(context.filesDir, "logs")
         }
         if (!dir.exists()) {
             dir.mkdirs()
         }
+        migrateLegacyLogs(externalFilesDir, dir)
         logDir = dir
         logFile = createNewLogFile(dir)
         log("AppLogger", "Logger initialized")
         cleanupOldLogs()
+    }
+
+    private fun migrateLegacyLogs(externalFilesDir: File?, destination: File) {
+        val legacyDir = externalFilesDir?.parentFile?.let { File(it, "log") } ?: return
+        val sameDirectory = runCatching {
+            legacyDir.canonicalFile == destination.canonicalFile
+        }.getOrDefault(legacyDir.absolutePath == destination.absolutePath)
+        if (sameDirectory || !legacyDir.isDirectory) return
+        legacyDir.listFiles { file -> file.isFile && file.extension.equals("log", true) }
+            .orEmpty()
+            .forEach { source ->
+                val target = File(destination, source.name)
+                if (target.exists()) return@forEach
+                runCatching { source.copyTo(target, overwrite = false) }
+                    .onFailure {
+                        Log.w(
+                            "MangaTranslate/AppLogger",
+                            "Failed to migrate legacy log ${source.name}",
+                            it
+                        )
+                    }
+            }
     }
 
     fun log(tag: String, message: String, throwable: Throwable? = null) {

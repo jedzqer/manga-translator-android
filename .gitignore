@@ -48,8 +48,8 @@ Thumbs.db
 # Large model assets are downloaded separately; see README.
 assets/models/
 
-# Internal planning documents
-开发计划.md
+# Internal planning documents live in dev_doc/ (tracked in Gitea,
+# excluded from GitHub release sync by the sync script).
 
 # Test assets
 test.webp
@@ -58,8 +58,13 @@ test.webp
 *.swp
 *.swo
 
+app/src/test/resources/real_images/
+
 # Local signing credentials and keystores (never commit)
 signing.properties
 *.keystore
 *.jks
 keystore.jks
+
+# CodeGraph local index
+.codegraph/

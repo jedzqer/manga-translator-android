@@ -51,8 +51,10 @@ internal object TextBlockMerger {
         groups.addAll(mergeOriented(vertical))
         groups.addAll(ambiguous)
         absorbContainedSingletons(groups)
+        absorbAdjacentSingletons(groups)
+        mergeOverlappingGroups(groups)
 
-        return groups
+        val blocks = groups
             .map { group ->
                 val sortedLines = group.sortedLines()
                 TextBlock(
@@ -67,7 +69,28 @@ internal object TextBlockMerger {
                     )
                 )
             }
+        return suppressOverlappingBlocks(blocks)
             .sortedWith(compareBy({ it.rect.top }, { it.rect.left }))
+    }
+
+    /**
+     * Tile inference can leave two independently merged blocks covering the same text.
+     * Keep the stronger block when one candidate covers most of the other's area.
+     */
+    private fun suppressOverlappingBlocks(blocks: List<TextBlock>): List<TextBlock> {
+        if (blocks.size <= 1) return blocks
+        val kept = ArrayList<TextBlock>(blocks.size)
+        val candidates = blocks.sortedWith(
+            compareByDescending<TextBlock> { it.lines.size }
+                .thenBy { it.rect.width() * it.rect.height() }
+        )
+        for (candidate in candidates) {
+            val isDuplicate = kept.any { existing ->
+                intersectionOverSmaller(existing.rect, candidate.rect) >= BLOCK_OVERLAP_THRESHOLD
+            }
+            if (!isDuplicate) kept.add(candidate)
+        }
+        return kept
     }
 
     fun deduplicateLines(
@@ -187,6 +210,107 @@ internal object TextBlockMerger {
         }
     }
 
+    /**
+     * A centered heading/first line is often wider or narrower than the lines below it,
+     * so its rectangle is not fully contained by the multi-line block.  Attach it when
+     * the primary-axis spacing and cross-axis overlap still identify one text paragraph.
+     */
+    private fun absorbAdjacentSingletons(groups: MutableList<LineGroup>) {
+        var changed = true
+        while (changed) {
+            changed = false
+            val blocks = groups.filter { it.lines.size >= 2 }
+            val singletons = groups.filter { it.lines.size == 1 }
+            for (singleton in singletons) {
+                val line = singleton.lines.single()
+                val owner = blocks
+                    .filter { it.orientation == singleton.orientation }
+                    .mapNotNull { block ->
+                        adjacentSingletonScore(line, block)?.let { block to it }
+                    }
+                    .minByOrNull { it.second }
+                    ?.first
+                    ?: continue
+                owner.lines.add(line)
+                groups.remove(singleton)
+                changed = true
+                break
+            }
+        }
+    }
+
+    private fun adjacentSingletonScore(line: RectF, block: LineGroup): Float? {
+        if (block.orientation == TextLineOrientation.AMBIGUOUS) return null
+        val orientation = block.orientation
+        val blockBounds = block.bounds()
+        val primaryGap = when (orientation) {
+            TextLineOrientation.HORIZONTAL -> gapBetween(line.top, line.bottom, blockBounds.top, blockBounds.bottom)
+            TextLineOrientation.VERTICAL -> gapBetween(line.left, line.right, blockBounds.left, blockBounds.right)
+            TextLineOrientation.AMBIGUOUS -> return null
+        }
+        val lineThickness = line.primaryThickness(orientation).coerceAtLeast(1f)
+        val blockThickness = median(block.lines.map { it.primaryThickness(orientation) }).coerceAtLeast(1f)
+        if (primaryGap > max(lineThickness, blockThickness) * ADJACENT_MAX_GAP_RATIO + ADJACENT_MAX_GAP_PAD) {
+            return null
+        }
+        val overlap = overlapLength(
+            line.crossStart(orientation), line.crossEnd(orientation),
+            blockBounds.crossStart(orientation), blockBounds.crossEnd(orientation)
+        )
+        val minCross = min(line.crossSize(orientation), blockBounds.crossSize(orientation)).coerceAtLeast(1f)
+        if (overlap / minCross < ADJACENT_MIN_CROSS_OVERLAP_RATIO) return null
+        val centerDistance = abs(line.crossCenter(orientation) - blockBounds.crossCenter(orientation))
+        val maxCross = max(line.crossSize(orientation), blockBounds.crossSize(orientation)).coerceAtLeast(1f)
+        if (centerDistance > maxCross * ADJACENT_MAX_CENTER_DISTANCE_RATIO + ADJACENT_MAX_CENTER_DISTANCE_PAD) {
+            return null
+        }
+        return primaryGap + centerDistance * 0.15f
+    }
+
+    /** Merge duplicate blocks that survived line grouping (common with overlapping det tiles). */
+    private fun mergeOverlappingGroups(groups: MutableList<LineGroup>) {
+        var changed = true
+        while (changed) {
+            changed = false
+            loop@ for (first in 0 until groups.lastIndex) {
+                for (second in first + 1 until groups.size) {
+                    val a = groups[first]
+                    val b = groups[second]
+                    if (!shouldMergeOverlappingGroups(a, b)) continue
+                    a.lines.addAll(b.lines)
+                    groups.removeAt(second)
+                    changed = true
+                    break@loop
+                }
+            }
+        }
+    }
+
+    private fun shouldMergeOverlappingGroups(a: LineGroup, b: LineGroup): Boolean {
+        if (a.orientation != b.orientation || a.orientation == TextLineOrientation.AMBIGUOUS) return false
+        val first = a.bounds()
+        val second = b.bounds()
+        val intersection = intersectionOverSmaller(first, second)
+        if (intersection < OVERLAPPING_BLOCK_MIN_RATIO) return false
+        val orientation = a.orientation
+        val primaryGap = when (orientation) {
+            TextLineOrientation.HORIZONTAL -> gapBetween(first.top, first.bottom, second.top, second.bottom)
+            TextLineOrientation.VERTICAL -> gapBetween(first.left, first.right, second.left, second.right)
+            TextLineOrientation.AMBIGUOUS -> return false
+        }
+        val thickness = max(
+            median(a.lines.map { it.primaryThickness(orientation) }),
+            median(b.lines.map { it.primaryThickness(orientation) })
+        ).coerceAtLeast(1f)
+        if (primaryGap > thickness * OVERLAPPING_BLOCK_MAX_GAP_RATIO + OVERLAPPING_BLOCK_MAX_GAP_PAD) return false
+        val crossOverlap = overlapLength(
+            first.crossStart(orientation), first.crossEnd(orientation),
+            second.crossStart(orientation), second.crossEnd(orientation)
+        )
+        val minCross = min(first.crossSize(orientation), second.crossSize(orientation)).coerceAtLeast(1f)
+        return crossOverlap / minCross >= OVERLAPPING_BLOCK_MIN_CROSS_RATIO
+    }
+
     private fun deduplicateClampedLines(lines: List<RectF>): List<RectF> {
         val kept = ArrayList<RectF>()
         for (candidate in lines.sortedByDescending { it.width() * it.height() }) {
@@ -275,6 +399,9 @@ internal object TextBlockMerger {
     private fun RectF.primaryThickness(orientation: TextLineOrientation): Float =
         if (orientation == TextLineOrientation.HORIZONTAL) height() else width()
 
+    private fun RectF.crossCenter(orientation: TextLineOrientation): Float =
+        (crossStart(orientation) + crossEnd(orientation)) / 2f
+
     private fun RectF.crossStart(orientation: TextLineOrientation): Float =
         if (orientation == TextLineOrientation.HORIZONTAL) left else top
 
@@ -305,6 +432,13 @@ internal object TextBlockMerger {
 
     private fun spread(values: List<Float>): Float =
         (values.maxOrNull() ?: 0f) - (values.minOrNull() ?: 0f)
+
+    private fun gapBetween(startA: Float, endA: Float, startB: Float, endB: Float): Float =
+        when {
+            endA < startB -> startB - endA
+            endB < startA -> startA - endB
+            else -> 0f
+        }
 
     private fun median(values: List<Float>): Float {
         if (values.isEmpty()) return 0f
@@ -345,6 +479,7 @@ internal object TextBlockMerger {
     private const val ORIENTATION_ASPECT_RATIO = 1.35f
     private const val MIN_LINE_SIZE = 2f
     private const val DUPLICATE_OVERLAP_THRESHOLD = 0.72f
+    private const val BLOCK_OVERLAP_THRESHOLD = 0.55f
     private const val MAX_EDGE_SPREAD_RATIO = 1.15f
     private const val MAX_GAP_RATIO = 1.8f
     private const val MIN_CROSS_OVERLAP_RATIO = 0.30f
@@ -356,4 +491,13 @@ internal object TextBlockMerger {
     private const val THICKNESS_WEIGHT = 1f
     private const val SPACING_WEIGHT = 5f
     private const val MIN_MERGE_SCORE = 5.4f
+    private const val ADJACENT_MAX_GAP_RATIO = 2.2f
+    private const val ADJACENT_MAX_GAP_PAD = 12f
+    private const val ADJACENT_MIN_CROSS_OVERLAP_RATIO = 0.10f
+    private const val ADJACENT_MAX_CENTER_DISTANCE_RATIO = 0.45f
+    private const val ADJACENT_MAX_CENTER_DISTANCE_PAD = 36f
+    private const val OVERLAPPING_BLOCK_MIN_RATIO = 0.20f
+    private const val OVERLAPPING_BLOCK_MAX_GAP_RATIO = 2.5f
+    private const val OVERLAPPING_BLOCK_MAX_GAP_PAD = 20f
+    private const val OVERLAPPING_BLOCK_MIN_CROSS_RATIO = 0.12f
 }

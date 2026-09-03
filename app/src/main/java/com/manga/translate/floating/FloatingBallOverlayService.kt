@@ -13,13 +13,16 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.hardware.display.DisplayManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.view.ContextThemeWrapper
+import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -118,6 +121,22 @@ class FloatingBallOverlayService : Service() {
         }
     }
     private var pageRegionDetector: PageRegionDetector? = null
+    private val displayManager by lazy(LazyThreadSafetyMode.NONE) {
+        getSystemService(DisplayManager::class.java)
+    }
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+
+        override fun onDisplayRemoved(displayId: Int) = Unit
+
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId == Display.DEFAULT_DISPLAY) {
+                handleDisplayMetricsChange()
+            }
+        }
+    }
+    @Volatile
+    private var lastKnownDisplayMetrics: DisplayMetrics? = null
     private var detectJob: Job? = null
     @Volatile
     private var detectionGeneration: Long = 0L
@@ -180,6 +199,7 @@ class FloatingBallOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        displayManager.registerDisplayListener(displayListener, mainHandler)
         localModelReleaseCallback = appContainer.localModelMemoryManager.registerReleaseCallback {
             pageRegionDetector?.releaseLoadedDetectors()
             pageRegionDetector = null
@@ -234,6 +254,7 @@ class FloatingBallOverlayService : Service() {
     }
 
     override fun onDestroy() {
+        displayManager.unregisterDisplayListener(displayListener)
         detectJob?.cancel()
         autoCloseCheckJob?.cancel()
         mainHandler.removeCallbacks(autoCloseCheckRunnable)
@@ -395,7 +416,7 @@ class FloatingBallOverlayService : Service() {
         val swipeTranslateMenuButton = createMenuButton().apply {
             text = getString(R.string.overlay_swipe_translate_button)
             setOnClickListener {
-                controllerMenuPanel?.visibility = View.GONE
+                controllerMenuPanel?.let { setMenuVisibility(it, false) }
                 startSwipeTranslateMode()
             }
         }
@@ -406,14 +427,14 @@ class FloatingBallOverlayService : Service() {
         val confirmButton = createMenuButton().apply {
             text = getString(R.string.overlay_confirm_button)
             setOnClickListener {
-                controllerMenuPanel?.visibility = View.GONE
+                controllerMenuPanel?.let { setMenuVisibility(it, false) }
                 confirmEditSession()
             }
         }
         val cancelButton = createMenuButton().apply {
             text = getString(R.string.overlay_cancel_button)
             setOnClickListener {
-                controllerMenuPanel?.visibility = View.GONE
+                controllerMenuPanel?.let { setMenuVisibility(it, false) }
                 cancelEditSession()
             }
         }
@@ -582,6 +603,9 @@ class FloatingBallOverlayService : Service() {
 
     private fun setFloatingBallHidden(hidden: Boolean) {
         controllerBallView?.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+        if (hidden) {
+            controllerMenuPanel?.visibility = View.GONE
+        }
     }
 
     private fun ensureControllerOnTop() {
@@ -707,7 +731,7 @@ class FloatingBallOverlayService : Service() {
     private fun toggleEditMode() {
         if (editConfirmCoordinator.isEditing) {
             cancelEditSession()
-            controllerMenuPanel?.visibility = View.GONE
+            controllerMenuPanel?.let { setMenuVisibility(it, false) }
             return
         }
         if (!enterEditMode()) {
@@ -1014,9 +1038,28 @@ class FloatingBallOverlayService : Service() {
     }
 
     private fun toggleMenuVisibility(menuPanel: View) {
-        menuPanel.isVisible = !menuPanel.isVisible
-        if (menuPanel.isVisible) {
-            updateEditButtons()
+        setMenuVisibility(menuPanel, !menuPanel.isVisible)
+    }
+
+    private fun setMenuVisibility(menuPanel: View, visible: Boolean) {
+        menuPanel.isVisible = visible
+        // Menu actions may be invoked while the ball is hidden by an edit gesture.
+        // Restore it whenever the menu state changes so it remains the menu toggle target.
+        setFloatingBallHidden(false)
+        if (visible) updateEditButtons()
+    }
+
+    private fun filterDetectionRegions(
+        regions: List<PageRegion>,
+        height: Int,
+        settings: com.manga.translate.settings.FloatingTranslateApiSettings
+    ): List<PageRegion> {
+        val top = height * settings.detectionTopInsetPercent / 100f
+        val bottom = height * (100 - settings.detectionBottomInsetPercent) / 100f
+        if (top <= 0f && bottom >= height) return regions
+        return regions.filter { region ->
+            val centerY = region.rect.centerY()
+            centerY >= top && centerY <= bottom
         }
     }
 
@@ -1026,7 +1069,7 @@ class FloatingBallOverlayService : Service() {
     ) {
         when (action) {
             FloatingBallGestureAction.START_TRANSLATE -> {
-                menuPanel.visibility = View.GONE
+                setMenuVisibility(menuPanel, false)
                 runTextDetection()
             }
 
@@ -1035,14 +1078,14 @@ class FloatingBallOverlayService : Service() {
             }
 
             FloatingBallGestureAction.CLEAR_SCREEN -> {
-                menuPanel.visibility = View.GONE
+                setMenuVisibility(menuPanel, false)
                 clearCurrentSession()
             }
 
             FloatingBallGestureAction.NONE -> Unit
 
             FloatingBallGestureAction.SWIPE_TRANSLATE -> {
-                menuPanel.visibility = View.GONE
+                setMenuVisibility(menuPanel, false)
                 startSwipeTranslateMode()
             }
         }
@@ -1051,9 +1094,47 @@ class FloatingBallOverlayService : Service() {
     private fun prepareProjection(resultCode: Int, data: Intent) {
         AppLogger.log("FloatingOCR", "Preparing projection")
         releaseProjection()
+        val metrics = currentDisplayMetrics() ?: return
+        lastKnownDisplayMetrics = metrics
         val manager = getSystemService(MediaProjectionManager::class.java) ?: return
-        if (!screenCaptureSession.prepare(manager, resultCode, data, resources.displayMetrics, PixelFormat.RGBA_8888)) {
+        if (!screenCaptureSession.prepare(manager, resultCode, data, metrics, PixelFormat.RGBA_8888)) {
             AppLogger.log("FloatingOCR", "Projection preparation failed")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun currentDisplayMetrics(): DisplayMetrics? {
+        val display = displayManager.getDisplay(Display.DEFAULT_DISPLAY) ?: return null
+        return DisplayMetrics().also { display.getRealMetrics(it) }
+    }
+
+    private fun handleDisplayMetricsChange() {
+        val metrics = currentDisplayMetrics() ?: return
+        val last = lastKnownDisplayMetrics
+        if (last != null &&
+            last.widthPixels == metrics.widthPixels &&
+            last.heightPixels == metrics.heightPixels &&
+            last.densityDpi == metrics.densityDpi
+        ) {
+            return
+        }
+        lastKnownDisplayMetrics = metrics
+        if (!screenCaptureSession.isReady()) {
+            return
+        }
+        AppLogger.log(
+            "FloatingOCR",
+            "Display metrics changed to ${metrics.widthPixels}x${metrics.heightPixels}; rebuilding capture"
+        )
+        // Captured frames, detection coordinates and the overlay session were all
+        // produced for the previous display size: drop them and rebuild the capture
+        // pipeline with the new metrics. The projection authorization stays valid,
+        // so no new consent flow is required.
+        scope.launch(Dispatchers.Main) {
+            clearCurrentSession()
+            if (!screenCaptureSession.reconfigure(metrics)) {
+                AppLogger.log("FloatingOCR", "Projection reconfigure failed after display change")
+            }
         }
     }
 
@@ -1117,14 +1198,18 @@ class FloatingBallOverlayService : Service() {
                             }
                             return@launch
                         }
-                        val regions = pageRegions.regions
+                        val floatingSettings = settingsStore.loadFloatingTranslateApiSettings()
+                        val regions = filterDetectionRegions(
+                            pageRegions.regions,
+                            capturedBitmap.height,
+                            floatingSettings
+                        )
                         val balloonCount = regions.count { it.source == BubbleSource.BUBBLE_DETECTOR }
                         val freeTextCount = regions.count { it.source == BubbleSource.TEXT_DETECTOR }
                         AppLogger.log(
                             "FloatingOCR",
                             "Detected regions=${regions.size} balloons=$balloonCount freeText=$freeTextCount"
                         )
-                        val floatingSettings = settingsStore.loadFloatingTranslateApiSettings()
                         val floatingApiSettings = settingsStore.loadResolvedFloatingTranslateApiSettings()
                         val floatingTimeoutMs = floatingSettings.timeoutSeconds * 1000
                         val useVlDirectTranslate =
@@ -1260,7 +1345,7 @@ class FloatingBallOverlayService : Service() {
                             bitmap = null
                             if (proofreadingModeEnabled) {
                                 enterEditMode(showToast = true)
-                                controllerMenuPanel?.visibility = View.VISIBLE
+                                controllerMenuPanel?.let { setMenuVisibility(it, true) }
                                 updateEditButtons()
                                 showProgressStatus(
                                     getString(R.string.floating_progress_done, resolvedTranslation.bubbles.size),
@@ -1537,7 +1622,7 @@ class FloatingBallOverlayService : Service() {
                     val dy = event.rawY - downRawY
                     val shouldStartDragging = abs(dx) > touchSlop || abs(dy) > touchSlop
                     if (menuPanel.isVisible && shouldStartDragging) {
-                        menuPanel.visibility = View.GONE
+                        setMenuVisibility(menuPanel, false)
                     }
                     if (!dragging && shouldStartDragging) {
                         mainHandler.removeCallbacks(longPressRunnable)

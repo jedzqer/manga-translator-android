@@ -151,14 +151,13 @@
     <string name="floating_translate_settings_title">Floating Translation Settings</string>
     <string name="normal_bubble_render_settings_button">Normal Bubble Settings</string>
     <string name="normal_bubble_render_settings_title">Normal Bubble Settings</string>
-    <string name="normal_bubble_render_settings_note">Common bubble box drawing for reading pages, comic pages and exported pictures. The retraction and opacity of ordinary bubbles and free bubbles can be set separately. The text will automatically adapt to the font size according to the size of the bubble; when the text density is too high, the bubble will automatically expand. Free bubbles only refer to the boxes filled in by text detection in normal mode, and do not include bubbles manually added by users. Please adjust the fonts uniformly in the separate "Font Settings".</string>
+    <string name="normal_bubble_render_settings_note">Common bubble box drawing for reading pages, comic pages and exported pictures. The retraction and opacity of ordinary bubbles and free bubbles can be set separately. The text will automatically adapt to the font size according to the size of the bubble; text fills the bubble as much as possible without changing its size. Free bubbles only refer to the boxes filled in by text detection in normal mode, and do not include bubbles manually added by users. Please adjust the fonts uniformly in the separate "Font Settings".</string>
     <string name="normal_bubble_shrink_percent_hint">Bubble retraction (0–30)</string>
     <string name="normal_bubble_opacity_percent_hint">Normal bubble opacity (0–100)</string>
     <string name="normal_bubble_free_shrink_percent_hint">Free bubble retraction (0–30)</string>
     <string name="normal_bubble_free_opacity_percent_hint">Free bubble opacity (0–100)</string>
+    <string name="normal_bubble_auto_adapt_color">Normal bubble adaptive background color</string>
     <string name="normal_bubble_free_auto_adapt_color">Free bubble adaptive background color</string>
-    <string name="normal_bubble_min_area_per_char_label">Lower limit of text density (the larger the value, the larger the text, which may expand the bubbles)</string>
-    <string name="normal_bubble_min_area_value">Current: %d sp² / character</string>
     <string name="bubble_font_settings_button">Font Settings</string>
     <string name="bubble_font_settings_button_uploaded">Font settings (uploaded)</string>
     <string name="bubble_font_settings_title">Font Settings</string>
@@ -179,7 +178,7 @@
     <string name="bubble_font_bold">Bold</string>
     <string name="floating_bubble_render_settings_button">Floating Bubble Settings</string>
     <string name="floating_bubble_render_settings_title">Floating Bubble Settings</string>
-    <string name="floating_bubble_render_settings_note">Used for floating window translation results overlay. The size supports outward expansion or inward contraction, and the shape supports rectangle or inscribed ellipse. The text will automatically adapt to the font size according to the size of the bubble; when the text density is too high, the bubble will automatically expand. Please adjust the fonts uniformly in the separate "Font Settings".</string>
+    <string name="floating_bubble_render_settings_note">Used for floating window translation results overlay. The size supports outward expansion or inward contraction, and the shape supports rectangle or inscribed ellipse. The text will automatically adapt to the font size according to the size of the bubble; text fills the bubble as much as possible without changing its size. Please adjust the fonts uniformly in the separate "Font Settings".</string>
     <string name="floating_bubble_size_adjust_percent_hint">Bubble size (-30–30, positive expansion)</string>
     <string name="floating_bubble_opacity_percent_hint">Bubble box opacity (0–100)</string>
     <string name="floating_bubble_auto_adapt_color">Bubble adaptive background color</string>
@@ -187,8 +186,6 @@
     <string name="floating_bubble_shape_rectangle">Rectangle</string>
     <string name="floating_bubble_shape_inscribed_ellipse">Inscribed Ellipse</string>
     <string name="floating_bubble_horizontal_text">Use horizontal layout for floating windows</string>
-    <string name="floating_bubble_min_area_per_char_label">Lower limit of text density (the larger the value, the larger the text, which may expand the bubbles)</string>
-    <string name="floating_bubble_min_area_value">Current: %d sp² / character</string>
     <string name="floating_api_url_hint">Floating window translation API address</string>
     <string name="floating_api_key_hint">Floating window translation API Key</string>
     <string name="floating_model_name_hint">Floating window translation model name</string>
@@ -199,6 +196,10 @@
     <string name="floating_proofreading_mode_note">After being turned on, the floating window will automatically enter the existing editing mode after the translation is completed, which facilitates manual addition, deletion and adjustment of bubbles.</string>
     <string name="floating_auto_close_on_screen_change">Automatically clear bubbles</string>
     <string name="floating_auto_close_on_screen_change_note">When turned on, the translation bubble can be automatically closed when turning pages, but it will increase some performance consumption.</string>
+    <string name="floating_detection_region_title">Translation detection region</string>
+    <string name="floating_detection_region_note">Set top and bottom margins to avoid reader status bars, dates and times (0–90%).</string>
+    <string name="floating_detection_top_inset_hint">Top margin (%)</string>
+    <string name="floating_detection_bottom_inset_hint">Bottom margin (%)</string>
     <string name="floating_gesture_settings_title">floating ball gesture</string>
     <string name="floating_gesture_settings_note">Specify separate actions for single click, double click, long press, and triple click. Repeating is allowed, and no action will be taken by default after three clicks.</string>
     <string name="floating_single_tap_action_hint">Single Tap</string>
@@ -214,6 +215,8 @@
     <string name="floating_ai_api_concurrency_hint">Floating window AI API Concurrency upper limit (1–50)</string>
     <string name="floating_translate_settings_note">Leave an item blank to use the corresponding configuration in the main settings.</string>
     <string name="ocr_use_local">Use local OCR</string>
+    <string name="ocr_use_xnnpack">Enable XNNPACK local inference acceleration (experimental)</string>
+    <string name="ocr_use_xnnpack_note">Affects local ONNX models only. Already loaded models require an app restart to take effect; on some devices it may be unsupported, slower, or crash while loading a model — turn it off and restart if you hit problems.</string>
     <string name="ocr_api_format_openai_compatible">OpenAI compatible</string>
     <string name="ocr_api_format_hint">OCR API format</string>
     <string name="ocr_api_url_hint">OCR API Address</string>
@@ -343,6 +346,7 @@
     <string name="folder_read">Start Reading</string>
     <string name="folder_back">Back</string>
     <string name="folder_image_count">%1$d pictures</string>
+    <string name="folder_stats_unknown">—</string>
     <string name="folder_collection_meta">%1$d chapters · %2$d pictures</string>
     <string name="folder_delete">Delete</string>
     <string name="folder_rename">Rename</string>
@@ -403,7 +407,7 @@
     <string name="folder_glossary_processing_note">After turning off translation processing, concurrent translation can be performed faster.</string>
     <string name="folder_bubble_detection_info_title">About Region Detection Modes</string>
     <string name="folder_bubble_detection_info_desc">About region detection modes</string>
-    <string name="folder_bubble_detection_info">Bubbles only uses the bubble segmentation model. Text only uses Paddle OCR to detect and group every text block, and is the fastest mode. Bubbles + free text detects regular bubbles and uses Paddle OCR to supplement and group text outside them, and is the slowest mode.</string>
+    <string name="folder_bubble_detection_info">Bubbles only uses the bubble segmentation model. Text only uses Paddle OCR to detect and group every text block, and is the fastest mode. Bubbles + free text detects regular bubbles and uses Paddle OCR to supplement and group text outside them, and is the slowest mode. If bubbles appear to fly around or shift noticeably, switch to Bubbles only mode.</string>
     <string name="folder_detection_mode_bubbles">Bubbles only</string>
     <string name="folder_detection_mode_text">Text only</string>
     <string name="folder_detection_mode_bubbles_and_text">Bubbles + free text</string>
@@ -497,6 +501,7 @@
 %1$s</string>
     <string name="model_response_failed_clear_advanced_params">Advanced LLM parameters may not be supported by the current interface. Please leave the optional advanced parameters blank in "LLM Parameters" and try again.</string>
     <string name="model_response_empty_content">The model returned an empty response and no valid content could be extracted.</string>
+    <string name="model_response_truncated">The model response was truncated because the max_output_tokens limit was reached, so the translation is incomplete. Increase max_output_tokens in the LLM parameters and try again.</string>
     <string name="model_response_blank_bubbles">Model returned blank results: %2$d bubbles in %1$s mode did not return valid translations.</string>
     <string name="error_page_prefix">page:</string>
     <string name="translation_continue">Retry</string>
@@ -555,6 +560,15 @@
     <string name="update_download_description">After downloading, you can install it in the notification bar (%1$s)</string>
     <string name="update_download_failed_manual_tip">If the download fails, you can manually open the project page to download the update.</string>
     <string name="about_button">About</string>
+    <string name="backup_export_button">Export manga and settings</string>
+    <string name="backup_import_button">Import manga and settings</string>
+    <string name="backup_export_success">App backup exported</string>
+    <string name="backup_export_failed">Failed to export app backup</string>
+    <string name="backup_import_success">App backup imported. Restored %1$d manga files. Reopen the library to view them.</string>
+    <string name="backup_import_failed">Failed to import app backup. Select a valid backup file.</string>
+    <string name="backup_export_running">Exporting app backup, please wait…</string>
+    <string name="backup_import_running">Importing app backup, please wait…</string>
+    <string name="backup_operation_canceled">Backup operation canceled</string>
     <string name="about_dialog_title">About</string>
     <string name="about_dialog_message">Current version: %1$s</string>
     <string name="about_dialog_message_with_group">Current version: %1$s

@@ -16,6 +16,7 @@ sealed class LlmErrorCode(val value: String) {
     data object MissingTranslateApiSettings : LlmErrorCode("MISSING_TRANSLATE_API_SETTINGS")
     data object MissingUrl : LlmErrorCode("MISSING_URL")
     data object EmptyResponse : LlmErrorCode("EMPTY_RESPONSE")
+    data object ResponseTruncated : LlmErrorCode("RESPONSE_TRUNCATED")
     data object CustomParamConflict : LlmErrorCode("CUSTOM_PARAM_CONFLICT")
     data object CustomParamInvalidValue : LlmErrorCode("CUSTOM_PARAM_INVALID_VALUE")
     data object ImageEncodeFailed : LlmErrorCode("IMAGE_ENCODE_FAILED")
@@ -37,6 +38,7 @@ sealed class LlmErrorCode(val value: String) {
                 MissingTranslateApiSettings.value -> MissingTranslateApiSettings
                 MissingUrl.value -> MissingUrl
                 EmptyResponse.value -> EmptyResponse
+                ResponseTruncated.value -> ResponseTruncated
                 CustomParamConflict.value -> CustomParamConflict
                 CustomParamInvalidValue.value -> CustomParamInvalidValue
                 ImageEncodeFailed.value -> ImageEncodeFailed

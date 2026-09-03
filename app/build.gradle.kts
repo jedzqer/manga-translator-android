@@ -18,11 +18,11 @@ android {
         !keyPasswordProp.isNullOrBlank()
 
     defaultConfig {
-        applicationId = "com.manga.translate.v3beta"
+        applicationId = "com.manga.translate.v3"
         minSdk = 24
         targetSdk = 36
-        versionCode = 87
-        versionName = "3.4.2"
+        versionCode = 93
+        versionName = "3.4.8"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -124,5 +124,6 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.test:core:1.7.0")
     testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.28.0")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
 }

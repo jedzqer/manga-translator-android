@@ -575,29 +575,6 @@ class MainActivity : AppCompatActivity() {
         return parsedProgress.coerceIn(0, parsedTotal) to parsedTotal
     }
 
-    private fun extractStage(detail: String): String? {
-        return when {
-            detail.contains(getString(R.string.detecting_bubbles)) ->
-                getString(R.string.detecting_bubbles)
-            detail.contains(getString(R.string.translation_preparing)) &&
-                detail.contains("OCR", ignoreCase = true) -> getString(R.string.folder_preprocess_stage_ocr)
-            detail.contains(getString(R.string.translation_preparing)) &&
-                detail.contains(getString(R.string.global_progress_glossary)) ->
-                getString(R.string.folder_preprocess_stage_glossary)
-            detail.contains(getString(R.string.translation_preparing)) ->
-                getString(R.string.translation_preparing)
-            detail.contains("OCR", ignoreCase = true) ->
-                getString(R.string.global_progress_in_progress, "OCR")
-            detail.contains(getString(R.string.global_progress_glossary)) ->
-                getString(R.string.global_progress_in_progress, getString(R.string.global_progress_glossary))
-            detail.contains(getString(R.string.global_progress_export)) ->
-                getString(R.string.global_progress_in_progress, getString(R.string.global_progress_export))
-            detail.contains(getString(R.string.global_progress_translate)) ->
-                getString(R.string.global_progress_in_progress, getString(R.string.global_progress_translate))
-            else -> null
-        }
-    }
-
     private fun resolveColorAttr(attrRes: Int): Int {
         val typedValue = android.util.TypedValue()
         theme.resolveAttribute(attrRes, typedValue, true)

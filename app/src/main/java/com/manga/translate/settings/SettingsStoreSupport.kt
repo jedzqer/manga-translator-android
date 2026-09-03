@@ -29,6 +29,10 @@ internal class SettingsStoreStorage(context: Context) {
         settingsObserver.publish(changedKeys)
     }
 
+    fun notifyImportedSettings() {
+        settingsObserver.publish(prefs.all.keys + SettingsStore.KEY_AI_PROVIDER_PROFILES_STATE)
+    }
+
     fun parseVersionedArrayPayload(
         raw: String,
         arrayKey: String,

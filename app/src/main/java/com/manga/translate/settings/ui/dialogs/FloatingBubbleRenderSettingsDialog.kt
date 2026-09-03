@@ -3,7 +3,6 @@ package com.manga.translate.settings.ui.dialogs
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
-import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
@@ -13,7 +12,6 @@ import com.manga.translate.settings.FloatingBubbleRenderSettings
 import com.manga.translate.settings.FloatingBubbleShape
 import com.manga.translate.settings.SettingsStore
 import com.manga.translate.settings.ui.SettingsFragment
-import kotlin.math.roundToInt
 
 /**
  * Floating bubble render settings editing dialog.
@@ -37,21 +35,6 @@ internal class FloatingBubbleRenderSettingsDialog(
         )
         dialogBinding.floatingBubbleVerticalTextSwitch.isChecked = !currentSettings.useHorizontalText
         dialogBinding.floatingBubbleAutoAdaptColorSwitch.isChecked = currentSettings.autoAdaptBubbleColor
-        val seekBarProgress = ((currentSettings.minAreaPerCharSp - 16f) / 2.4f).roundToInt().coerceIn(0, 100)
-        dialogBinding.floatingBubbleMinAreaSeekbar.progress = seekBarProgress
-        dialogBinding.floatingBubbleMinAreaValueLabel.text =
-            fragment.getString(R.string.floating_bubble_min_area_value, currentSettings.minAreaPerCharSp.roundToInt())
-        dialogBinding.floatingBubbleMinAreaSeekbar.setOnSeekBarChangeListener(
-            object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    val sp2 = (16f + progress * 2.4f).roundToInt()
-                    dialogBinding.floatingBubbleMinAreaValueLabel.text =
-                        fragment.getString(R.string.floating_bubble_min_area_value, sp2)
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-            }
-        )
         AlertDialog.Builder(fragment.requireContext())
             .setTitle(R.string.floating_bubble_render_settings_title)
             .setView(dialogBinding.root)
@@ -68,7 +51,6 @@ internal class FloatingBubbleRenderSettingsDialog(
                         currentSettings.shape
                     ),
                     useHorizontalText = !dialogBinding.floatingBubbleVerticalTextSwitch.isChecked,
-                    minAreaPerCharSp = 16f + dialogBinding.floatingBubbleMinAreaSeekbar.progress * 2.4f,
                     autoAdaptBubbleColor = dialogBinding.floatingBubbleAutoAdaptColorSwitch.isChecked
                 )
                 settingsStore.saveFloatingBubbleRenderSettings(updated)

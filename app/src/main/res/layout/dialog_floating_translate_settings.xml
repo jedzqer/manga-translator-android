@@ -59,6 +59,52 @@
             android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
 
         <TextView
+            android:id="@+id/floating_detection_region_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/floating_detection_region_title"
+            android:textAppearance="@style/Widget.MangaTranslator.CardTitle" />
+
+        <TextView
+            android:id="@+id/floating_detection_region_note"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/floating_detection_region_note"
+            android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MangaTranslator.Input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:hint="@string/floating_detection_top_inset_hint">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/floating_detection_top_inset_input"
+                style="@style/Widget.MangaTranslator.DialogEditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MangaTranslator.Input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:hint="@string/floating_detection_bottom_inset_hint">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/floating_detection_bottom_inset_input"
+                style="@style/Widget.MangaTranslator.DialogEditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView
             android:id="@+id/floating_gesture_settings_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

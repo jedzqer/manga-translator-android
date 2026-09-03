@@ -17,12 +17,21 @@ import com.manga.translate.translation.withRecognizedTextBubblesOnly
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class TranslationModelsTest {
+    @Test
+    fun `manual bubbles keep free rendering but do not use free shrink`() {
+        assertTrue(BubbleSource.MANUAL.isFreeBubble)
+        assertFalse(BubbleSource.MANUAL.usesFreeBubbleShrink)
+        assertTrue(BubbleSource.TEXT_DETECTOR.usesFreeBubbleShrink)
+    }
+
     @Test
     fun `ocr page drops bubbles without recognized text`() {
         val page = PageOcrResult(
@@ -108,10 +117,9 @@ class TranslationModelsTest {
     }
 
     @Test
-    fun `cross page merge persists both pages and scales next page coordinates`() {
+    fun `cross page merge scales next page coordinates without mutating OCR cache`() {
         val firstImage = File.createTempFile("cross-page-first", ".jpg")
         val secondImage = File.createTempFile("cross-page-second", ".jpg")
-        val store = OcrStore()
         try {
             val merged = CrossPageBubbleMerger.merge(
                 pages = listOf(
@@ -141,19 +149,16 @@ class TranslationModelsTest {
                             )
                         )
                     )
-                ),
-                ocrStore = store
+                )
             )
 
             val mergedBubble = merged.first().bubbles.single()
             assertEquals(100f, mergedBubble.rect.left)
             assertEquals(300f, mergedBubble.rect.right)
             assertEquals(1900f, mergedBubble.rect.bottom)
-            assertEquals(1, store.load(firstImage)?.bubbles?.size)
-            assertEquals(0, store.load(secondImage)?.bubbles?.size)
+            assertEquals(null, OcrStore().load(firstImage))
+            assertEquals(null, OcrStore().load(secondImage))
         } finally {
-            store.ocrFileFor(firstImage).delete()
-            store.ocrFileFor(secondImage).delete()
             firstImage.delete()
             secondImage.delete()
         }
@@ -240,5 +245,36 @@ class TranslationModelsTest {
     private fun rect(index: Int): RectF {
         val top = index * 10f
         return RectF(0f, top, 100f, top + 8f)
+    }
+
+    @Test
+    fun `cross page merged bubble geometry is detected`() {
+        val result = TranslationResult(
+            imageName = "page.jpg",
+            width = 1000,
+            height = 1600,
+            bubbles = listOf(
+                BubbleTranslation.translated(0, RectF(0f, 1500f, 100f, 1750f), translatedText = "x")
+            ),
+            metadata = TranslationMetadata(mode = TranslationMetadata.MODE_STANDARD)
+        )
+
+        assertTrue(result.hasCrossPageBubbleGeometry())
+    }
+
+    @Test
+    fun `in page bubbles are not treated as cross page geometry`() {
+        val result = TranslationResult(
+            imageName = "page.jpg",
+            width = 1000,
+            height = 1600,
+            bubbles = listOf(
+                BubbleTranslation.translated(0, RectF(0f, 1400f, 100f, 1600f), translatedText = "x"),
+                BubbleTranslation.translated(1, RectF(0f, 10f, 100f, 60f), translatedText = "y")
+            ),
+            metadata = TranslationMetadata(mode = TranslationMetadata.MODE_STANDARD)
+        )
+
+        assertFalse(result.hasCrossPageBubbleGeometry())
     }
 }

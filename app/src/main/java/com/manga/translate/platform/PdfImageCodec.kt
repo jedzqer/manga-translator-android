@@ -44,6 +44,20 @@ internal object PdfImageCodec {
     private const val MINIMUM_FREE_SPACE_BYTES = 100L * 1024 * 1024
     private const val BYTES_PER_RENDERED_PIXEL = 4L
 
+    // PDF export maps pixels 1:1 onto page points, so pages are encoded at full source
+    // resolution. While a page is encoded, the bitmap is held together with its
+    // Flate-encoded color buffer, the final toByteArray() copy and, when transparent,
+    // an alpha buffer: up to roughly 4x the bitmap size. Require that much headroom
+    // before a full decode; otherwise step inSampleSize up so memory-constrained
+    // devices degrade page resolution instead of crashing with an OutOfMemoryError
+    // (an Error, so the Exception handlers around PDF export do not catch it).
+    private const val EXPORT_DECODE_BUDGET_COPIES = 4
+
+    // The transparency probe only needs to know whether any pixel has alpha, which
+    // survives downsampling for real-world masks, so cap the probe bitmap by long edge.
+    private const val EXPORT_TRANSPARENCY_PROBE_MAX_EDGE = 2048
+    private const val EXPORT_PROBE_BUDGET_COPIES = 2
+
     /**
      * Estimate the peak decode memory a PDF import would need, based on actual page
      * dimensions rather than the source file size (a small PDF can still contain huge
@@ -219,9 +233,12 @@ internal object PdfImageCodec {
         val hasTransparency: Boolean
     )
 
+    /** Dimensions of the bitmap the bytes were encoded from (may be downsampled). */
     private data class PdfImageData(
         val colorBytes: ByteArray,
-        val alphaBytes: ByteArray?
+        val alphaBytes: ByteArray?,
+        val width: Int,
+        val height: Int
     )
 
     fun writeImagesToPdf(
@@ -347,10 +364,12 @@ internal object PdfImageCodec {
         for (i in 0 until n) {
             val imageFile = images[i]
             val imageInfo = imageInfos[i]
-            val w = imageInfo.width
-            val h = imageInfo.height
             val imageData = encodeImageForPdf(imageFile, imageInfo)
                 ?: throw IllegalStateException("Cannot encode image for PDF: ${imageFile.name}")
+            // Take dimensions from the actually encoded bitmap: the memory guard may
+            // have downsampled the source, so the XObject and MediaBox must match it.
+            val w = imageData.width
+            val h = imageData.height
             val alphaObject = if (imageData.alphaBytes != null) nextAlphaObject++ else null
 
             // Image XObject
@@ -447,7 +466,7 @@ internal object PdfImageCodec {
         if (isJpeg(imageFile)) {
             return PdfImageInfo(width, height, hasTransparency = false)
         }
-        val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
+        val bitmap = decodeTransparencyProbe(imageFile, width, height)
             ?: throw IllegalStateException("Cannot decode image: ${imageFile.name}")
         return try {
             PdfImageInfo(width, height, bitmapHasTransparency(bitmap))
@@ -458,13 +477,17 @@ internal object PdfImageCodec {
 
     private fun encodeImageForPdf(imageFile: File, imageInfo: PdfImageInfo): PdfImageData? {
         if (isJpeg(imageFile)) {
-            return runCatching { PdfImageData(imageFile.readBytes(), alphaBytes = null) }.getOrNull()
+            return runCatching {
+                PdfImageData(
+                    colorBytes = imageFile.readBytes(),
+                    alphaBytes = null,
+                    width = imageInfo.width,
+                    height = imageInfo.height
+                )
+            }.getOrNull()
         }
-        val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return null
-        return try {
-            if (bitmap.width != imageInfo.width || bitmap.height != imageInfo.height) {
-                return null
-            }
+        val bitmap = decodeExportBitmap(imageFile, imageInfo.width, imageInfo.height) ?: return null
+        try {
             val colorOutput = ByteArrayOutputStream()
             val alphaOutput = if (imageInfo.hasTransparency) ByteArrayOutputStream() else null
             DeflaterOutputStream(colorOutput).use { colorStream ->
@@ -484,10 +507,87 @@ internal object PdfImageCodec {
                     alphaStream?.close()
                 }
             }
-            PdfImageData(colorOutput.toByteArray(), alphaOutput?.toByteArray())
-        } finally {
+            // Recycle bitmap immediately after encoding to reduce peak memory before toByteArray()
             bitmap.recycle()
+            return PdfImageData(
+                colorOutput.toByteArray(),
+                alphaOutput?.toByteArray(),
+                bitmap.width,
+                bitmap.height
+            )
+        } catch (e: Exception) {
+            bitmap.recycle()
+            return null
         }
+    }
+
+    /**
+     * Decodes a page for PDF export, trading resolution for memory only when a full
+     * decode does not fit the heap (see [EXPORT_DECODE_BUDGET_COPIES]). Returns null
+     * when the decode fails outright, like the previous unguarded decode did.
+     */
+    private fun decodeExportBitmap(imageFile: File, sourceWidth: Int, sourceHeight: Int): Bitmap? {
+        var sampleSize = 1
+        while (!ImageProcessingGuards.hasMemoryBudgetForBitmap(
+                ceilDivide(sourceWidth, sampleSize),
+                ceilDivide(sourceHeight, sampleSize),
+                copies = EXPORT_DECODE_BUDGET_COPIES
+            )
+        ) {
+            if (sourceWidth / sampleSize <= 2 && sourceHeight / sampleSize <= 2) break
+            sampleSize *= 2
+        }
+        if (sampleSize > 1) {
+            AppLogger.log(
+                "PdfImageCodec",
+                "PDF export memory guard: decoding ${sourceWidth}x${sourceHeight} with " +
+                    "inSampleSize=$sampleSize (free heap ${freeHeapBytes()} bytes)"
+            )
+        }
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return runCatching { BitmapFactory.decodeFile(imageFile.absolutePath, options) }.getOrNull()
+    }
+
+    /**
+     * Decodes a bounded bitmap for transparency detection (see
+     * [EXPORT_TRANSPARENCY_PROBE_MAX_EDGE]), falling back to ever larger sample sizes
+     * while the heap cannot hold even the capped probe. Returns null only when the
+     * smallest probe cannot be decoded either; callers fail the export in that case,
+     * exactly as the previous unguarded full decode did.
+     */
+    private fun decodeTransparencyProbe(imageFile: File, sourceWidth: Int, sourceHeight: Int): Bitmap? {
+        var sampleSize = 1
+        while (maxOf(sourceWidth, sourceHeight) / sampleSize > EXPORT_TRANSPARENCY_PROBE_MAX_EDGE &&
+            sampleSize <= Int.MAX_VALUE / 2
+        ) {
+            sampleSize *= 2
+        }
+        while (!ImageProcessingGuards.hasMemoryBudgetForBitmap(
+                ceilDivide(sourceWidth, sampleSize),
+                ceilDivide(sourceHeight, sampleSize),
+                copies = EXPORT_PROBE_BUDGET_COPIES
+            )
+        ) {
+            if (sourceWidth / sampleSize <= 2 && sourceHeight / sampleSize <= 2) break
+            sampleSize *= 2
+        }
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return runCatching { BitmapFactory.decodeFile(imageFile.absolutePath, options) }.getOrNull()
+    }
+
+    private fun ceilDivide(value: Int, divisor: Int): Int =
+        ((value.toLong() + divisor - 1L) / divisor).toInt().coerceAtLeast(1)
+
+    private fun freeHeapBytes(): Long {
+        val runtime = Runtime.getRuntime()
+        return (runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory()))
+            .coerceAtLeast(0L)
     }
 
     private fun bitmapHasTransparency(bitmap: Bitmap): Boolean {
