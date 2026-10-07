@@ -54,6 +54,6 @@ class ReadingProgressStore(context: Context) {
     }
 
     companion object {
-        private const val PREFS_NAME = "reading_progress"
+        internal const val PREFS_NAME = "reading_progress"
     }
 }

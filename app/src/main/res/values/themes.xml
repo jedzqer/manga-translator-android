@@ -7,14 +7,17 @@
         <item name="surfaceColor">@color/light_surface</item>
         <item name="surfaceAltColor">@color/light_surface_alt</item>
         <item name="buttonFillColor">@color/light_button</item>
-        <item name="buttonFillPressedColor">@color/light_accent</item>
+        <item name="buttonFillPressedColor">@color/light_hero_end</item>
         <item name="buttonTextColor">@color/light_button_text</item>
-        <item name="dialogTextColor">@color/light_accent</item>
+        <item name="dialogTextColor">@color/light_foreground</item>
         <item name="dialogHintTextColor">@color/light_muted_text</item>
         <item name="outlineColor">@color/light_outline</item>
         <item name="mutedTextColor">@color/light_muted_text</item>
         <item name="heroStartColor">@color/light_hero_start</item>
         <item name="heroEndColor">@color/light_hero_end</item>
+        <item name="stickerAccentColor">@color/light_decor</item>
+        <item name="cardStripeColor">@color/light_hero_end</item>
+        <item name="heroTextColor">@color/light_hero_text</item>
         <item name="buttonStyle">@style/Widget.MangaTranslator.Button</item>
         <item name="android:buttonStyle">@style/Widget.MangaTranslator.Button</item>
         <item name="alertDialogTheme">@style/ThemeOverlay.MangaTranslator.AlertDialog</item>
@@ -32,14 +35,17 @@
         <item name="surfaceColor">@color/pastel_surface</item>
         <item name="surfaceAltColor">@color/pastel_base</item>
         <item name="buttonFillColor">@color/pastel_decor</item>
-        <item name="buttonFillPressedColor">@color/pastel_accent</item>
+        <item name="buttonFillPressedColor">@color/pastel_surface</item>
         <item name="buttonTextColor">@color/pastel_button_text</item>
         <item name="dialogTextColor">@color/pastel_accent</item>
         <item name="dialogHintTextColor">@color/pastel_button_text</item>
         <item name="outlineColor">@color/pastel_accent</item>
         <item name="mutedTextColor">@color/pastel_button_text</item>
-        <item name="heroStartColor">@color/pastel_accent</item>
-        <item name="heroEndColor">@color/pastel_decor</item>
+        <item name="heroStartColor">@color/pastel_decor</item>
+        <item name="heroEndColor">@color/pastel_surface</item>
+        <item name="stickerAccentColor">@color/pastel_accent</item>
+        <item name="cardStripeColor">@color/pastel_decor</item>
+        <item name="heroTextColor">@color/pastel_hero_text</item>
         <item name="android:windowBackground">@color/pastel_base</item>
         <item name="android:statusBarColor">@color/pastel_decor</item>
         <item name="android:windowLightStatusBar">true</item>
@@ -53,7 +59,7 @@
         <item name="surfaceColor">@color/deep_sea_surface</item>
         <item name="surfaceAltColor">@color/deep_sea_decor</item>
         <item name="buttonFillColor">@color/deep_sea_decor</item>
-        <item name="buttonFillPressedColor">@color/deep_sea_accent</item>
+        <item name="buttonFillPressedColor">@color/deep_sea_surface</item>
         <item name="buttonTextColor">@color/deep_sea_button_text</item>
         <item name="dialogTextColor">@color/deep_sea_accent</item>
         <item name="dialogHintTextColor">@color/deep_sea_button_text</item>
@@ -61,6 +67,9 @@
         <item name="mutedTextColor">@color/deep_sea_button_text</item>
         <item name="heroStartColor">@color/deep_sea_surface</item>
         <item name="heroEndColor">@color/deep_sea_decor</item>
+        <item name="stickerAccentColor">@color/deep_sea_button_text</item>
+        <item name="cardStripeColor">@color/deep_sea_card_stripe</item>
+        <item name="heroTextColor">@color/deep_sea_hero_text</item>
         <item name="android:windowBackground">@color/deep_sea_base</item>
         <item name="android:statusBarColor">@color/deep_sea_decor</item>
         <item name="android:windowLightStatusBar">false</item>
@@ -81,6 +90,8 @@
         <item name="mutedTextColor">@color/custom_light_muted</item>
         <item name="heroStartColor">@color/light_decor</item>
         <item name="heroEndColor">@color/light_hero_end</item>
+        <item name="stickerAccentColor">@color/light_decor</item>
+        <item name="heroTextColor">@color/light_hero_text</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
 
@@ -99,6 +110,9 @@
         <item name="mutedTextColor">@color/custom_dark_muted</item>
         <item name="heroStartColor">@color/dark_decor</item>
         <item name="heroEndColor">@color/dark_hero_end</item>
+        <item name="stickerAccentColor">@color/dark_decor</item>
+        <item name="cardStripeColor">@color/dark_hero_end</item>
+        <item name="heroTextColor">@color/dark_hero_text</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

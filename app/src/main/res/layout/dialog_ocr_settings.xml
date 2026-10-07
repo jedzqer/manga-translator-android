@@ -19,6 +19,37 @@
             android:text="@string/ocr_use_local" />
 
         <TextView
+            android:id="@+id/api_ocr_supplement_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:textColor="?attr/dialogTextColor"
+            android:text="@string/ocr_api_supplement" />
+
+        <androidx.appcompat.widget.AppCompatSeekBar
+            android:id="@+id/api_ocr_supplement_slider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/ocr_api_supplement"
+            android:max="3" />
+
+        <TextView
+            android:id="@+id/api_ocr_supplement_description"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:accessibilityLiveRegion="polite"
+            android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/manual_bubbles_api_ocr_switch"
+            android:singleLine="false"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:textColor="?attr/dialogTextColor"
+            android:text="@string/ocr_manual_api" />
+
+        <TextView
             android:id="@+id/ocr_settings_note"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -52,7 +83,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="@string/ocr_api_url_hint">
+            android:hint="@string/ocr_api_url_hint"
+            app:placeholderTextColor="?attr/dialogHintTextColor"
+            app:placeholderText="@string/ocr_api_reuse_main_hint">
 
             <com.google.android.material.textfield.TextInputEditText
                 style="@style/Widget.MangaTranslator.DialogEditText"
@@ -68,7 +101,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="@string/ocr_api_key_hint">
+            android:hint="@string/ocr_api_key_hint"
+            app:placeholderTextColor="?attr/dialogHintTextColor"
+            app:placeholderText="@string/ocr_api_reuse_main_hint">
 
             <com.google.android.material.textfield.TextInputEditText
                 style="@style/Widget.MangaTranslator.DialogEditText"
@@ -84,7 +119,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="@string/ocr_model_name_hint">
+            android:hint="@string/ocr_model_name_hint"
+            app:placeholderTextColor="?attr/dialogHintTextColor"
+            app:placeholderText="@string/ocr_api_reuse_main_hint">
 
             <com.google.android.material.textfield.TextInputEditText
                 style="@style/Widget.MangaTranslator.DialogEditText"
@@ -122,23 +159,6 @@
             <com.google.android.material.textfield.TextInputEditText
                 style="@style/Widget.MangaTranslator.DialogEditText"
                 android:id="@+id/ocr_api_concurrency_input"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="number" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/local_ocr_concurrency_layout"
-            style="@style/Widget.MangaTranslator.Input"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="@string/local_ocr_concurrency_hint"
-            android:visibility="gone">
-
-            <com.google.android.material.textfield.TextInputEditText
-                style="@style/Widget.MangaTranslator.DialogEditText"
-                android:id="@+id/local_ocr_concurrency_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="number" />

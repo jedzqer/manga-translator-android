@@ -1,22 +1,63 @@
 <resources>
+    <style name="Widget.MangaTranslator.HelpButton" parent="Widget.AppCompat.ImageButton">
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:padding">14dp</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:src">@drawable/ic_help_square</item>
+        <item name="android:tint">?attr/mutedTextColor</item>
+        <item name="android:scaleType">fitCenter</item>
+    </style>
     <style name="Widget.MangaTranslator.Button" parent="Widget.AppCompat.Button">
-        <item name="android:background">@drawable/bg_button_rounded</item>
-        <item name="android:textColor">?attr/buttonTextColor</item>
+        <item name="android:background">@drawable/bg_sticker_control</item>
+        <item name="android:elevation">0dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:textColor">@color/button_label_text</item>
         <item name="android:textAllCaps">false</item>
         <item name="android:textStyle">bold</item>
         <item name="android:minHeight">50dp</item>
         <item name="android:paddingStart">18dp</item>
         <item name="android:paddingEnd">18dp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">12dp</item>
     </style>
 
     <style name="Widget.MangaTranslator.ButtonBar" parent="Widget.AppCompat.Button.Borderless">
-        <item name="android:textColor">?attr/colorAccent</item>
+        <item name="android:background">@drawable/bg_sticker_control</item>
+        <item name="android:elevation">0dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:textColor">@color/button_label_text</item>
         <item name="android:textAllCaps">false</item>
         <item name="android:textStyle">bold</item>
         <item name="android:minHeight">48dp</item>
         <item name="android:minWidth">0dp</item>
         <item name="android:paddingStart">12dp</item>
         <item name="android:paddingEnd">12dp</item>
+    </style>
+
+    <style name="Widget.MangaTranslator.AlertDialogButton" parent="Widget.MangaTranslator.Button">
+        <item name="android:layout_marginBottom">0dp</item>
+    </style>
+
+    <style name="Widget.MangaTranslator.SectionTab" parent="Widget.MangaTranslator.SectionLabel">
+        <item name="android:background">@drawable/bg_section_tab</item>
+        <item name="android:textColor">?attr/buttonTextColor</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">4dp</item>
+        <item name="android:paddingBottom">6dp</item>
+    </style>
+
+    <style name="Widget.MangaTranslator.TabText" parent="TextAppearance.AppCompat.Medium">
+        <item name="android:textStyle">bold</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:letterSpacing">0.03</item>
+    </style>
+
+    <style name="ShapeAppearance.MangaTranslator.StickerFab" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">3dp</item>
     </style>
 
     <style name="Widget.MangaTranslator.Title" parent="TextAppearance.AppCompat.Title">
@@ -46,10 +87,11 @@
 
     <style name="Widget.MangaTranslator.Input" parent="">
         <item name="boxBackgroundMode">outline</item>
-        <item name="boxCornerRadiusTopStart">22dp</item>
-        <item name="boxCornerRadiusTopEnd">22dp</item>
-        <item name="boxCornerRadiusBottomStart">22dp</item>
-        <item name="boxCornerRadiusBottomEnd">22dp</item>
+        <item name="expandedHintEnabled">false</item>
+        <item name="boxCornerRadiusTopStart">0dp</item>
+        <item name="boxCornerRadiusTopEnd">0dp</item>
+        <item name="boxCornerRadiusBottomStart">0dp</item>
+        <item name="boxCornerRadiusBottomEnd">0dp</item>
         <item name="boxStrokeColor">@color/input_stroke_color</item>
         <item name="hintTextColor">@color/input_hint_color</item>
         <item name="android:textColorHint">@color/input_hint_color</item>
@@ -89,11 +131,11 @@
         <item name="android:textColorAlertDialogListItem">?attr/dialogTextColor</item>
         <item name="editTextColor">?attr/dialogTextColor</item>
         <item name="colorControlNormal">?attr/dialogTextColor</item>
-        <item name="buttonBarButtonStyle">@style/Widget.MangaTranslator.Button</item>
-        <item name="android:buttonBarButtonStyle">@style/Widget.MangaTranslator.Button</item>
-        <item name="buttonBarPositiveButtonStyle">@style/Widget.MangaTranslator.Button</item>
-        <item name="buttonBarNegativeButtonStyle">@style/Widget.MangaTranslator.Button</item>
-        <item name="buttonBarNeutralButtonStyle">@style/Widget.MangaTranslator.Button</item>
+        <item name="buttonBarButtonStyle">@style/Widget.MangaTranslator.AlertDialogButton</item>
+        <item name="android:buttonBarButtonStyle">@style/Widget.MangaTranslator.AlertDialogButton</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.MangaTranslator.AlertDialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.MangaTranslator.AlertDialogButton</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.MangaTranslator.AlertDialogButton</item>
         <item name="android:windowMinWidthMajor">92%</item>
         <item name="android:windowMinWidthMinor">92%</item>
     </style>

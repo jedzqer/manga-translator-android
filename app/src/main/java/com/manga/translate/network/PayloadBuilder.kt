@@ -33,9 +33,17 @@ internal class PayloadBuilder(
         modelName: String,
         promptAsset: String,
         apiFormat: ApiFormat,
-        userPayload: String
+        userPayload: String,
+        glossaryProcessingEnabled: Boolean = true
     ): JSONObject {
-        val config = getPromptConfig(promptAsset, settings.translationStyle)
+        val baseConfig = getPromptConfig(promptAsset, settings.translationStyle)
+        val config = if (glossaryProcessingEnabled) baseConfig else baseConfig.copy(
+            systemPrompt = baseConfig.systemPrompt + "\nGlossary extraction is disabled for this request. " +
+                "Use the supplied glossary only as translation context. Do not extract new terms. " +
+                "Return glossary_used as an empty JSON object ({}), overriding any glossary extraction instructions or examples.",
+            userPromptPrefix = baseConfig.userPromptPrefix +
+                "\nDo not extract glossary terms; return an empty object for glossary_used.\n"
+        )
         return when (apiFormat) {
             ApiFormat.OPENAI_COMPATIBLE -> buildOpenAiPayload(
                 settings = settings,
@@ -57,14 +65,20 @@ internal class PayloadBuilder(
         }
     }
 
-    fun buildImageOcrPayload(ocrSettings: OcrApiSettings, image: Bitmap): JSONObject {
+    fun buildImageOcrPayload(ocrSettings: OcrApiSettings, image: Bitmap,
+        requestedIds: List<Int>? = null): JSONObject {
         val config = getPromptConfig(OCR_PROMPT_CONFIG_ASSET)
         val imageBase64 = ImageEncodingUtils.encodeBitmapToBase64(image)
             ?: throw LlmRequestException(
                 LlmErrorCode.ImageEncodeFailed,
                 "Failed to encode OCR image as JPEG"
             )
-        val userInstruction = config.userPromptPrefix.ifBlank { DEFAULT_OCR_USER_PROMPT }
+        val userInstruction = if (requestedIds == null) {
+            config.userPromptPrefix.ifBlank { DEFAULT_OCR_USER_PROMPT }
+        } else {
+            config.batchPrompt +
+                "\nIDs: " + requestedIds.joinToString(", ")
+        }
         val userContent = JSONArray()
             .put(
                 JSONObject()
@@ -87,7 +101,7 @@ internal class PayloadBuilder(
                     .put("content", config.systemPrompt)
             )
         }
-        for (message in config.exampleMessages) {
+        for (message in if (requestedIds == null) config.exampleMessages else emptyList()) {
             messages.put(
                 JSONObject()
                     .put("role", message.role)
@@ -123,13 +137,14 @@ internal class PayloadBuilder(
         apiFormat: ApiFormat,
         glossary: Map<String, String> = emptyMap(),
         glossaryProcessingEnabled: Boolean = false,
-        requestedIds: List<Int>? = null
+        requestedIds: List<Int>? = null,
+        imagesBase64: List<String> = listOf(imageBase64)
     ): JSONObject {
         return when (apiFormat) {
             ApiFormat.OPENAI_COMPATIBLE -> buildOpenAiImageTranslationPayload(
                 settings = settings,
                 modelName = modelName,
-                imageBase64 = imageBase64,
+                imagesBase64 = imagesBase64,
                 promptAsset = promptAsset,
                 glossary = glossary,
                 glossaryProcessingEnabled = glossaryProcessingEnabled,
@@ -138,13 +153,13 @@ internal class PayloadBuilder(
             ApiFormat.OPENAI_RESPONSES -> buildOpenAiResponsesImageTranslationPayload(
                 settings = settings,
                 modelName = modelName,
-                imageBase64 = imageBase64,
+                imagesBase64 = imagesBase64,
                 promptAsset = promptAsset,
                 glossary = glossary,
                 glossaryProcessingEnabled = glossaryProcessingEnabled,
                 requestedIds = requestedIds
             )
-            ApiFormat.GEMINI -> buildGeminiImageTranslationPayload(settings, imageBase64, promptAsset, glossary, glossaryProcessingEnabled, requestedIds)
+            ApiFormat.GEMINI -> buildGeminiImageTranslationPayload(settings, imagesBase64, promptAsset, glossary, glossaryProcessingEnabled, requestedIds)
         }
     }
 
@@ -294,7 +309,7 @@ internal class PayloadBuilder(
     private fun buildOpenAiImageTranslationPayload(
         settings: ApiSettings,
         modelName: String,
-        imageBase64: String,
+        imagesBase64: List<String>,
         promptAsset: String,
         glossary: Map<String, String>,
         glossaryProcessingEnabled: Boolean,
@@ -328,14 +343,10 @@ internal class PayloadBuilder(
                                 .put("type", "text")
                                 .put("text", buildImageUserPrompt(config, glossary, glossaryProcessingEnabled, requestedIds))
                         )
-                        .put(
-                            JSONObject()
-                                .put("type", "image_url")
-                                .put(
-                                    "image_url",
-                                    JSONObject().put("url", "data:image/jpeg;base64,$imageBase64")
-                                )
-                        )
+                        .apply { imagesBase64.forEach { encoded ->
+                            put(JSONObject().put("type", "image_url")
+                                .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$encoded")))
+                        } }
                 )
         )
         val payload = JSONObject()
@@ -350,7 +361,7 @@ internal class PayloadBuilder(
     private fun buildOpenAiResponsesImageTranslationPayload(
         settings: ApiSettings,
         modelName: String,
-        imageBase64: String,
+        imagesBase64: List<String>,
         promptAsset: String,
         glossary: Map<String, String>,
         glossaryProcessingEnabled: Boolean,
@@ -380,11 +391,10 @@ internal class PayloadBuilder(
                                     buildImageUserPrompt(config, glossary, glossaryProcessingEnabled, requestedIds)
                                 )
                         )
-                        .put(
-                            JSONObject()
-                                .put("type", "input_image")
-                                .put("image_url", "data:image/jpeg;base64,$imageBase64")
-                        )
+                        .apply { imagesBase64.forEach { encoded ->
+                            put(JSONObject().put("type", "input_image")
+                                .put("image_url", "data:image/jpeg;base64,$encoded"))
+                        } }
                 )
         )
         val payload = JSONObject()
@@ -425,7 +435,7 @@ internal class PayloadBuilder(
 
     private fun buildGeminiImageTranslationPayload(
         settings: ApiSettings,
-        imageBase64: String,
+        imagesBase64: List<String>,
         promptAsset: String,
         glossary: Map<String, String>,
         glossaryProcessingEnabled: Boolean,
@@ -438,9 +448,8 @@ internal class PayloadBuilder(
             buildGeminiContents(
                 config,
                 buildGeminiUserParts(
-                    buildGeminiTextPart(userText),
-                    buildGeminiInlineImagePart(imageBase64)
-                )
+                    buildGeminiTextPart(userText)
+                ).apply { imagesBase64.forEach { put(buildGeminiInlineImagePart(it)) } }
             )
         )
         if (config.systemPrompt.isNotBlank()) {
@@ -467,7 +476,7 @@ internal class PayloadBuilder(
         if (requestedIds != null) {
             append("\nReturn exactly these IDs in items[{id,translation}]: ")
             append(JSONArray(requestedIds).toString())
-            append(". Include every ID once, use an empty translation for unreadable/meaningless regions. Labels are not source text.")
+            append(". Include every ID once, use an empty translation for unreadable/meaningless regions. Labels are not source text. Images are ordered pages or page sections; IDs are unique across all images. Translate all images in order using their shared context.")
             if (glossaryProcessingEnabled) {
                 append(" Also return glossary_used mapping visible original proper names and specialized terms to translations, including new terms. Preserve supplied names. Exclude ordinary words or invented terms.")
             } else append(" Do not extract or return glossary entries.")
@@ -634,7 +643,8 @@ internal class PayloadBuilder(
                 examples.add(PromptMessage(role, content))
             }
         }
-        return LlmPromptConfig(systemPrompt, userPromptPrefix, examples)
+        return LlmPromptConfig(systemPrompt, userPromptPrefix, examples,
+            json.optString("batch_prompt"))
     }
 
     private fun readAsset(name: String): String {
@@ -740,7 +750,8 @@ internal object ReservedRequestKeys {
 private data class LlmPromptConfig(
     val systemPrompt: String,
     val userPromptPrefix: String,
-    val exampleMessages: List<PromptMessage>
+    val exampleMessages: List<PromptMessage>,
+    val batchPrompt: String = ""
 )
 
 private data class PromptMessage(

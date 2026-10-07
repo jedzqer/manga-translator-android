@@ -6,7 +6,7 @@ import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.BubbleTranslation
 import com.manga.translate.model.TranslationLanguage
 import com.manga.translate.model.TranslationResult
-import com.manga.translate.model.textOrEmpty
+import com.manga.translate.model.textOrThrow
 import com.manga.translate.network.LlmGateway
 import com.manga.translate.ocr.BubbleTextRecognizer
 import com.manga.translate.platform.AppLogger
@@ -105,13 +105,13 @@ internal class FloatingEmptyBubbleCoordinator(
             val crop = cropBitmap(bitmap, bubble.rect)
             val text = try {
                 if (crop == null) {
-                    ""
+                    throw IllegalStateException("Unable to crop OCR region")
                 } else {
                     recognizeBubble(crop, floatingLanguage, useLocalOcr, bubble.source)
                 }
             } catch (e: Exception) {
                 AppLogger.log("FloatingOCR", "Recognize empty bubble failed id=${bubble.id}", e)
-                ""
+                throw e
             } finally {
                 crop?.recycle()
             }
@@ -150,7 +150,7 @@ internal class FloatingEmptyBubbleCoordinator(
             useLocalOcr = useLocalOcr,
             logTag = "FloatingOCR",
             bubbleSource = bubbleSource
-        ).textOrEmpty()
+        ).textOrThrow()
     }
 
     private suspend fun translateBubbleImages(

@@ -90,6 +90,24 @@ class LibraryRepositoryPathBoundaryTest {
         }
     }
 
+    @Test
+    fun `moving an imported folder into a collection can resolve a duplicate name`() {
+        val collection = createCollection("collection")
+        val existingChapter = repository.createChildFolder(collection, "chapter")!!
+        val imported = repository.createFolder("chapter")!!.also(createdFolders::add)
+
+        val moved = repository.moveFolderToCollection(
+            folder = imported,
+            collection = collection,
+            uniqueTarget = true
+        )
+
+        assertEquals("chapter_1", moved?.name)
+        assertFalse(imported.exists())
+        assertTrue(existingChapter.exists())
+        assertTrue(moved?.exists() == true)
+    }
+
     private fun createFolder(prefix: String): File {
         return repository.createFolder("${prefix}_${System.nanoTime()}")!!.also(createdFolders::add)
     }

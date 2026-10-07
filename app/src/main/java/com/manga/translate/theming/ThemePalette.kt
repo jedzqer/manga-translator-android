@@ -1,5 +1,6 @@
 package com.manga.translate.theming
 
+import android.graphics.Color
 import androidx.core.graphics.ColorUtils
 import com.manga.translate.settings.CustomThemeColors
 
@@ -21,6 +22,9 @@ data class ThemePalette(
     val isDark: Boolean = ColorUtils.calculateLuminance(surface) < 0.42
     val lightStatusBar: Boolean = ColorUtils.calculateLuminance(heroStart) > 0.5
 
+    /** Text drawn on the solid selected main tab background. */
+    val heroText: Int = readableOn(heroStart)
+
     companion object {
         fun from(colors: CustomThemeColors): ThemePalette {
             return ThemePalette(
@@ -41,6 +45,14 @@ data class ThemePalette(
         }
 
         private fun opaque(color: Int): Int = color or 0xFF000000.toInt()
+
+        private fun readableOn(background: Int): Int {
+            val dark = Color.rgb(20, 24, 32)
+            val light = Color.rgb(255, 250, 240)
+            val darkContrast = ColorUtils.calculateContrast(dark, background)
+            val lightContrast = ColorUtils.calculateContrast(light, background)
+            return if (darkContrast >= lightContrast) dark else light
+        }
     }
 }
 

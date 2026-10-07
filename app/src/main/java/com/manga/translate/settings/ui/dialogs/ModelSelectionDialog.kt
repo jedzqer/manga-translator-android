@@ -30,9 +30,6 @@ internal class ModelSelectionDialog(
                     fragment.fragmentBinding.modelNameInput.setText(items[selectedIndex])
                 }
             }
-            .setNeutralButton(R.string.llm_params_clear) { _, _ ->
-                fragment.fragmentBinding.modelNameInput.setText("")
-            }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
     }

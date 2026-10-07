@@ -14,7 +14,7 @@ import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.BubbleTranslation
 import com.manga.translate.model.TranslationLanguage
 import com.manga.translate.model.TranslationResult
-import com.manga.translate.model.textOrEmpty
+import com.manga.translate.model.textOrThrow
 import com.manga.translate.network.LlmErrorCode
 import com.manga.translate.network.LlmRequestException
 import com.manga.translate.network.LlmResponseException
@@ -31,6 +31,7 @@ import com.manga.translate.model.OcrBubble
 import com.manga.translate.translation.TextBubbleTranslationBatchResult
 import com.manga.translate.translation.TextBubbleTranslationCoordinator
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -90,7 +91,7 @@ internal class ReadingEmptyBubbleCoordinator(
             return@withContext EmptyBubbleProcessOutcome(result, true, result.bubbles.count { it.needsTranslationRetry() })
         }
 
-        val ocrSettings = settingsStore.loadOcrApiSettings()
+        val ocrSettings = settingsStore.loadResolvedOcrApiSettings()
         val language = TranslationLanguage.resolveForOcr(
             getTranslationLanguage(folder),
             ocrSettings.useLocalOcr
@@ -171,6 +172,11 @@ internal class ReadingEmptyBubbleCoordinator(
                     ocrFailedCount = remainingEmpty
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: com.manga.translate.model.OcrRecognitionException) {
+            AppLogger.log("Reading", "Empty bubble OCR failed; preserving existing translation", e)
+            null
         } finally {
             localModelLease.close()
         }
@@ -230,7 +236,7 @@ internal class ReadingEmptyBubbleCoordinator(
                         useLocalOcr = useLocalOcr,
                         logTag = "Reading",
                         bubbleSource = bubble.source
-                    ).textOrEmpty()
+                    ).textOrThrow()
                 } finally {
                     stitched.recycleSafely()
                 }
@@ -243,7 +249,7 @@ internal class ReadingEmptyBubbleCoordinator(
             useLocalOcr = useLocalOcr,
             logTag = "Reading",
             bubbleSource = bubble.source
-        ).textOrEmpty()
+        ).textOrThrow()
     }
 
     private suspend fun decodeCrossPageManualBubbleCrop(

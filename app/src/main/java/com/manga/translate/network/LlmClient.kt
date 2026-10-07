@@ -11,7 +11,7 @@ import com.manga.translate.settings.ApiSettings
 import com.manga.translate.settings.OCR_PROVIDER_ID
 import com.manga.translate.settings.OcrApiSettings
 import com.manga.translate.settings.SettingsStore
-import java.net.SocketTimeoutException
+import java.io.InterruptedIOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -44,7 +44,7 @@ class LlmClient(
     }
 
     override fun isOcrConfigured(): Boolean {
-        return settingsStore.loadOcrApiSettings().isValid()
+        return settingsStore.loadResolvedOcrApiSettings().isValid()
     }
 
     suspend fun translate(
@@ -75,7 +75,8 @@ class LlmClient(
         promptAsset: String,
         requestTimeoutMs: Int?,
         retryCount: Int,
-        apiSettings: ApiSettings?
+        apiSettings: ApiSettings?,
+        glossaryProcessingEnabled: Boolean
     ): LlmBubbleTranslationResult? =
         withContext(Dispatchers.IO) {
             val content = requestContent(
@@ -86,10 +87,13 @@ class LlmClient(
                 requestTimeoutMs = requestTimeoutMs,
                 retryCount = retryCount,
                 apiSettings = apiSettings,
-                userPayloadOverride = payloadBuilder.buildBubbleItemsUserPayload(items, glossary)
+                userPayloadOverride = payloadBuilder.buildBubbleItemsUserPayload(items, glossary),
+                glossaryProcessingEnabled = glossaryProcessingEnabled
             )
                 ?: return@withContext null
-            responseParser.parseBubbleTranslationContent(content, items.map { it.id })
+            responseParser.parseBubbleTranslationContent(content, items.map { it.id }).let { result ->
+                if (glossaryProcessingEnabled) result else result.copy(glossaryUsed = emptyMap())
+            }
         }
 
     override suspend fun extractGlossary(
@@ -111,21 +115,38 @@ class LlmClient(
 
     override suspend fun recognizeImageText(image: Bitmap, language: TranslationLanguage): String? =
         withContext(Dispatchers.IO) {
-            val ocrSettings = settingsStore.loadOcrApiSettings()
-            if (!ocrSettings.isValid() || ocrSettings.useLocalOcr) {
+            val ocrSettings = settingsStore.loadResolvedOcrApiSettings()
+            if (!ocrSettings.hasApiCredentials()) {
                 return@withContext null
             }
             return@withContext recognizeWithOpenAi(ocrSettings, image)
         }
 
-    private suspend fun recognizeWithOpenAi(ocrSettings: OcrApiSettings, image: Bitmap): String? {
+    override suspend fun recognizePageRegions(image: Bitmap, requestedIds: List<Int>): Map<Int, String> =
+        withContext(Dispatchers.IO) {
+            require(requestedIds.isNotEmpty() && requestedIds.size == requestedIds.toSet().size)
+            val settings = settingsStore.loadResolvedOcrApiSettings()
+            if (!settings.hasApiCredentials()) throw LlmResponseException(
+                LlmErrorCode.MissingApiSettings, "OCR API unavailable")
+            val content = recognizeWithOpenAi(settings, image, requestedIds)
+                ?: throw LlmResponseException(LlmErrorCode.EmptyResponse, "Empty page OCR response")
+            responseParser.parseImageItemsContent(content, requestedIds).items.associate {
+                it.id to it.translation
+            }
+        }
+
+    private suspend fun recognizeWithOpenAi(ocrSettings: OcrApiSettings, image: Bitmap,
+        requestedIds: List<Int>? = null): String? {
         val endpoint = EndpointBuilder.buildOpenAiCompatibleChatEndpoint(ocrSettings.apiUrl)
-        val payload = payloadBuilder.buildImageOcrPayload(ocrSettings, image)
+        val payload = payloadBuilder.buildImageOcrPayload(ocrSettings, image, requestedIds)
         val timeoutMs = ocrSettings.timeoutSeconds * 1000
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
-        for (attempt in 1..RetryHandler.RETRY_COUNT) {
+        val retryPolicy = RetryPolicy(RetryHandler.RETRY_COUNT, RetryMode.DEFAULT)
+        for (attempt in 1..retryPolicy.maxAttempts) {
             currentCoroutineContext().ensureActive()
+            lastErrorCode = null
+            lastErrorBody = null
             val result = try {
                 ocrConcurrencyLimiter.withPermit(ocrSettings.apiOcrConcurrencyLimit) {
                     httpTransport.executeRequest(
@@ -141,7 +162,7 @@ class LlmClient(
                             )
                         ),
                         timeoutMs = timeoutMs
-                    ).use { response ->
+                    ) { response ->
                         val code = response.code
                         val body = response.body.string()
                         if (code !in 200..299) {
@@ -158,7 +179,7 @@ class LlmClient(
                             if (ocrContent != null &&
                                 responseParser.isTruncatedResponse(body, ApiFormat.OPENAI_COMPATIBLE)
                             ) {
-                                // 截断的 OCR 文本不完整，不能静默当正常结果使用；置空走重试。
+                                // 截断的 OCR 文本不完整，不能静默当正常结果使用。
                                 AppLogger.log(
                                     "LlmClient",
                                     "Truncated OCR response on ${redactEndpoint(endpoint)}: " +
@@ -178,7 +199,7 @@ class LlmClient(
                 lastErrorCode = "NETWORK_ERROR"
                 null
             }
-            if (result != null || attempt == RetryHandler.RETRY_COUNT) {
+            if (result != null || !retryHandler.canRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody)) {
                 if (result != null) return result
                 if (lastErrorCode != null) {
                     AppLogger.log(
@@ -188,12 +209,7 @@ class LlmClient(
                 }
                 return null
             }
-            retryHandler.maybeBackoffBeforeRetry(
-                attempt,
-                RetryPolicy(maxAttempts = RetryHandler.RETRY_COUNT, mode = RetryMode.DEFAULT),
-                lastErrorCode,
-                lastErrorBody
-            )
+            retryHandler.backoffBeforeRetry(attempt, retryPolicy, lastErrorCode)
         }
         return null
     }
@@ -237,11 +253,41 @@ class LlmClient(
         retryCount: Int,
         apiSettings: ApiSettings
     ): LlmBubbleTranslationResult? = withContext(Dispatchers.IO) {
-        requestImageContent(imageBase64, promptAsset, glossary, glossaryProcessingEnabled,
-            requestTimeoutMs, retryCount, apiSettings, requestedIds)?.let {
-            responseParser.parseImageItemsContent(it, requestedIds).let { result ->
-                if (glossaryProcessingEnabled) result else result.copy(glossaryUsed = emptyMap())
-            }
+        requestImageItems(listOf(imageBase64), requestedIds, promptAsset, glossary,
+            glossaryProcessingEnabled, requestTimeoutMs, retryCount, apiSettings)
+    }
+
+    override suspend fun translateMultiImageItems(
+        imagesBase64: List<String>,
+        requestedIds: List<Int>,
+        promptAsset: String,
+        glossary: Map<String, String>,
+        glossaryProcessingEnabled: Boolean,
+        requestTimeoutMs: Int,
+        retryCount: Int,
+        apiSettings: ApiSettings
+    ): LlmBubbleTranslationResult? = withContext(Dispatchers.IO) {
+        requestImageItems(imagesBase64, requestedIds, promptAsset, glossary,
+            glossaryProcessingEnabled, requestTimeoutMs, retryCount, apiSettings)
+    }
+
+    private suspend fun requestImageItems(
+        imagesBase64: List<String>,
+        requestedIds: List<Int>,
+        promptAsset: String,
+        glossary: Map<String, String>,
+        glossaryProcessingEnabled: Boolean,
+        requestTimeoutMs: Int,
+        retryCount: Int,
+        apiSettings: ApiSettings
+    ): LlmBubbleTranslationResult? {
+        var parsed: LlmBubbleTranslationResult? = null
+        requestImageContent(imagesBase64.first(), promptAsset, glossary, glossaryProcessingEnabled,
+            requestTimeoutMs, retryCount, apiSettings, requestedIds, imagesBase64,
+            validateContent = { parsed = responseParser.parseImageItemsContent(it, requestedIds) })
+            ?: return null
+        return requireNotNull(parsed).let { result ->
+            if (glossaryProcessingEnabled) result else result.copy(glossaryUsed = emptyMap())
         }
     }
 
@@ -253,7 +299,8 @@ class LlmClient(
         requestTimeoutMs: Int? = null,
         retryCount: Int = RetryHandler.RETRY_COUNT,
         apiSettings: ApiSettings? = null,
-        userPayloadOverride: String? = null
+        userPayloadOverride: String? = null,
+        glossaryProcessingEnabled: Boolean = true
     ): String? {
         val settings = apiSettings ?: settingsStore.load()
         if (!settings.isValid()) return null
@@ -276,7 +323,8 @@ class LlmClient(
                     modelName = selectedModel,
                     promptAsset = promptAsset,
                     apiFormat = settings.apiFormat,
-                    userPayload = userPayload
+                    userPayload = userPayload,
+                    glossaryProcessingEnabled = glossaryProcessingEnabled
                 )
             }
         )
@@ -290,7 +338,9 @@ class LlmClient(
         requestTimeoutMs: Int? = null,
         retryCount: Int = RetryHandler.RETRY_COUNT,
         apiSettings: ApiSettings? = null,
-        requestedIds: List<Int>? = null
+        requestedIds: List<Int>? = null,
+        imagesBase64: List<String> = listOf(imageBase64),
+        validateContent: ((String) -> Unit)? = null
     ): String? {
         val settings = apiSettings ?: settingsStore.load()
         if (!settings.isValid()) return null
@@ -311,10 +361,12 @@ class LlmClient(
                     glossary = glossary,
                     glossaryProcessingEnabled = glossaryProcessingEnabled,
                     apiFormat = settings.apiFormat,
-                    requestedIds = requestedIds
+                    requestedIds = requestedIds,
+                    imagesBase64 = imagesBase64
                 )
             },
-            sanitizePayloadForLog = { payloadBuilder.sanitizeModelIoForLog(it) }
+            sanitizePayloadForLog = { payloadBuilder.sanitizeModelIoForLog(it) },
+            validateContent = validateContent
         )
     }
 
@@ -330,6 +382,7 @@ class LlmClient(
      *   决定 "Empty or invalid ... content" 与 "... invalid on" 两条日志的前缀；
      * - [buildPayload]：请求体构建；
      * - [sanitizePayloadForLog]：Model I/O 日志的脱敏函数（null 表示原样输出）。
+     * - [validateContent]：结构化图片响应在记录成功前完成 JSON 和 ID 校验。
      */
     private suspend fun executeRequestWithRetry(
         operation: String,
@@ -339,7 +392,30 @@ class LlmClient(
         retryCount: Int,
         contentLogLabel: String,
         buildPayload: () -> JSONObject,
-        sanitizePayloadForLog: ((String) -> String)? = null
+        sanitizePayloadForLog: ((String) -> String)? = null,
+        validateContent: ((String) -> Unit)? = null
+    ): String? {
+        val callTimeoutMs = RequestTimeoutPolicy.callTimeoutMs(requestTimeoutMs ?: settingsStore.loadApiTimeoutMs())
+        val retryPolicy = retryHandler.buildRetryPolicy(retryCount)
+        val budget = (currentCoroutineContext()[RequestBudgetContext] ?: RequestBudgetContext())
+            .getOrStart(callTimeoutMs, retryPolicy.maxAttempts)
+        return budget.run {
+            executeRequestAttempts(operation, promptAsset, settings, callTimeoutMs, retryPolicy,
+                contentLogLabel, buildPayload, sanitizePayloadForLog, budget, validateContent)
+        }
+    }
+
+    private suspend fun executeRequestAttempts(
+        operation: String,
+        promptAsset: String,
+        settings: ApiSettings,
+        timeoutMs: Int,
+        retryPolicy: RetryPolicy,
+        contentLogLabel: String,
+        buildPayload: () -> JSONObject,
+        sanitizePayloadForLog: ((String) -> String)?,
+        budget: RequestTimeoutBudget,
+        validateContent: ((String) -> Unit)?
     ): String? {
         val selectedModel = settings.modelName.trim()
         val endpoint = EndpointBuilder.buildEndpoint(settings, selectedModel)
@@ -350,8 +426,6 @@ class LlmClient(
             AppLogger.log("LlmClient", "Model input ($promptAsset): ${sanitizeForLog(payload.toString())}")
             AppLogger.log("LlmClient", "Selected model: $selectedModel")
         }
-        val timeoutMs = requestTimeoutMs?.coerceAtLeast(1_000) ?: settingsStore.loadApiTimeoutMs()
-        val retryPolicy = retryHandler.buildRetryPolicy(retryCount)
         val retries = retryPolicy.maxAttempts
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
@@ -363,13 +437,17 @@ class LlmClient(
         )
         for (attempt in 1..retries) {
             currentCoroutineContext().ensureActive()
+            lastErrorCode = null
+            lastErrorBody = null
             lastResponseException = null
+            val attemptTimeoutMs = budget.attemptTimeoutMs(timeoutMs)
             requestTrace.beginAttempt()
             val result = try {
                 httpTransport.executeRequest(
                     request = httpTransport.buildJsonPostRequest(endpoint, payload, settings),
-                    timeoutMs = timeoutMs
-                ).use { response ->
+                    timeoutMs = attemptTimeoutMs,
+                    writeTimeoutMs = if (operation.startsWith("text:")) RequestTimeoutPolicy.TEXT_WRITE_TIMEOUT_MS else timeoutMs
+                ) { response ->
                     val code = response.code
                     requestTrace.recordStatus(code.toString())
                     val body = response.body.string()
@@ -408,13 +486,20 @@ class LlmClient(
                                     appContext.getString(R.string.model_response_empty_content)
                                 }
                             )
-                        } else if (logModelIo) {
-                            AppLogger.log("LlmClient", "Model output: ${sanitizeForLog(content)}")
+                        } else {
+                            if (logModelIo) {
+                                AppLogger.log("LlmClient", "Model output: ${sanitizeForLog(content)}")
+                            }
+                            validateContent?.invoke(content)
                         }
                         content
                     }
                 }
-            } catch (e: SocketTimeoutException) {
+            } catch (e: LlmResponseException) {
+                requestTrace.recordStatus(e.errorCode.value)
+                lastResponseException = e
+                null
+            } catch (e: InterruptedIOException) {
                 AppLogger.log("LlmClient", "Request timeout on ${redactEndpoint(endpoint)} (attempt $attempt)", e)
                 requestTrace.recordStatus(LlmErrorCode.Timeout.value)
                 lastErrorCode = LlmErrorCode.Timeout.value
@@ -427,6 +512,8 @@ class LlmClient(
                 lastErrorCode = LlmErrorCode.NetworkError.value
                 null
             }
+            currentCoroutineContext().ensureActive()
+            budget.requireRemainingMs()
             val responseException = lastResponseException
             if (responseException != null) {
                 // Invalid / empty content is retried by the caller's
@@ -441,23 +528,24 @@ class LlmClient(
                 )
                 throw responseException
             }
-            if (result != null || attempt == retries) {
+            if (result != null || !retryHandler.canRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody)) {
                 if (result != null) {
-                    requestTrace.logSummary("success")
+                    requestTrace.logSummary(if (validateContent != null) "validated_response" else "response_received")
                     return result
                 }
-                if (lastErrorCode != null) {
+                val errorCode = lastErrorCode
+                if (errorCode != null) {
                     requestTrace.logSummary("failed")
                     AppLogger.log(
                         "LlmClient",
                         "Request failed on ${redactEndpoint(endpoint)}: $lastErrorCode, body=${responseParser.summarizeBody(lastErrorBody)}"
                     )
-                    throw LlmRequestException(LlmErrorCode.from(lastErrorCode), lastErrorBody)
+                    throw LlmRequestException(LlmErrorCode.from(errorCode), lastErrorBody)
                 }
                 requestTrace.logSummary("empty")
                 return null
             }
-            retryHandler.maybeBackoffBeforeRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody)
+            retryHandler.backoffBeforeRetry(attempt, retryPolicy, lastErrorCode)
         }
         return null
     }
@@ -478,13 +566,16 @@ class LlmClient(
         val timeoutMs = settingsStore.loadApiTimeoutMs()
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
-        for (attempt in 1..RetryHandler.RETRY_COUNT) {
+        val retryPolicy = RetryPolicy(RetryHandler.RETRY_COUNT, RetryMode.DEFAULT)
+        for (attempt in 1..retryPolicy.maxAttempts) {
             currentCoroutineContext().ensureActive()
+            lastErrorCode = null
+            lastErrorBody = null
             val result = try {
                 httpTransport.executeRequest(
                     request = httpTransport.buildModelListRequest(endpoint, apiKey, apiFormat),
                     timeoutMs = timeoutMs
-                ).use { response ->
+                ) { response ->
                     val code = response.code
                     val body = response.body.string()
                     if (code !in 200..299) {
@@ -515,7 +606,7 @@ class LlmClient(
                 lastErrorCode = "NETWORK_ERROR"
                 null
             }
-            if (!result.isNullOrEmpty() || attempt == RetryHandler.RETRY_COUNT) {
+            if (!result.isNullOrEmpty() || !retryHandler.canRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody)) {
                 if (!result.isNullOrEmpty()) {
                     return result
                 }
@@ -528,12 +619,7 @@ class LlmClient(
                 }
                 return emptyList()
             }
-            retryHandler.maybeBackoffBeforeRetry(
-                attempt,
-                RetryPolicy(maxAttempts = RetryHandler.RETRY_COUNT, mode = RetryMode.DEFAULT),
-                lastErrorCode,
-                lastErrorBody
-            )
+            retryHandler.backoffBeforeRetry(attempt, retryPolicy, lastErrorCode)
         }
         return emptyList()
     }

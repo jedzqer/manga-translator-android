@@ -80,7 +80,6 @@ internal class CustomRequestParamsDialog(
             .setTitle(R.string.custom_request_params_title)
             .setView(dialogBinding.root)
             .setPositiveButton(android.R.string.ok, null)
-            .setNeutralButton(R.string.llm_params_clear, null)
             .setNegativeButton(android.R.string.cancel, null)
             .create()
         dialog.setOnShowListener {
@@ -99,12 +98,6 @@ internal class CustomRequestParamsDialog(
                     Toast.LENGTH_SHORT
                 ).show()
                 AppLogger.log("Settings", "Custom request params updated")
-                dialog.dismiss()
-            }
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                settingsStore.saveCustomRequestParameters(emptyList())
-                fragment.updateCustomRequestParamsButton(emptyList())
-                AppLogger.log("Settings", "Custom request params cleared")
                 dialog.dismiss()
             }
         }

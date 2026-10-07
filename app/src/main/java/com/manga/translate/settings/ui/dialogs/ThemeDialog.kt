@@ -73,7 +73,6 @@ internal class ThemeDialog(
         val dialogBinding = DialogCustomThemeBinding.inflate(fragment.layoutInflater)
         var colors = settingsStore.loadCustomThemeColors()
         var selectedTarget = CustomThemeColorTarget.BACKGROUND
-        var showingPrimaryColors = true
         var updatingSliders = false
         lateinit var refreshEditor: (Boolean) -> Unit
 
@@ -88,9 +87,8 @@ internal class ThemeDialog(
             val selectedOutline = fragment.resolveColorAttr(R.attr.dialogTextColor)
             val normalOutline = fragment.resolveColorAttr(R.attr.outlineColor)
             dialogBinding.colorTargetGrid.removeAllViews()
-            dialogBinding.colorTargetGrid.columnCount = if (showingPrimaryColors) 3 else 5
+            dialogBinding.colorTargetGrid.columnCount = 3
             CustomThemeColorTarget.entries
-                .filter { it.isPrimary == showingPrimaryColors }
                 .forEach { target ->
                     val label = fragment.getString(target.labelRes)
                     val swatch = AppCompatImageButton(fragment.requireContext()).apply {
@@ -182,25 +180,6 @@ internal class ThemeDialog(
             refreshEditor(true)
         }
 
-        dialogBinding.colorGroupToggle.setOnCheckedChangeListener { _, checkedId ->
-            showingPrimaryColors = checkedId == R.id.primary_colors_button
-            if (selectedTarget.isPrimary != showingPrimaryColors) {
-                selectedTarget = CustomThemeColorTarget.entries.first {
-                    it.isPrimary == showingPrimaryColors
-                }
-            }
-            dialogBinding.autoGenerateSecondaryButton.visibility =
-                if (showingPrimaryColors) View.GONE else View.VISIBLE
-            refreshEditor(false)
-        }
-        dialogBinding.autoGenerateSecondaryButton.setOnClickListener {
-            colors = CustomThemeColors.fromBaseColors(
-                colors.background,
-                colors.surface,
-                colors.accent
-            )
-            refreshEditor(false)
-        }
         dialogBinding.hueSlider.onValueChanged = { applySliderValues() }
         dialogBinding.saturationSlider.onValueChanged = { applySliderValues() }
         dialogBinding.brightnessSlider.onValueChanged = { applySliderValues() }
@@ -237,53 +216,28 @@ internal class ThemeDialog(
     }
 
     private enum class CustomThemeColorTarget(
-        @param:StringRes val labelRes: Int,
-        val isPrimary: Boolean
+        @param:StringRes val labelRes: Int
     ) {
-        BACKGROUND(R.string.custom_theme_background, true),
-        SURFACE(R.string.custom_theme_surface, true),
-        ACCENT(R.string.custom_theme_accent, true),
-        SURFACE_ALT(R.string.custom_theme_surface_alt, false),
-        ACCENT_CONTENT(R.string.custom_theme_accent_content, false),
-        FOREGROUND(R.string.custom_theme_foreground, false),
-        MUTED_FOREGROUND(R.string.custom_theme_muted_foreground, false),
-        OUTLINE(R.string.custom_theme_outline, false),
-        BUTTON_FILL(R.string.custom_theme_button_fill, false),
-        BUTTON_PRESSED(R.string.custom_theme_button_pressed, false),
-        BUTTON_TEXT(R.string.custom_theme_button_text, false),
-        HERO_START(R.string.custom_theme_hero_start, false),
-        HERO_END(R.string.custom_theme_hero_end, false);
+        BACKGROUND(R.string.custom_theme_background),
+        SURFACE(R.string.custom_theme_surface),
+        ACCENT(R.string.custom_theme_accent),
+        FOREGROUND(R.string.custom_theme_foreground),
+        MUTED_FOREGROUND(R.string.custom_theme_muted_foreground);
 
         fun read(colors: CustomThemeColors): Int = when (this) {
             BACKGROUND -> colors.background
             SURFACE -> colors.surface
             ACCENT -> colors.accent
-            SURFACE_ALT -> colors.surfaceAlt
-            ACCENT_CONTENT -> colors.accentContent
             FOREGROUND -> colors.foreground
             MUTED_FOREGROUND -> colors.mutedForeground
-            OUTLINE -> colors.outline
-            BUTTON_FILL -> colors.buttonFill
-            BUTTON_PRESSED -> colors.buttonPressed
-            BUTTON_TEXT -> colors.buttonText
-            HERO_START -> colors.heroStart
-            HERO_END -> colors.heroEnd
         }
 
         fun update(colors: CustomThemeColors, color: Int): CustomThemeColors = when (this) {
-            BACKGROUND -> colors.copy(background = color)
-            SURFACE -> colors.copy(surface = color)
-            ACCENT -> colors.copy(accent = color)
-            SURFACE_ALT -> colors.copy(surfaceAlt = color)
-            ACCENT_CONTENT -> colors.copy(accentContent = color)
-            FOREGROUND -> colors.copy(foreground = color)
-            MUTED_FOREGROUND -> colors.copy(mutedForeground = color)
-            OUTLINE -> colors.copy(outline = color)
-            BUTTON_FILL -> colors.copy(buttonFill = color)
-            BUTTON_PRESSED -> colors.copy(buttonPressed = color)
-            BUTTON_TEXT -> colors.copy(buttonText = color)
-            HERO_START -> colors.copy(heroStart = color)
-            HERO_END -> colors.copy(heroEnd = color)
+            BACKGROUND -> CustomThemeColors.fromBaseColors(color, colors.surface, colors.accent, colors.foreground, colors.mutedForeground)
+            SURFACE -> CustomThemeColors.fromBaseColors(colors.background, color, colors.accent, colors.foreground, colors.mutedForeground)
+            ACCENT -> CustomThemeColors.fromBaseColors(colors.background, colors.surface, color, colors.foreground, colors.mutedForeground)
+            FOREGROUND -> CustomThemeColors.fromBaseColors(colors.background, colors.surface, colors.accent, color, colors.mutedForeground)
+            MUTED_FOREGROUND -> CustomThemeColors.fromBaseColors(colors.background, colors.surface, colors.accent, colors.foreground, color)
         }
     }
 }

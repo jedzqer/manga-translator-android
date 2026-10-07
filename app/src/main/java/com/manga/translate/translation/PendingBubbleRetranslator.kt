@@ -9,7 +9,7 @@ import com.manga.translate.model.BubbleTranslation
 import com.manga.translate.model.PageTranslationStatus
 import com.manga.translate.model.TranslationLanguage
 import com.manga.translate.model.TranslationResult
-import com.manga.translate.model.textOrEmpty
+import com.manga.translate.model.textOrThrow
 import com.manga.translate.network.LlmErrorCode
 import com.manga.translate.network.LlmRequestException
 import com.manga.translate.network.LlmResponseException
@@ -19,6 +19,7 @@ import com.manga.translate.platform.PipelineBitmapDecoder
 import com.manga.translate.platform.recycleSafely
 import com.manga.translate.settings.SettingsStore
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -45,14 +46,15 @@ internal class PendingBubbleRetranslator(
         promptAsset: String,
         translationMode: String,
         logTag: String,
-        discardShortOcr: Boolean
+        discardShortOcr: Boolean,
+        glossaryProcessingEnabled: Boolean = true
     ): RefillOutcome? = withContext(Dispatchers.Default) {
         val targets = baseTranslation.bubbles.filter { it.needsTranslationRetry() }
         if (targets.isEmpty()) {
             return@withContext RefillOutcome(translation = baseTranslation, translatedByLlm = false)
         }
 
-        val ocrSettings = settingsStore.loadOcrApiSettings()
+        val ocrSettings = settingsStore.loadResolvedOcrApiSettings()
         val useLocalOcr = ocrSettings.useLocalOcr
         if (!useLocalOcr && !ocrSettings.isValid()) {
             AppLogger.log(logTag, "Refill skipped: missing OCR API settings")
@@ -76,22 +78,23 @@ internal class PendingBubbleRetranslator(
             val removedIds = HashSet<Int>()
             for (bubble in targets) {
                 val clamped = PipelineBitmapDecoder.clampRect(bubble.rect, cropSource.width, cropSource.height)
-                    ?: continue
-                val crop = cropSource.decodeRegion(clamped)
-                val text = if (crop == null) {
-                    ""
-                } else {
-                    try {
+                    ?: return@withContext null
+                val crop = cropSource.decodeRegion(clamped) ?: return@withContext null
+                val text = try {
                         bubbleTextRecognizer.recognizeCrop(
                             crop = crop,
                             language = language,
                             useLocalOcr = useLocalOcr,
                             logTag = logTag,
                             bubbleSource = bubble.source
-                        ).textOrEmpty().trim()
-                    } finally {
-                        crop.recycleSafely()
-                    }
+                        ).textOrThrow().trim()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLogger.log(logTag, "Refill OCR failed id=${bubble.id}; preserving existing translation", e)
+                    return@withContext null
+                } finally {
+                    crop.recycleSafely()
                 }
                 if (discardShortOcr && text.length <= 2) {
                     removedIds.add(bubble.id)
@@ -125,7 +128,8 @@ internal class PendingBubbleRetranslator(
                     apiSettings = translationSettings(imageFile),
                     language = language,
                     logTag = logTag,
-                    translationMode = translationMode
+                    translationMode = translationMode,
+                    glossaryProcessingEnabled = glossaryProcessingEnabled
                 )
             } catch (e: LlmResponseException) {
                 throw e

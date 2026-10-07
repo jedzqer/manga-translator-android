@@ -32,6 +32,9 @@ import com.manga.translate.settings.SettingsStore
 import com.manga.translate.settings.ui.dialogs.AboutDialog
 import com.manga.translate.settings.ui.dialogs.BackupOperationCancelHost
 import com.manga.translate.settings.ui.dialogs.BackupProgressDialog
+import com.manga.translate.settings.ui.dialogs.BackupExportOptionsDialog
+import com.manga.translate.settings.ui.dialogs.BackupExportOptionsHost
+import com.manga.translate.storage.AppBackupManager
 import com.manga.translate.settings.ui.dialogs.AiProviderProfilesDialog
 import com.manga.translate.settings.ui.dialogs.ApiFormatDialog
 import com.manga.translate.settings.ui.dialogs.BubbleFontSettingsDialog
@@ -66,13 +69,35 @@ import kotlinx.coroutines.withContext
  * This class keeps the entry methods, the main view binding and the button
  * label refreshers that mutate [binding].
  */
-class SettingsFragment : Fragment(), BackupOperationCancelHost {
+class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOptionsHost {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
     internal val fragmentBinding: FragmentSettingsBinding get() = binding
 
     /** Runs the current locked backup export/import; canceled by the lock dialog. */
     private var backupOperationJob: Job? = null
+    private var pendingBackupOptions = AppBackupManager.ExportOptions()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        pendingBackupOptions = AppBackupManager.ExportOptions(
+            savedInstanceState?.getBoolean("backup_include_manga", true) ?: true,
+            savedInstanceState?.getBoolean("backup_include_settings", true) ?: true
+        )
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean("backup_include_manga", pendingBackupOptions.includeManga)
+        outState.putBoolean("backup_include_settings", pendingBackupOptions.includeSettings)
+    }
+
+    override fun onBackupExportOptionsSelected(options: AppBackupManager.ExportOptions) {
+        if (!options.hasSelection) return
+        pendingBackupOptions = options
+        persistSettings()
+        createBackupLauncher.launch("manga-translator-backup.zip")
+    }
 
     private val appContainer by lazy(LazyThreadSafetyMode.NONE) { requireContext().appContainer }
     private val settingsStore by lazy(LazyThreadSafetyMode.NONE) { appContainer.settingsStore }
@@ -132,15 +157,17 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost {
     ) { uri ->
         if (uri == null) return@registerForActivityResult
         val appContext = requireContext().applicationContext
+        val options = pendingBackupOptions
         runLockedBackupOperation(getString(R.string.backup_export_running)) {
             try {
-                dataController.exportBackup(uri)
+                dataController.exportBackup(uri, options)
                 Toast.makeText(appContext, R.string.backup_export_success, Toast.LENGTH_SHORT).show()
             } catch (e: CancellationException) {
                 // User aborted mid-export: drop the partially written archive.
                 runCatching { DocumentsContract.deleteDocument(appContext.contentResolver, uri) }
                 throw e
             } catch (e: Exception) {
+                runCatching { DocumentsContract.deleteDocument(appContext.contentResolver, uri) }
                 AppLogger.log("Settings", "Failed to export app backup", e)
                 Toast.makeText(appContext, R.string.backup_export_failed, Toast.LENGTH_LONG).show()
             }
@@ -355,8 +382,9 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost {
         }
 
         binding.exportBackupButton.setOnClickListener {
-            persistSettings()
-            createBackupLauncher.launch("manga-translator-backup.zip")
+            if (childFragmentManager.findFragmentByTag(BackupExportOptionsDialog.TAG) == null) {
+                BackupExportOptionsDialog().show(childFragmentManager, BackupExportOptionsDialog.TAG)
+            }
         }
 
         binding.importBackupButton.setOnClickListener {

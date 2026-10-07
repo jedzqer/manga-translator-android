@@ -14,8 +14,8 @@ class MainPagerAdapter(activity: FragmentActivity) : FragmentStateAdapter(activi
 
     override fun createFragment(position: Int): Fragment {
         return when (position) {
-            0 -> LibraryFragment()
-            1 -> ReadingFragment()
+            READING_INDEX -> ReadingFragment()
+            LIBRARY_INDEX -> LibraryFragment()
             else -> SettingsFragment()
         }
     }
@@ -23,15 +23,15 @@ class MainPagerAdapter(activity: FragmentActivity) : FragmentStateAdapter(activi
     @StringRes
     fun getTitleRes(position: Int): Int {
         return when (position) {
-            0 -> R.string.tab_library
-            1 -> R.string.tab_reading
+            READING_INDEX -> R.string.tab_reading
+            LIBRARY_INDEX -> R.string.tab_library
             else -> R.string.tab_settings
         }
     }
 
     companion object {
-        const val LIBRARY_INDEX = 0
-        const val READING_INDEX = 1
+        const val READING_INDEX = 0
+        const val LIBRARY_INDEX = 1
         const val SETTINGS_INDEX = 2
     }
 }

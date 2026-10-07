@@ -26,7 +26,8 @@ internal class SettingsDataController(
 ) {
     private val backupManager by lazy { AppBackupManager(contextProvider()) }
 
-    suspend fun exportBackup(uri: Uri) = backupManager.exportTo(uri)
+    suspend fun exportBackup(uri: Uri, options: AppBackupManager.ExportOptions) =
+        backupManager.exportTo(uri, options)
 
     suspend fun importBackup(uri: Uri): AppBackupManager.ImportResult =
         backupManager.importFrom(uri).also { settingsStore.notifyImportedSettings() }

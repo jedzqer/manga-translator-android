@@ -70,10 +70,19 @@ internal class LibraryImportExportCoordinator(
         scope: CoroutineScope,
         riskAlreadyAccepted: Boolean,
         onConfirmMemoryRisk: suspend (ResourceAssessment) -> Boolean,
-        onShowFolderList: () -> Unit
+        onShowFolderList: () -> Unit,
+        targetCollection: File? = null,
+        onImportFinished: (() -> Unit)? = null
     ) {
         importCoordinator.importFromArchiveOrPdf(
-            uiContext, uri, scope, riskAlreadyAccepted, onConfirmMemoryRisk, onShowFolderList
+            uiContext,
+            uri,
+            scope,
+            riskAlreadyAccepted,
+            onConfirmMemoryRisk,
+            onShowFolderList,
+            targetCollection,
+            onImportFinished
         )
     }
 

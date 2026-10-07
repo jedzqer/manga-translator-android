@@ -521,6 +521,25 @@ internal class LibraryDialogs {
             .show()
     }
 
+    fun showChapterImportSourcePicker(
+        context: Context,
+        onFolderSelected: () -> Unit,
+        onArchiveSelected: () -> Unit
+    ) {
+        AlertDialog.Builder(context)
+            .setTitle(R.string.chapter_import_source_title)
+            .setItems(
+                arrayOf(
+                    context.getString(R.string.chapter_import_from_folder),
+                    context.getString(R.string.chapter_import_from_file)
+                )
+            ) { _, which ->
+                if (which == 0) onFolderSelected() else onArchiveSelected()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     fun showEhViewerImportNameDialog(
         context: Context,
         defaultName: String,

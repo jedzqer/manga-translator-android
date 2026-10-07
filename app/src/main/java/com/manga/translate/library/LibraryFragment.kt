@@ -90,6 +90,7 @@ class LibraryFragment : Fragment() {
     private var currentFolder: File? = null
     private var currentParentFolder: File? = null
     private var pendingChapterImportParent: File? = null
+    private var pendingArchiveImportCollection: File? = null
     private var isFolderTransitionRunning: Boolean = false
     private var isFolderTopBarVisible: Boolean = true
     private var lastFolderDetailScrollY: Int = 0
@@ -288,7 +289,7 @@ class LibraryFragment : Fragment() {
     }
 
     private val pickImages = registerForActivityResult(
-        ActivityResultContracts.OpenMultipleDocuments()
+        ActivityResultContracts.GetMultipleContents()
     ) { uris ->
         if (uris.isNotEmpty()) {
             addImagesToFolder(uris)
@@ -323,11 +324,13 @@ class LibraryFragment : Fragment() {
         }
     }
 
-    private val pickArchiveOrPdfFile = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            importFromArchiveOrPdf(uri)
+    private val pickArchiveOrPdfFiles = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        val targetCollection = pendingArchiveImportCollection
+        pendingArchiveImportCollection = null
+        if (uris.isNotEmpty()) {
+            importFromArchiveOrPdf(uris, targetCollection)
         }
     }
 
@@ -448,11 +451,21 @@ class LibraryFragment : Fragment() {
             }
         })
         binding.folderImageList.layoutManager = LinearLayoutManager(requireContext())
-        binding.folderImageList.isNestedScrollingEnabled = false
+        binding.folderImageList.isNestedScrollingEnabled = true
         binding.folderImageList.adapter = imageAdapter
         binding.folderChapterList.layoutManager = LinearLayoutManager(requireContext())
-        binding.folderChapterList.isNestedScrollingEnabled = false
+        binding.folderChapterList.isNestedScrollingEnabled = true
         binding.folderChapterList.adapter = chapterAdapter
+        binding.folderDetailScroll.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, oldTop, oldBottom ->
+            if (bottom - top != oldBottom - oldTop) {
+                val listHeight = (bottom - top).coerceAtLeast(1)
+                for (list in listOf(binding.folderImageList, binding.folderChapterList)) {
+                    if (list.layoutParams.height != listHeight) {
+                        list.layoutParams = list.layoutParams.apply { height = listHeight }
+                    }
+                }
+            }
+        }
         setupFolderTopBarOverlay()
         setupFolderDetailScrollBehavior()
 
@@ -460,7 +473,8 @@ class LibraryFragment : Fragment() {
         binding.importEhviewerButton.setOnClickListener { importFromEhViewer() }
         binding.floatingTranslateButton.setOnClickListener { handleFloatingTranslateClick() }
         binding.importCbzButton.setOnClickListener {
-            pickArchiveOrPdfFile.launch(
+            pendingArchiveImportCollection = null
+            pickArchiveOrPdfFiles.launch(
                 arrayOf(
                     "application/vnd.comicbook+zip",
                     "application/x-cbz",
@@ -503,6 +517,19 @@ class LibraryFragment : Fragment() {
             selectionController.retranslateSelectedImages(folder)
         }
         binding.folderFullTranslateInfo.setOnClickListener { showFullTranslateInfo() }
+        binding.folderFullTranslateLabel.setOnClickListener {
+            binding.folderFullTranslateSwitch.performClick()
+        }
+        binding.folderGlossaryProcessingLabel.setOnClickListener {
+            if (binding.folderGlossaryProcessingSwitch.isEnabled) {
+                binding.folderGlossaryProcessingSwitch.performClick()
+            }
+        }
+        binding.folderVlDirectTranslateLabel.setOnClickListener {
+            if (binding.folderVlDirectTranslateSwitch.isEnabled) {
+                binding.folderVlDirectTranslateSwitch.performClick()
+            }
+        }
         binding.folderGlossaryProcessingInfo.setOnClickListener {
             dialogs.showGlossaryProcessingInfo(requireContext())
         }
@@ -719,6 +746,15 @@ class LibraryFragment : Fragment() {
     private fun showFolderDetail(folder: File, parentFolder: File? = null) {
         currentFolder = folder
         currentParentFolder = parentFolder
+        binding.folderDetailScroll.stopNestedScroll()
+        binding.folderDetailScroll.scrollTo(0, 0)
+        lastFolderDetailScrollY = 0
+        binding.folderDetailScroll.post {
+            if (_binding != null && currentFolder?.absolutePath == folder.absolutePath) {
+                binding.folderDetailScroll.scrollTo(0, 0)
+                lastFolderDetailScrollY = 0
+            }
+        }
         resetFolderTopBar(forceVisible = true)
         binding.folderTitle.text = buildFolderTitle(folder)
         binding.folderFullTranslateSwitch.isChecked = preferencesGateway.isFullTranslateEnabled(folder)
@@ -1000,9 +1036,9 @@ class LibraryFragment : Fragment() {
     private fun computeAndCacheFolderStats(folder: File, isCollection: Boolean): Pair<Int, Int> {
         val chapters = if (isCollection) repository.listChildFolders(folder) else emptyList()
         val imageCount = if (isCollection) {
-            chapters.sumOf { chapter -> repository.listImages(chapter).size }
+            chapters.sumOf { chapter -> repository.countImages(chapter) }
         } else {
-            repository.listImages(folder).size
+            repository.countImages(folder)
         }
         preferencesGateway.setCachedFolderStats(folder, imageCount, chapters.size)
         return imageCount to chapters.size
@@ -1075,7 +1111,7 @@ class LibraryFragment : Fragment() {
                     val items = repository.listImages(folder).map { file ->
                         ImageItem(file = file, translated = isImageTranslated(file, folder))
                     }
-                    computeAndCacheFolderStats(folder, isCollection = false)
+                    preferencesGateway.setCachedFolderStats(folder, items.size)
                     preferencesGateway.setCachedFolderStatus(
                         folder,
                         resolveFolderStatus(items.map { item ->
@@ -1243,7 +1279,7 @@ class LibraryFragment : Fragment() {
         if (repository.isCollectionFolder(folder)) {
             showCreateChapterDialog(folder)
         } else {
-            pickImages.launch(arrayOf("image/*"))
+            pickImages.launch("image/*")
         }
     }
 
@@ -1259,10 +1295,26 @@ class LibraryFragment : Fragment() {
     private fun importChildChapters() {
         val parentFolder = currentFolder ?: return
         if (!repository.isCollectionFolder(parentFolder)) return
-        pendingChapterImportParent = parentFolder
-        importExportCoordinator.requestImportDirectory { initialUri ->
-            pickChapterImportTree.launch(initialUri)
-        }
+        dialogs.showChapterImportSourcePicker(
+            context = requireContext(),
+            onFolderSelected = {
+                pendingChapterImportParent = parentFolder
+                importExportCoordinator.requestImportDirectory { initialUri ->
+                    pickChapterImportTree.launch(initialUri)
+                }
+            },
+            onArchiveSelected = {
+                pendingArchiveImportCollection = parentFolder
+                pickArchiveOrPdfFiles.launch(
+                    arrayOf(
+                        "application/vnd.comicbook+zip",
+                        "application/x-cbz",
+                        "application/zip",
+                        "application/pdf"
+                    )
+                )
+            }
+        )
     }
 
     private fun importFromEhViewer() {
@@ -1271,7 +1323,12 @@ class LibraryFragment : Fragment() {
         }
     }
 
-    private fun importFromArchiveOrPdf(uri: Uri) {
+    private fun importFromArchiveOrPdf(
+        uris: List<Uri>,
+        targetCollection: File? = null,
+        index: Int = 0
+    ) {
+        val uri = uris.getOrNull(index) ?: return
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
             uiCallbacks.showImportProgress(R.string.import_progress)
             val assessment = try {
@@ -1282,23 +1339,46 @@ class LibraryFragment : Fragment() {
                 uiCallbacks.hideImportProgress()
             }
             if (!assessment.shouldWarn) {
-                startArchiveOrPdfImport(uri, riskAlreadyAccepted = false)
+                startArchiveOrPdfImport(
+                    uri = uri,
+                    targetCollection = targetCollection,
+                    riskAlreadyAccepted = false,
+                    onImportFinished = {
+                        importFromArchiveOrPdf(uris, targetCollection, index + 1)
+                    }
+                )
                 return@launch
             }
             showImportMemoryWarning(assessment) {
-                startArchiveOrPdfImport(uri, riskAlreadyAccepted = true)
+                startArchiveOrPdfImport(
+                    uri = uri,
+                    targetCollection = targetCollection,
+                    riskAlreadyAccepted = true,
+                    onImportFinished = {
+                        importFromArchiveOrPdf(uris, targetCollection, index + 1)
+                    }
+                )
             }
         }
     }
 
-    private fun startArchiveOrPdfImport(uri: Uri, riskAlreadyAccepted: Boolean) {
+    private fun startArchiveOrPdfImport(
+        uri: Uri,
+        targetCollection: File?,
+        riskAlreadyAccepted: Boolean,
+        onImportFinished: (() -> Unit)? = null
+    ) {
         importExportCoordinator.importFromArchiveOrPdf(
             uiContext = requireContext(),
             uri = uri,
             scope = viewLifecycleOwner.lifecycleScope,
             riskAlreadyAccepted = riskAlreadyAccepted,
             onConfirmMemoryRisk = ::awaitImportMemoryWarning,
-            onShowFolderList = { showFolderList() }
+            onShowFolderList = {
+                if (targetCollection == null) showFolderList() else showFolderDetail(targetCollection)
+            },
+            targetCollection = targetCollection,
+            onImportFinished = onImportFinished
         )
     }
 
@@ -1498,6 +1578,7 @@ class LibraryFragment : Fragment() {
     private fun updateGlossaryProcessingSwitchState(folder: File) {
         val enabled = !preferencesGateway.isFullTranslateEnabled(folder)
         binding.folderGlossaryProcessingSwitch.isEnabled = enabled
+        binding.folderGlossaryProcessingLabel.isEnabled = enabled
         binding.folderGlossaryProcessingInfo.alpha = if (enabled) 1f else 0.5f
     }
 
@@ -1510,6 +1591,7 @@ class LibraryFragment : Fragment() {
             }
         }
         binding.folderVlDirectTranslateSwitch.isEnabled = enabled
+        binding.folderVlDirectTranslateLabel.isEnabled = enabled
         binding.folderVlDirectTranslateInfo.alpha = if (enabled) 1f else 0.5f
     }
 

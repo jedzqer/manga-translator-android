@@ -179,5 +179,59 @@ class OcrSharedToolsTest {
         } finally { crop.recycle() }
     }
 
+    @Test
+    fun `manual multi line bubbles keep low confidence text for every local language`() {
+        val crop = Bitmap.createBitmap(100, 60, Bitmap.Config.ARGB_8888)
+        val rects = listOf(RectF(0f, 0f, 100f, 20f), RectF(0f, 30f, 100f, 50f))
+        val engine = object : OcrEngine {
+            override fun recognize(bitmap: Bitmap): String = error("Must preserve the detected lines")
+            override fun recognizeWithScore(bitmap: Bitmap, rect: RectF?) =
+                OcrEngine.OcrEngineResult(if (rect == rects.first()) "A" else "B", 0.01f)
+        }
+        try {
+            for (language in TranslationLanguage.entries.filter { it.supportsLocalOcr() }) {
+                assertEquals(language.name, "A\nB", recognizeLocalCrop(crop, language,
+                    BubbleSource.MANUAL, null, engine, "test") { rects })
+                for (source in listOf(BubbleSource.BUBBLE_DETECTOR, BubbleSource.TEXT_DETECTOR)) {
+                    assertEquals("$language / $source", "", recognizeLocalCrop(crop, language,
+                        source, null, engine, "test") { rects })
+                }
+            }
+        } finally { crop.recycle() }
+    }
+
+    @Test
+    fun `manual Korean whole crop fallback also bypasses confidence filtering`() {
+        val crop = Bitmap.createBitmap(100, 60, Bitmap.Config.ARGB_8888)
+        val engine = object : OcrEngine {
+            override fun recognize(bitmap: Bitmap): String = error("Korean must request scored recognition")
+            override fun recognizeWithScore(bitmap: Bitmap, rect: RectF?) =
+                OcrEngine.OcrEngineResult("안녕", 0.01f)
+        }
+        try {
+            for (detected in listOf(null, emptyList<RectF>())) {
+                assertEquals("안녕", recognizeLocalCrop(crop, TranslationLanguage.KO_TO_ZH,
+                    BubbleSource.MANUAL, null, engine, "test") { detected })
+                assertEquals("", recognizeLocalCrop(crop, TranslationLanguage.KO_TO_ZH,
+                    BubbleSource.BUBBLE_DETECTOR, null, engine, "test") { detected })
+            }
+        } finally { crop.recycle() }
+    }
+
+    @Test
+    fun `manual confidence exemption does not turn empty recognition into text`() {
+        val crop = Bitmap.createBitmap(100, 60, Bitmap.Config.ARGB_8888)
+        val rects = listOf(RectF(0f, 0f, 100f, 20f), RectF(0f, 30f, 100f, 50f))
+        val engine = object : OcrEngine {
+            override fun recognize(bitmap: Bitmap): String = error("No paragraph fallback")
+            override fun recognizeWithScore(bitmap: Bitmap, rect: RectF?) =
+                OcrEngine.OcrEngineResult("   ", 0.01f)
+        }
+        try {
+            assertEquals("", recognizeLocalCrop(crop, TranslationLanguage.EN_TO_ZH,
+                BubbleSource.MANUAL, null, engine, "test") { rects })
+        } finally { crop.recycle() }
+    }
+
     private fun line(text: String) = EnglishLine(RectF(0f, 0f, 10f, 10f), text)
 }

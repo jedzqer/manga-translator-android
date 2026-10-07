@@ -110,6 +110,9 @@ class MainActivity : AppCompatActivity() {
 
         pagerAdapter = MainPagerAdapter(this)
         binding.mainPager.adapter = pagerAdapter
+        if (savedInstanceState == null) {
+            binding.mainPager.setCurrentItem(MainPagerAdapter.LIBRARY_INDEX, false)
+        }
         binding.mainPager.isUserInputEnabled =
             binding.mainPager.currentItem != MainPagerAdapter.READING_INDEX
         TabLayoutMediator(binding.mainTabs, binding.mainPager) { tab, position ->
@@ -248,7 +251,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun styleUpdateDialogButton(button: AppCompatButton) {
-        button.background = ContextCompat.getDrawable(this, R.drawable.bg_button_rounded)
+            button.background = ContextCompat.getDrawable(this, R.drawable.bg_sticker_control)
         button.setTextColor(resolveThemeButtonTextColor())
         button.isAllCaps = false
         button.visibility = View.VISIBLE

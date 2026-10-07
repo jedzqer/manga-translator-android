@@ -1,5 +1,7 @@
 package com.manga.translate.floating
 
+import com.manga.translate.network.executeWithModelResponseRetries
+
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
@@ -49,7 +51,7 @@ import com.manga.translate.model.BubbleTranslation
 import com.manga.translate.model.FloatingBallGestureAction
 import com.manga.translate.model.TranslationLanguage
 import com.manga.translate.model.TranslationResult
-import com.manga.translate.model.textOrEmpty
+import com.manga.translate.model.textOrThrow
 import com.manga.translate.network.LlmErrorCode
 import com.manga.translate.network.LlmRequestException
 import com.manga.translate.network.LlmResponseException
@@ -296,7 +298,7 @@ class FloatingBallOverlayService : Service() {
             logTag = "FloatingOCR",
             bubbleSource = bubbleSource,
             detectedLineRects = detectedLineRects
-        ).textOrEmpty()
+        ).textOrThrow()
     }
 
     private fun currentTranslationLanguage(): TranslationLanguage {
@@ -1562,7 +1564,7 @@ class FloatingBallOverlayService : Service() {
                     )
                     val crop = bitmapController.cropRegion(bitmap, region.rect)
                     if (crop == null) {
-                        return@withPermit bubble
+                        throw IllegalStateException("Unable to crop OCR region")
                     }
                     val text = try {
                         recognizeFloatingBubbleText(
@@ -1584,7 +1586,7 @@ class FloatingBallOverlayService : Service() {
                             "Floating OCR recognize failed language=${language.name}",
                             e
                         )
-                        ""
+                        throw e
                     } finally {
                         bitmapController.releaseBitmap(crop)
                     }

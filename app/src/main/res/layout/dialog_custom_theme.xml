@@ -15,47 +15,14 @@
             android:layout_width="match_parent"
             android:layout_height="150dp" />
 
-        <RadioGroup
-            android:id="@+id/color_group_toggle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:checkedButton="@id/primary_colors_button"
-            android:orientation="horizontal">
-
-            <androidx.appcompat.widget.AppCompatRadioButton
-                android:id="@+id/primary_colors_button"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/custom_theme_primary_colors" />
-
-            <androidx.appcompat.widget.AppCompatRadioButton
-                android:id="@+id/secondary_colors_button"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/custom_theme_secondary_colors" />
-        </RadioGroup>
-
         <GridLayout
             android:id="@+id/color_target_grid"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:alignmentMode="alignMargins"
-            android:columnCount="5"
+            android:columnCount="3"
             android:useDefaultMargins="false" />
-
-        <Button
-            android:id="@+id/auto_generate_secondary_button"
-            style="@style/Widget.MangaTranslator.DialogActionButton"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:layout_gravity="end"
-            android:layout_marginTop="10dp"
-            android:text="@string/custom_theme_auto_generate"
-            android:visibility="gone" />
 
         <LinearLayout
             android:layout_width="match_parent"

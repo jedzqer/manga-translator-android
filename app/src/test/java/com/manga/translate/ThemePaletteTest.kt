@@ -12,16 +12,32 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class ThemePaletteTest {
     @Test
+    fun `custom theme defaults match the white theme colors`() {
+        val defaults = CustomThemeColors.DEFAULT
+
+        assertEquals(0xFFFFFFFF.toInt(), defaults.background)
+        assertEquals(0xFFFFFFFF.toInt(), defaults.surface)
+        assertEquals(0xFF245FC2.toInt(), defaults.accent)
+        assertEquals(0xFF243247.toInt(), defaults.foreground)
+        assertEquals(0xFF56677E.toInt(), defaults.mutedForeground)
+        assertEquals(0xFFF0F6FF.toInt(), defaults.surfaceAlt)
+        assertTrue(ColorUtils.calculateContrast(defaults.foreground, defaults.surface) >= 4.5)
+    }
+
+    @Test
     fun `secondary colors are generated from primary colors`() {
         val generated = CustomThemeColors.fromBaseColors(
             background = 0xFF101820.toInt(),
             surface = 0xFF182432.toInt(),
-            accent = 0xFFF0A040.toInt()
+            accent = 0xFFF0A040.toInt(),
+            foreground = 0xFFE8EEF7.toInt(),
+            mutedForeground = 0xFF9AA8B8.toInt()
         )
 
         assertEquals(0xFF101820.toInt(), generated.background)
         assertEquals(0xFF182432.toInt(), generated.surface)
         assertEquals(0xFFF0A040.toInt(), generated.accent)
+        assertEquals(0xFFE8EEF7.toInt(), generated.foreground)
         assertTrue(ColorUtils.calculateContrast(generated.foreground, generated.surface) >= 4.5)
         assertTrue(ColorUtils.calculateContrast(generated.accentContent, generated.surface) >= 4.5)
     }

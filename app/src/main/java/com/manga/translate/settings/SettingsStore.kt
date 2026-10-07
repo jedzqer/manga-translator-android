@@ -50,20 +50,35 @@ data class CustomThemeColors(
 ) {
     companion object {
         val DEFAULT = fromBaseColors(
-            background = 0xFFF5F7FB.toInt(),
+            background = 0xFFFFFFFF.toInt(),
             surface = 0xFFFFFFFF.toInt(),
-            accent = 0xFF51AFFF.toInt()
+            accent = 0xFF245FC2.toInt(),
+            foreground = 0xFF243247.toInt(),
+            mutedForeground = 0xFF56677E.toInt()
+        ).copy(
+            surfaceAlt = 0xFFF0F6FF.toInt(),
+            buttonFill = 0xFFF0F6FF.toInt()
         )
 
-        fun fromBaseColors(background: Int, surface: Int, accent: Int): CustomThemeColors {
+        fun fromBaseColors(
+            background: Int,
+            surface: Int,
+            accent: Int,
+            foreground: Int = bestContrastingColor(opaque(surface)),
+            mutedForeground: Int = ColorUtils.blendARGB(
+                bestContrastingColor(opaque(surface)),
+                opaque(surface),
+                0.38f
+            )
+        ): CustomThemeColors {
             val opaqueBackground = opaque(background)
             val opaqueSurface = opaque(surface)
             val opaqueAccent = opaque(accent)
-            val foreground = bestContrastingColor(opaqueSurface)
+            val readableForeground = ensureContrast(opaque(foreground), opaqueSurface, 4.5)
             val surfaceAlt = ColorUtils.blendARGB(opaqueSurface, opaqueAccent, 0.12f)
             val accentContent = ensureContrast(opaqueAccent, opaqueSurface, 4.5)
-            val mutedForeground = ColorUtils.blendARGB(foreground, opaqueSurface, 0.38f)
-            val outline = ColorUtils.blendARGB(foreground, opaqueSurface, 0.78f)
+            val readableMutedForeground = ensureContrast(opaque(mutedForeground), opaqueSurface, 3.0)
+            val outline = ColorUtils.blendARGB(readableForeground, opaqueSurface, 0.78f)
             val buttonFill = surfaceAlt
             return CustomThemeColors(
                 background = opaqueBackground,
@@ -71,14 +86,14 @@ data class CustomThemeColors(
                 surfaceAlt = surfaceAlt,
                 accent = opaqueAccent,
                 accentContent = accentContent,
-                foreground = foreground,
-                mutedForeground = mutedForeground,
+                foreground = readableForeground,
+                mutedForeground = readableMutedForeground,
                 outline = outline,
                 buttonFill = buttonFill,
                 buttonPressed = opaqueAccent,
                 buttonText = bestContrastingColor(buttonFill),
                 heroStart = opaqueAccent,
-                heroEnd = ColorUtils.blendARGB(opaqueAccent, foreground, 0.22f)
+                heroEnd = ColorUtils.blendARGB(opaqueAccent, readableForeground, 0.22f)
             )
         }
 
@@ -121,10 +136,16 @@ data class OcrApiSettings(
     val apiOcrConcurrencyLimit: Int = 1,
     // 0 = auto (determined by device performance); positive = manual override
     val localOcrConcurrencyLimit: Int = 0,
-    val ocrApiFormat: OcrApiFormat = OcrApiFormat.OPENAI_COMPATIBLE
+    val ocrApiFormat: OcrApiFormat = OcrApiFormat.OPENAI_COMPATIBLE,
+    val apiSupplementEnabled: Boolean = false,
+    val manualBubblesUseApi: Boolean = false,
+    // Keep the old enabled setting independent; existing enabled profiles retain medium strength.
+    val apiSupplementLevel: Int = 2
 ) {
+    fun hasApiCredentials(): Boolean = apiUrl.isNotBlank() && apiKey.isNotBlank() && modelName.isNotBlank()
+
     fun isValid(): Boolean {
-        return useLocalOcr || (apiUrl.isNotBlank() && apiKey.isNotBlank() && modelName.isNotBlank())
+        return (useLocalOcr && !apiSupplementEnabled && !manualBubblesUseApi) || hasApiCredentials()
     }
 }
 
@@ -275,6 +296,16 @@ class SettingsStore(context: Context) {
     }
 
     fun loadOcrApiSettings(): OcrApiSettings = ocrSettingsStore.loadOcrApiSettings()
+
+    fun loadResolvedOcrApiSettings(): OcrApiSettings {
+        val ocrSettings = loadOcrApiSettings()
+        val mainSettings = load()
+        return ocrSettings.copy(
+            apiUrl = ocrSettings.apiUrl.ifBlank { mainSettings.apiUrl },
+            apiKey = ocrSettings.apiKey.ifBlank { mainSettings.apiKey },
+            modelName = ocrSettings.modelName.ifBlank { mainSettings.modelName }
+        )
+    }
 
     fun saveOcrApiSettings(settings: OcrApiSettings) {
         ocrSettingsStore.saveOcrApiSettings(settings)
@@ -454,6 +485,9 @@ class SettingsStore(context: Context) {
         internal const val KEY_MODEL_NAME = "model_name"
         internal const val KEY_API_FORMAT = "api_format"
         internal const val KEY_OCR_USE_LOCAL = "ocr_use_local"
+        internal const val KEY_OCR_API_SUPPLEMENT = "ocr_api_supplement"
+        internal const val KEY_OCR_API_SUPPLEMENT_LEVEL = "ocr_api_supplement_level"
+        internal const val KEY_OCR_MANUAL_API = "ocr_manual_api"
         internal const val KEY_OCR_API_URL = "ocr_api_url"
         internal const val KEY_OCR_API_KEY = "ocr_api_key"
         internal const val KEY_OCR_MODEL_NAME = "ocr_model_name"
@@ -506,7 +540,7 @@ class SettingsStore(context: Context) {
         internal const val KEY_API_RETRY_COUNT = "api_retry_count"
         internal const val KEY_MAX_CONCURRENCY = "max_concurrency"
         internal const val KEY_TRANSLATION_BATCH_PAGES = "translation_batch_pages"
-        internal const val MAX_TRANSLATION_BATCH_PAGES = 200
+        internal const val MAX_TRANSLATION_BATCH_PAGES = 100
         internal const val KEY_API_TIMEOUT_SECONDS = "api_timeout_seconds"
         internal const val KEY_APP_LANGUAGE = "app_language"
         internal const val KEY_THEME_MODE = "theme_mode"
@@ -555,8 +589,8 @@ class SettingsStore(context: Context) {
             "請以普通日漫翻譯風格翻譯，語言自然流暢，符合中文漫畫閱讀習慣。"
         internal const val DEFAULT_API_URL = "https://api.siliconflow.cn/v1"
         internal const val DEFAULT_MODEL = "Qwen/Qwen3.5-35B-A3B"
-        internal const val DEFAULT_OCR_API_URL = "https://api.siliconflow.cn/v1"
-        internal const val DEFAULT_OCR_MODEL_NAME = "Qwen/Qwen3-VL-8B-Instruct"
+        internal const val DEFAULT_OCR_API_URL = ""
+        internal const val DEFAULT_OCR_MODEL_NAME = ""
         internal const val DEFAULT_OCR_API_TIMEOUT_SECONDS = 300
         const val MIN_OCR_API_TIMEOUT_SECONDS = 30
         const val MAX_OCR_API_TIMEOUT_SECONDS = 1200

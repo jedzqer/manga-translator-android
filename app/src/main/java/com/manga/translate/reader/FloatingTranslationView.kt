@@ -18,7 +18,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import androidx.core.graphics.withClip
-import androidx.core.graphics.withScale
 import androidx.core.graphics.withTranslation
 import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.BubbleTranslation
@@ -143,6 +142,7 @@ class FloatingTranslationView @JvmOverloads constructor(
     private var longPressTriggered = false
     private var editMode = false
     private var createBubbleMode = false
+    private var createBubbleShape = ManualBubbleShape.RECTANGLE
     private var isCreatingBubble = false
     private var createDownImageX = 0f
     private var createDownImageY = 0f
@@ -151,6 +151,7 @@ class FloatingTranslationView @JvmOverloads constructor(
     private var resizeDragId: BubbleIdentity? = null
     private var resizeDragActive = false
     private var resizeDragBaseRect: RectF? = null
+    private var resizeDragHandle = BubbleResizeHandle.BOTTOM_RIGHT
     private val resizeDragWorkingRect = RectF()
     private var resizeModeId: BubbleIdentity? = null
     private var resizeModeAlpha = 0f
@@ -358,6 +359,11 @@ class FloatingTranslationView @JvmOverloads constructor(
     }
 
     fun setCreateBubbleMode(enabled: Boolean) {
+        setCreateBubbleMode(enabled, createBubbleShape)
+    }
+
+    internal fun setCreateBubbleMode(enabled: Boolean, shape: ManualBubbleShape) {
+        createBubbleShape = shape
         if (createBubbleMode == enabled) return
         createBubbleMode = enabled && editMode
         isCreatingBubble = false
@@ -428,7 +434,7 @@ class FloatingTranslationView @JvmOverloads constructor(
 
     fun hasBubbleAt(x: Float, y: Float): Boolean {
         if (!editMode) return false
-        return findBubbleAt(x, y) != null
+        return findActiveResizeHandle(x, y) != null || findBubbleAt(x, y) != null
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -451,7 +457,9 @@ class FloatingTranslationView @JvmOverloads constructor(
             if (cullForInteraction && !RectF.intersects(bubbleRect, cullRect)) continue
             drawBubble(canvas, bubble, lightweightDraw)
             if (editMode && bubble.isOwnedBy(currentImageName)) {
-                drawDeleteIcon(canvas, bubbleRect)
+                if (bubbleIdentity(bubble) != resizeModeId) {
+                    drawDeleteIcon(canvas, bubbleRect)
+                }
                 if (bubble.supportsResizeEditing() &&
                     bubbleIdentity(bubble) != resizeDragId &&
                     bubbleIdentity(bubble) != resizeModeId
@@ -473,8 +481,13 @@ class FloatingTranslationView @JvmOverloads constructor(
             }
         }
         if (editMode && createBubbleMode && !createPreviewRect.isEmpty) {
-            canvas.drawRoundRect(createPreviewRect, 8f * resources.displayMetrics.density, 8f * resources.displayMetrics.density, previewFillPaint)
-            canvas.drawRoundRect(createPreviewRect, 8f * resources.displayMetrics.density, 8f * resources.displayMetrics.density, previewStrokePaint)
+            if (createBubbleShape == ManualBubbleShape.ELLIPSE) {
+                canvas.drawOval(createPreviewRect, previewFillPaint)
+                canvas.drawOval(createPreviewRect, previewStrokePaint)
+            } else {
+                canvas.drawRoundRect(createPreviewRect, 8f * resources.displayMetrics.density, 8f * resources.displayMetrics.density, previewFillPaint)
+                canvas.drawRoundRect(createPreviewRect, 8f * resources.displayMetrics.density, 8f * resources.displayMetrics.density, previewStrokePaint)
+            }
         }
     }
 
@@ -520,12 +533,14 @@ class FloatingTranslationView @JvmOverloads constructor(
                 removeCallbacks(longPressRunnable)
                 if (editMode) {
                     if (resizeModeId != null) {
-                        val handleTarget = findResizeTarget(event.x, event.y)
-                        if (handleTarget != null && handleTarget == resizeModeId) {
+                        val handle = findActiveResizeHandle(event.x, event.y)
+                        val handleTarget = resizeModeId
+                        if (handle != null && handleTarget != null) {
                             activeId = null
                             pendingResizeEntry = null
                             resizeDragId = handleTarget
                             resizeDragActive = false
+                            resizeDragHandle = handle
                             resizeDragBaseRect = bubbles.firstOrNull {
                                 bubbleIdentity(it) == handleTarget
                             }?.let { RectF(it.rect) }
@@ -830,14 +845,18 @@ class FloatingTranslationView @JvmOverloads constructor(
     private fun applyResizeDrag(identity: BubbleIdentity, screenX: Float, screenY: Float) {
         val base = resizeDragBaseRect ?: return
         val offset = offsets[identity] ?: 0f to 0f
-        var newRight = (screenX - displayRect.left) / scaleX - offset.first
-        var newBottom = (screenY - displayRect.top) / scaleY - offset.second
-        val minImageSize = 20f / scaleX.coerceAtLeast(1f)
         val overflowW = base.width() * 0.5f
-        val overflowH = max(base.height() * 0.5f, editOverflowBottom)
-        newRight = max(base.left + minImageSize, newRight).coerceAtMost(imageWidth.toFloat() + overflowW)
-        newBottom = max(base.top + minImageSize, newBottom).coerceAtMost(imageHeight.toFloat() + overflowH)
-        resizeDragWorkingRect.set(base.left, base.top, newRight, newBottom)
+        val minSize = 24f * resources.displayMetrics.density
+        val limits = RectF(
+            -overflowW - offset.first,
+            -max(base.height() * 0.5f, editOverflowTop) - offset.second,
+            imageWidth + overflowW - offset.first,
+            imageHeight + max(base.height() * 0.5f, editOverflowBottom) - offset.second
+        )
+        resizeDragWorkingRect.set(resizeDragHandle.resize(
+            base, (screenX - downX) / scaleX, (screenY - downY) / scaleY,
+            minSize / scaleX, minSize / scaleY, limits
+        ))
         requestInteractionRedraw()
     }
 
@@ -933,23 +952,34 @@ class FloatingTranslationView @JvmOverloads constructor(
     private fun drawResizeModeHandle(canvas: Canvas, bubbleRect: RectF) {
         if (resizeModeAlpha <= 0f) return
         val density = resources.displayMetrics.density
-        val handleSize = (min(bubbleRect.width(), bubbleRect.height()) * 0.28f).coerceIn(18f * density, 28f * density)
-        val cornerX = bubbleRect.right
-        val cornerY = bubbleRect.bottom
-        val cx = cornerX - handleSize * 0.3f
-        val cy = cornerY - handleSize * 0.3f
-        val scale = 0.6f + 0.4f * resizeModeAlpha
-        canvas.withScale(scale, scale, cornerX, cornerY) {
-            val path = android.graphics.Path()
-            path.moveTo(cx - handleSize, cy)
-            path.lineTo(cx, cy)
-            path.lineTo(cx, cy - handleSize)
-            path.close()
-            resizeHandleFillPaint.alpha = (resizeModeAlpha * 255).toInt()
-            resizeHandleStrokePaint.alpha = (resizeModeAlpha * 255).toInt()
-            drawPath(path, resizeHandleFillPaint)
-            drawPath(path, resizeHandleStrokePaint)
+        val radius = 6f * density * (0.6f + 0.4f * resizeModeAlpha)
+        resizeHandleFillPaint.alpha = (resizeModeAlpha * 255).toInt()
+        resizeHandleStrokePaint.alpha = (resizeModeAlpha * 255).toInt()
+        for (handle in BubbleResizeHandle.entries) {
+            val x = bubbleRect.left + bubbleRect.width() * handle.xFraction
+            val y = bubbleRect.top + bubbleRect.height() * handle.yFraction
+            canvas.drawCircle(x, y, radius, resizeHandleFillPaint)
+            canvas.drawCircle(x, y, radius, resizeHandleStrokePaint)
         }
+    }
+
+    private fun findActiveResizeHandle(x: Float, y: Float): BubbleResizeHandle? {
+        val identity = resizeModeId ?: return null
+        val bubble = bubbles.firstOrNull { bubbleIdentity(it) == identity } ?: return null
+        updateBubbleRect(hitRect, bubble)
+        val hitRadius = 24f * resources.displayMetrics.density
+        var nearestDistance = hitRadius * hitRadius
+        var nearest: BubbleResizeHandle? = null
+        for (handle in BubbleResizeHandle.entries) {
+            val dx = x - (hitRect.left + hitRect.width() * handle.xFraction)
+            val dy = y - (hitRect.top + hitRect.height() * handle.yFraction)
+            val distance = dx * dx + dy * dy
+            if (distance <= nearestDistance) {
+                nearestDistance = distance
+                nearest = handle
+            }
+        }
+        return nearest
     }
 
     private fun updateScale() {
@@ -1096,10 +1126,11 @@ class FloatingTranslationView @JvmOverloads constructor(
         offset: Pair<Float, Float>,
         shrinkPercent: Int
     ): Path? {
-        // Resize drag only updates highlight/handle via working rect; fill path stays on
-        // the committed bubble geometry until onBubbleResized commits a new rect.
-        val signature = pathCacheSignature(bubble, offset, shrinkPercent)
         val identity = bubbleIdentity(bubble)
+        val geometry = if (identity == resizeDragId && resizeDragActive && !resizeDragWorkingRect.isEmpty) {
+            bubble.withResizedGeometry(resizeDragWorkingRect, imageWidth, imageHeight)
+        } else bubble
+        val signature = pathCacheSignature(geometry, offset, shrinkPercent)
         val cached = pathCache[identity]
         if (cached != null && cached.signature == signature) {
             bubbleBounds.set(cached.bounds)
@@ -1108,7 +1139,7 @@ class FloatingTranslationView @JvmOverloads constructor(
         val path = Path()
         BubbleShapePaths.buildPath(
             outPath = path,
-            bubble = bubble,
+            bubble = geometry,
             sourceWidth = imageWidth,
             sourceHeight = imageHeight,
             originX = displayRect.left,

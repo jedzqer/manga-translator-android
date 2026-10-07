@@ -244,13 +244,23 @@
                 android:inputType="number" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <TextView
+            android:id="@+id/api_timeout_policy_description"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/api_timeout_policy_description"
+            android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/floating_api_url_layout"
             style="@style/Widget.MangaTranslator.Input"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="@string/floating_api_url_hint">
+            android:hint="@string/floating_api_url_hint"
+            app:placeholderTextColor="?attr/dialogHintTextColor"
+            app:placeholderText="@string/ocr_api_reuse_main_hint">
 
             <com.google.android.material.textfield.TextInputEditText
                 style="@style/Widget.MangaTranslator.DialogEditText"
@@ -266,7 +276,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="@string/floating_api_key_hint">
+            android:hint="@string/floating_api_key_hint"
+            app:placeholderTextColor="?attr/dialogHintTextColor"
+            app:placeholderText="@string/ocr_api_reuse_main_hint">
 
             <com.google.android.material.textfield.TextInputEditText
                 style="@style/Widget.MangaTranslator.DialogEditText"
@@ -282,7 +294,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="@string/floating_model_name_hint">
+            android:hint="@string/floating_model_name_hint"
+            app:placeholderTextColor="?attr/dialogHintTextColor"
+            app:placeholderText="@string/ocr_api_reuse_main_hint">
 
             <com.google.android.material.textfield.TextInputEditText
                 style="@style/Widget.MangaTranslator.DialogEditText"
@@ -291,14 +305,6 @@
                 android:layout_height="wrap_content"
                 android:inputType="text" />
         </com.google.android.material.textfield.TextInputLayout>
-
-        <TextView
-            android:id="@+id/floating_translate_settings_note"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="@string/floating_translate_settings_note"
-            android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
 
     </LinearLayout>
 

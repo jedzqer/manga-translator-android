@@ -64,11 +64,9 @@ class TranslationPageBatchTest {
             val json = container.translationStore.translationFileFor(pages[0].imageFile)
             val saved = json.readText()
             container.libraryPreferencesGateway.setTranslationStyle(first, "changed style")
-            val loaded = requireNotNull(pipeline.loadValidTranslation(
-                pages[0].imageFile, true, true, TranslationLanguage.EN_TO_ZH
-            ))
+            val loaded = requireNotNull(pipeline.loadValidTranslation(pages[0].imageFile))
             assertEquals("translated:source", loaded.bubbles.single().translatedText)
-            assertTrue(pipeline.hasValidTranslation(pages[0].imageFile, true, true, TranslationLanguage.EN_TO_ZH))
+            assertTrue(pipeline.hasValidTranslation(pages[0].imageFile))
             assertEquals(saved, json.readText())
         } finally {
             listOf(first, second).forEach {
@@ -105,6 +103,15 @@ class TranslationPageBatchTest {
         assertEquals(mapOf("new" to "新译名"), results.first().glossaryUsed)
         assertTrue(results.all { it.result.metadata.status == PageTranslationStatus.SUCCESS })
         assertTrue(results.all { it.result.metadata.ocrCacheMode == "test-ocr" })
+    }
+
+    @Test
+    fun `eight text pages cap the request timeout at fifteen minutes`() = runBlocking {
+        settings.saveApiTimeoutSeconds(300)
+        val pages = List(8) { page("cap-$it.jpg", listOf(bubble(0, "text-$it"))) }
+        assertEquals(8, requireNotNull(translate(pages)).size)
+        assertEquals(900_000, gateway.timeout)
+        assertEquals(1, gateway.calls)
     }
 
     @Test
@@ -187,6 +194,53 @@ class TranslationPageBatchTest {
     }
 
     @Test
+    fun `single page modes share bubble filtering and result assembly`() = runBlocking {
+        val contour = floatArrayOf(1f, 2f, 3f, 4f)
+        val page = page("single.jpg", listOf(
+            bubble(1, "keep").copy(source = BubbleSource.BUBBLE_DETECTOR, maskContour = contour),
+            bubble(2, "remove", 50f)
+        ))
+        gateway.response = { items ->
+            items.map { LlmBubbleTranslationItem(it.id, if (it.text == "remove") "" else "translated:${it.text}") }
+        }
+        val standard = requireNotNull(pipeline.translateStandardPageWithGlossary(
+            page, page.imageFile, emptyMap(), onProgress = {}
+        ))
+        assertEquals("prompts/llm_prompts.json", gateway.prompt)
+        val full = requireNotNull(pipeline.translateFullPageWithGlossary(
+            page, emptyMap(), "prompts/llm_prompts_FullTrans.json", onProgress = {}
+        ))
+        assertEquals("prompts/llm_prompts_FullTrans.json", gateway.prompt)
+        assertEquals(2, gateway.calls)
+        assertEquals(listOf(1), standard.result.bubbles.map { it.id })
+        assertEquals(standard.result.bubbles, full.result.bubbles)
+        assertSame(page.bubbles[0].rect, full.result.bubbles.single().rect)
+        assertSame(contour, full.result.bubbles.single().maskContour)
+        assertEquals(PageTranslationStatus.SUCCESS, standard.result.metadata.status)
+        assertEquals(PageTranslationStatus.SUCCESS, full.result.metadata.status)
+        assertEquals(TranslationMetadata.MODE_STANDARD, standard.result.metadata.mode)
+        assertEquals(TranslationMetadata.MODE_FULL_PAGE, full.result.metadata.mode)
+        assertEquals(mapOf("new" to "新译名"), standard.glossaryUsed)
+        assertEquals(standard.glossaryUsed, full.glossaryUsed)
+    }
+
+    @Test
+    fun `empty single pages succeed without a model request`() = runBlocking {
+        val page = page("empty.jpg", emptyList())
+        val standard = requireNotNull(pipeline.translateStandardPageWithGlossary(
+            page, page.imageFile, emptyMap(), onProgress = {}
+        ))
+        val full = requireNotNull(pipeline.translateFullPageWithGlossary(
+            page, emptyMap(), "prompts/llm_prompts_FullTrans.json", onProgress = {}
+        ))
+        assertEquals(0, gateway.calls)
+        assertTrue(standard.result.bubbles.isEmpty())
+        assertTrue(full.result.bubbles.isEmpty())
+        assertEquals(PageTranslationStatus.SUCCESS, standard.result.metadata.status)
+        assertEquals(PageTranslationStatus.SUCCESS, full.result.metadata.status)
+    }
+
+    @Test
     fun `cancellation is propagated without retry`() {
         gateway.response = { throw CancellationException("cancelled") }
         assertThrows(CancellationException::class.java) {
@@ -229,7 +283,7 @@ private class BatchGateway(private val context: Context) : LlmGateway {
         promptAsset: String,
         requestTimeoutMs: Int?,
         retryCount: Int,
-        apiSettings: ApiSettings?
+        apiSettings: ApiSettings?, glossaryProcessingEnabled: Boolean
     ): LlmBubbleTranslationResult {
         styles += apiSettings?.translationStyle
         calls++

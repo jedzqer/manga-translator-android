@@ -36,13 +36,13 @@ Return to the library after saving the settings.
 
 ### 3. Translate
 
-1. Set the source language in the folder and tap **Translate Folder**. Japanese, English, Korean, French, Spanish, Portuguese, German, Italian, Russian, and Chinese are supported. You can also translate a whole collection.
+1. Set the source language in the folder and tap **Translate**. Japanese, English, Korean, French, Spanish, Portuguese, German, Italian, Russian, and Chinese are supported. You can also translate a whole collection.
 2. Wait for the translation to finish, or tap **Start Reading** after preprocessing to read while pages continue translating.
 3. A high-priority notification is sent when background translation succeeds, fails, or is canceled. Tap it to return to the library.
 
 > The app automatically switches works that resemble webtoons to **Webtoon Scroll**. Change this in the folder's reading settings when necessary.
 >
-> **Full-text fast translation** processes the whole work first, so the first page can take longer to appear for large folders. Turn it off to start reading sooner with ordinary page-by-page translation.
+> **Full-text fast translation** processes windows of up to 100 pages: OCR, glossary extraction, then translation and saving, before moving to the next window. It no longer waits for OCR of the entire work, but glossary extraction still delays the first translated page. Turn it off to start reading sooner with ordinary translation.
 
 ### 4. Read and adjust bubbles
 
@@ -53,8 +53,39 @@ Return to the library after saving the settings.
 - To add a missing text area, tap the edit button in the top-right corner, tap **+**, place an empty bubble over the text, then confirm with the green checkmark. Webtoon mode allows bubbles to span pages.
 - If full-text fast translation is too slow, turn it off to use concurrent page-by-page translation instead.
 - Adjust normal or free-text bubble opacity under **Normal Bubble Settings** when bubbles cover too much artwork. Floating-window bubbles have separate settings.
+- Free-text bubbles automatically adapt their text color to the background.
 - Customize the global translation style in Settings, or set a style for a folder. Chapters in a collection share the collection's style. Turning off **Follow Global Style** and leaving the field empty adds no style instruction.
 - Upload a custom font or enable bold text under **Font Settings**. Normal and floating-window bubbles share this font setting.
+
+---
+
+## Translation Options: Cost and Quality
+
+| Option | Requests and cost | Quality and suitable uses |
+| --- | --- | --- |
+| Ordinary translation: local OCR, supplementation off | Only recognized text is sent to the translation model; usually the cheapest option | Good for clear lettering, regular layouts, and simple content. OCR mistakes affect the translation |
+| Ordinary translation + AI OCR supplementation | Problematic regions receive extra cropped-image OCR requests before text translation. Cost can stay low when few regions need help and the OCR model is inexpensive | Balances cost and recognition quality. It cannot catch every OCR mistake |
+| Full-text fast translation + API OCR | Completes API OCR, glossary extraction, and translation in windows; image-recognition requests and costs are higher | Usually the highest-quality combination overall. API OCR can reduce local-recognition errors, while full-text translation keeps character and place names consistent; suitable when final quality matters most |
+| Vision-language full-page translation | Sends annotated pages or long-image sections to the main vision model and skips OCR; usually costs more than local OCR plus text translation | Theoretically the fastest option. Actual speed depends on API response time, concurrency, and image processing; detection and model capabilities still limit results |
+| Vision-language translation + moderate page merging | Sends several pages and their sections together, increasing image usage and cost per request; still a higher-budget option | Can reduce request count and let the model use neighboring dialogue as context, but actual speed still depends on the API. Excessive merging can reduce quality or cause omissions |
+
+### Suggested starting configurations
+
+- **Lowest cost**: turn off full-text fast translation and vision-language translation, use local OCR with supplementation off, and choose an inexpensive text model with adequate translation quality. For works with few recurring names, you can also disable **Glossary Processing**; existing terms remain available as context.
+- **Balanced cost and quality**: keep local OCR on and start AI OCR supplementation at **Low**, increasing to **Medium** if recognition is still poor. Configure an inexpensive image-capable OCR model that recognizes the source language well. The main model continues translating the text, so OCR supplementation does not need to use an expensive main model.
+- **Highest quality**: usually enable full-text fast translation, turn off local OCR, and use a capable API OCR model together with a strong translation model. This improves OCR accuracy and glossary consistency, but increases requests and cost.
+- **Theoretical fastest**: enable vision-language full-page translation and use a fast, highly concurrent vision model. Actual speed depends on the API provider and network conditions, and image costs are usually higher.
+
+### Why per-request billing is a poor fit for OCR supplementation
+
+OCR supplementation sends requests **per recognition region**, not once per page. If eight regions on a page need supplementation, that can add eight image-recognition requests before text translation. Medium and High review more regions, potentially increasing requests, latency, and cost substantially. **Prefer an inexpensive vision model billed by usage, and check its image-input pricing.** OCR currently supports only the OpenAI-compatible chat API, and the model must accept images; a text-only model cannot perform supplementation.
+
+### Page merging for translation
+
+- Moderate merging can improve dialogue context and naming consistency while reducing request count and repeated prompts. This may save money on a **translation API** billed per request, but it does not reduce API OCR or supplementation request counts.
+- The limit is 100 pages, with 5–15 suggested. Start smaller for vision-language translation, long images, or dense text. Large requests increase device and AI workload.
+
+> Draw a box manually around missed text regions to add them to the translation.
 
 ---
 
@@ -85,9 +116,11 @@ Floating-window edits exist only for the current session. They reset after a new
 
 Open **OCR Settings** from Settings:
 
-- **Use local OCR** runs the bundled offline recognition engine.
-- Disabling local OCR uses an online OCR API and requires its URL, key, and model.
-- Online OCR can support multiple languages when the selected model supports them.
+- **Use local OCR** recognizes text offline with the bundled engines; AI translation still needs a network connection. For Russian, disable local OCR and configure an OCR API, or use vision-language full-page translation.
+- **AI OCR supplementation** uses the API to recognize an entire problematic crop when local OCR is enabled. Choose Low, Medium, or High; turning supplementation off uses local recognition only, while Medium and High increase requests. See the cost guidance above.
+- Disabling local OCR uses an online OCR API for all regions. Its URL, key, and model must be available; each blank field falls back to the corresponding main API setting.
+- OCR supports only the OpenAI-compatible chat API. Choose a model that accepts images and recognizes the source language.
+- **Use API OCR for manually selected bubbles** is independent of supplementation and shared by the reader and floating window. When enabled, manual regions still generate OCR API requests even if supplementation is off.
 - Increase **OCR API timeout** when needed. The allowed range is 30 to 1200 seconds.
 
 ### Custom request parameters
@@ -96,11 +129,12 @@ Parameters apply to the main provider. A provider cannot have duplicate paramete
 
 ### AI request settings
 
-**Pages per request** accepts 1–200; 1 disables page merging. Ordinary translation and full-text fast translation in folder, collection, and batch tasks can combine several pages in one AI request. Results are still saved page by page. Large values may exceed the model's output limit.
+**Pages per request** accepts 1–100; 1 disables page merging. Start with 5–15 pages. Ordinary, full-text fast, and vision-language full-page translation support merging in folder, collection, and batch tasks. Results are saved page by page; vision-language merging sends several separate images. Larger batches are not always better; see the cost and quality guidance above.
 
 ### Folder translation options
 
 - **Vision-language full-page translation**: enable it in a folder to send an annotated full page to the main image-capable model and skip OCR. Long images are sent in sections. It cannot be enabled together with **Full-text fast translation**.
+- **Full-text fast translation** completes OCR, glossary extraction, and translation in windows of up to 100 pages, accumulating terms between windows rather than processing OCR for the whole work first. Cross-page bubbles are handled in Webtoon Scroll only, not ordinary reading mode.
 - **Glossary Processing**: ordinary and vision-language full-page translation can extract and update terms when enabled. When disabled, existing terms can still be used, but no new terms are saved. Full-text fast translation always enables glossary processing.
 
 ### Floating translation settings
@@ -108,6 +142,7 @@ Parameters apply to the main provider. A provider cannot have duplicate paramete
 Configure a separate API URL, key, and model for floating translation. Leave these blank to use the main API settings.
 
 - **Vision-language full-page translation** sends an annotated image of the page's bubble and text regions to an image-capable model and skips OCR. Long images are sent in sections. Set its concurrent translation count separately.
+- The library's **Pages per request** setting does not apply to floating translation, which currently does not process glossary terms. With vision-language translation off, floating translation shares the OCR settings and supplementation policy; OCR requests use the configuration in **OCR Settings**.
 - **Proofreading mode** enters edit mode after every recognition pass.
 - **Auto-clear bubbles** clears bubbles automatically when the page changes.
 - **Floating-button gestures** let you change what single, double, long, and triple taps do.

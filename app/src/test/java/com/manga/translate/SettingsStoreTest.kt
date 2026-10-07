@@ -52,6 +52,68 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `OCR supplement and manual API preferences default off and persist independently`() {
+        val store = SettingsStore(context)
+        val defaults = store.loadOcrApiSettings()
+        assertEquals("", defaults.apiUrl)
+        assertEquals("", defaults.apiKey)
+        assertEquals("", defaults.modelName)
+        assertFalse(defaults.apiSupplementEnabled)
+        assertFalse(defaults.manualBubblesUseApi)
+        for (supplement in listOf(false, true)) {
+            for (manual in listOf(false, true)) {
+                val value = defaults.copy(apiSupplementEnabled = supplement, manualBubblesUseApi = manual)
+                store.saveOcrApiSettings(value)
+                assertEquals(value, SettingsStore(context).loadOcrApiSettings())
+            }
+        }
+    }
+
+    @Test
+    fun `blank OCR API fields reuse corresponding main API settings independently`() {
+        val store = SettingsStore(context)
+        store.save(
+            store.load().copy(
+                apiUrl = "https://main.example/v1",
+                apiKey = "main-key",
+                modelName = "main-model"
+            )
+        )
+        store.saveOcrApiSettings(
+            store.loadOcrApiSettings().copy(
+                useLocalOcr = false,
+                apiUrl = "",
+                apiKey = "ocr-key",
+                modelName = ""
+            )
+        )
+
+        val raw = SettingsStore(context).loadOcrApiSettings()
+        assertEquals("", raw.apiUrl)
+        assertEquals("ocr-key", raw.apiKey)
+        assertEquals("", raw.modelName)
+
+        val resolved = SettingsStore(context).loadResolvedOcrApiSettings()
+        assertEquals("https://main.example/v1", resolved.apiUrl)
+        assertEquals("ocr-key", resolved.apiKey)
+        assertEquals("main-model", resolved.modelName)
+        assertTrue(resolved.hasApiCredentials())
+    }
+
+    @Test
+    fun `supplement strength preserves legacy preferences and clamps persisted levels`() {
+        val prefs = context.getSharedPreferences("manga_translate_settings", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("ocr_api_supplement", true).commit()
+        val store = SettingsStore(context)
+        assertTrue(store.loadOcrApiSettings().apiSupplementEnabled)
+        assertEquals(2, store.loadOcrApiSettings().apiSupplementLevel)
+        for (level in listOf(-1, 1, 2, 3, 9)) {
+            store.saveOcrApiSettings(store.loadOcrApiSettings().copy(apiSupplementLevel = level))
+            assertEquals(level.coerceIn(1, 3), SettingsStore(context).loadOcrApiSettings().apiSupplementLevel)
+        }
+    }
+
+    @Test
     fun `floating horizontal region defaults to full width and persists clamped margins`() {
         val store = SettingsStore(context)
         assertEquals(0 to 0, store.loadFloatingDetectionHorizontalInsets())
@@ -72,7 +134,7 @@ class SettingsStoreTest {
         store.saveTranslationBatchPages(0)
         assertEquals(1, store.loadTranslationBatchPages())
         store.saveTranslationBatchPages(Int.MAX_VALUE)
-        assertEquals(200, store.loadTranslationBatchPages())
+        assertEquals(100, store.loadTranslationBatchPages())
         assertEquals(SettingsStore.DEFAULT_MAX_CONCURRENCY, store.loadMaxConcurrency())
         assertEquals(SettingsStore.DEFAULT_API_TIMEOUT_SECONDS, store.loadApiTimeoutSeconds())
     }
@@ -89,6 +151,16 @@ class SettingsStoreTest {
             TranslationLanguage.supportedForOcr(useLocalOcr = false)
                 .contains(TranslationLanguage.RU_TO_ZH)
         )
+    }
+
+    @Test
+    fun `legacy local ocr concurrency preference no longer controls settings`() {
+        val prefs = context.getSharedPreferences("manga_translate_settings", Context.MODE_PRIVATE)
+        prefs.edit().putInt("local_ocr_concurrency", 8).commit()
+
+        val settings = SettingsStore(context).loadOcrApiSettings()
+
+        assertEquals(SettingsStore.DEFAULT_LOCAL_OCR_CONCURRENCY, settings.localOcrConcurrencyLimit)
     }
 
     @Test
@@ -181,6 +253,7 @@ class SettingsStoreTest {
         val store = SettingsStore(context)
         store.saveApiRetryCount(9)
         store.saveMaxConcurrency(7)
+        store.saveOcrApiSettings(store.loadOcrApiSettings().copy(apiSupplementEnabled = true, apiSupplementLevel = 3, manualBubblesUseApi = true))
         val profileName = "request_controls_${System.nanoTime()}"
 
         assertTrue(store.saveCurrentAsAiProviderProfile(profileName))
@@ -190,10 +263,14 @@ class SettingsStoreTest {
 
         store.saveApiRetryCount(2)
         store.saveMaxConcurrency(3)
+        store.saveOcrApiSettings(store.loadOcrApiSettings().copy(apiSupplementEnabled = false, manualBubblesUseApi = false))
 
         assertTrue(store.applyAiProviderProfile(profileName))
         assertEquals(9, store.loadApiRetryCount())
         assertEquals(7, store.loadMaxConcurrency())
+        assertTrue(store.loadOcrApiSettings().apiSupplementEnabled)
+        assertEquals(3, store.loadOcrApiSettings().apiSupplementLevel)
+        assertTrue(store.loadOcrApiSettings().manualBubblesUseApi)
     }
 
     @Test

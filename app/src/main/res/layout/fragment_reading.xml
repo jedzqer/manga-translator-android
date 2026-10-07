@@ -61,8 +61,8 @@
         android:layout_margin="12dp"
         android:textColor="#FFFFFFFF"
         android:textSize="12sp"
-        android:background="#66000000"
-        android:padding="6dp"
+        android:background="@drawable/bg_reader_label"
+        android:padding="9dp"
         android:visibility="gone" />
 
     <TextView
@@ -71,7 +71,7 @@
         android:layout_height="match_parent"
         android:gravity="center"
         android:text="@string/reading_empty"
-        android:textColor="#FFCCCCCC"
+        android:textColor="?attr/mutedTextColor"
         android:textSize="14sp" />
 
     <LinearLayout
@@ -80,7 +80,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
         android:layout_margin="12dp"
-        android:background="#B3000000"
+        android:background="@drawable/bg_reader_label"
         android:orientation="horizontal"
         android:padding="6dp"
         android:visibility="gone">
@@ -137,7 +137,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="18dp"
-        android:background="#B3000000"
+        android:background="@drawable/bg_reader_label"
         android:orientation="horizontal"
         android:padding="6dp"
         android:visibility="gone">

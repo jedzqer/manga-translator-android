@@ -1,41 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<com.manga.translate.theming.NotebookPaperLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true">
 
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/main_tabs"
+    <!-- Keep the inset outside TabLayout: fixed tabs measure against its full width. -->
+    <FrameLayout
+        android:id="@+id/main_tabs_container"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="16dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="12dp"
         android:background="@drawable/bg_tabs_container"
-        android:elevation="4dp"
-        android:padding="6dp"
+        android:elevation="3dp"
+        android:padding="5dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/main_tabs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
         app:tabIndicator="@drawable/bg_tab_indicator"
+        app:tabIndicatorColor="@android:color/transparent"
         app:tabIndicatorAnimationMode="elastic"
-        app:tabIndicatorFullWidth="false"
+        app:tabIndicatorFullWidth="true"
         app:tabIndicatorGravity="center"
         app:tabInlineLabel="true"
         app:tabMode="fixed"
+        app:tabPaddingStart="4dp"
+        app:tabPaddingEnd="4dp"
         app:tabRippleColor="@android:color/transparent"
-        app:tabSelectedTextColor="?attr/buttonTextColor"
-        app:tabTextAppearance="@style/TextAppearance.AppCompat.Medium"
-        app:tabTextColor="?attr/mutedTextColor"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:tabSelectedTextColor="?attr/heroTextColor"
+        app:tabTextAppearance="@style/Widget.MangaTranslator.TabText"
+        app:tabTextColor="?attr/mutedTextColor" />
+    </FrameLayout>
 
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/main_pager"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginTop="14dp"
-        app:layout_constraintTop_toBottomOf="@id/main_tabs"
+        android:layout_marginTop="10dp"
+        app:layout_constraintTop_toBottomOf="@id/main_tabs_container"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
@@ -71,4 +82,4 @@
             android:textColor="?attr/buttonTextColor" />
     </LinearLayout>
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+</com.manga.translate.theming.NotebookPaperLayout>

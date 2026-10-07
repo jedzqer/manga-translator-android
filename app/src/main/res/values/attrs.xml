@@ -11,4 +11,7 @@
     <attr name="mutedTextColor" format="color" />
     <attr name="heroStartColor" format="color" />
     <attr name="heroEndColor" format="color" />
+    <attr name="stickerAccentColor" format="color" />
+    <attr name="cardStripeColor" format="color" />
+    <attr name="heroTextColor" format="color" />
 </resources>

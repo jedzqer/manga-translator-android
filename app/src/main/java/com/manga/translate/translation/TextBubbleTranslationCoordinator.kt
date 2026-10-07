@@ -24,7 +24,8 @@ internal class TextBubbleTranslationCoordinator(
         language: TranslationLanguage = TranslationLanguage.JA_TO_ZH,
         logTag: String,
         translationMode: String,
-        preserveInputOrder: Boolean = false
+        preserveInputOrder: Boolean = false,
+        glossaryProcessingEnabled: Boolean = true
     ): TextBubbleTranslationBatchResult? {
         if (bubbles.isEmpty()) {
             return TextBubbleTranslationBatchResult(bubbles = bubbles, glossaryUsed = emptyMap())
@@ -62,7 +63,8 @@ internal class TextBubbleTranslationCoordinator(
             promptAsset = promptAsset,
             requestTimeoutMs = requestTimeoutMs,
             retryCount = retryCount,
-            apiSettings = resolvedApiSettings
+            apiSettings = resolvedApiSettings,
+            glossaryProcessingEnabled = glossaryProcessingEnabled
         ) ?: return null
 
         val translationById = LinkedHashMap<Int, String>(translated.items.size)
@@ -104,7 +106,7 @@ internal class TextBubbleTranslationCoordinator(
 
         return TextBubbleTranslationBatchResult(
             bubbles = mergeBubbleTranslations(bubbles, translatedMap, removedBubbleIds),
-            glossaryUsed = translated.glossaryUsed,
+            glossaryUsed = if (glossaryProcessingEnabled) translated.glossaryUsed else emptyMap(),
             removedBubbleIds = removedBubbleIds
         )
     }

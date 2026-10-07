@@ -17,15 +17,5 @@ internal object LocalOcrConcurrency {
     fun compute(context: Context): Int =
         compute(DeviceResourcePolicy.readSnapshot(context))
 
-    // 0 means auto; positive values override the computed result
-    fun resolve(override: Int, context: Context): Int =
-        if (override > 0) override.coerceAtMost(HARD_CAP) else compute(context)
-
-    fun assess(context: Context, requestedConcurrency: Int) =
-        DeviceResourcePolicy.assessConcurrency(
-            snapshot = DeviceResourcePolicy.readSnapshot(context),
-            perWorkerBytes = DeviceResourcePolicy.OCR_INSTANCE_BYTES,
-            requestedConcurrency = requestedConcurrency,
-            hardCap = HARD_CAP
-        )
+    fun resolve(context: Context): Int = compute(context)
 }

@@ -151,7 +151,7 @@ private class FakeLlmGateway(
         promptAsset: String,
         requestTimeoutMs: Int?,
         retryCount: Int,
-        apiSettings: ApiSettings?
+        apiSettings: ApiSettings?, glossaryProcessingEnabled: Boolean
     ): LlmBubbleTranslationResult = result
 
     override suspend fun extractGlossary(
@@ -196,7 +196,7 @@ private class CapturingLlmGateway(
         promptAsset: String,
         requestTimeoutMs: Int?,
         retryCount: Int,
-        apiSettings: ApiSettings?
+        apiSettings: ApiSettings?, glossaryProcessingEnabled: Boolean
     ): LlmBubbleTranslationResult {
         lastRequestIds = items.map { it.id }
         lastRequestTexts = items.map { it.text }

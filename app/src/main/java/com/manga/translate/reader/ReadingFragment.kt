@@ -2,6 +2,7 @@ package com.manga.translate.reader
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -31,9 +32,9 @@ import com.manga.translate.R
 import com.manga.translate.app.MainActivity
 import com.manga.translate.databinding.FragmentReadingBinding
 import com.manga.translate.detection.shouldUseLongImageTiling
+import com.manga.translate.di.AppContainer
 import com.manga.translate.di.appContainer
 import com.manga.translate.library.LibraryDialogs
-import com.manga.translate.library.LibraryPreferencesGateway
 import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.BubbleTranslation
 import com.manga.translate.model.FolderReadingMode
@@ -74,23 +75,12 @@ class ReadingFragment : Fragment() {
     private var _binding: FragmentReadingBinding? = null
     private val binding get() = _binding!!
     private val readingSessionViewModel: ReadingSessionViewModel by activityViewModels()
-    private val appContainer by lazy(LazyThreadSafetyMode.NONE) { requireContext().appContainer }
+    // Bound on the main thread before view jobs start; IO readers share these instances.
+    private lateinit var appContainer: AppContainer
     private val dialogs = LibraryDialogs()
-    private val translationPipeline by lazy(LazyThreadSafetyMode.NONE) {
-        appContainer.createTranslationPipeline()
-    }
-    private val translationStore by lazy(LazyThreadSafetyMode.NONE) { appContainer.translationStore }
-    private val settingsStore by lazy(LazyThreadSafetyMode.NONE) { appContainer.settingsStore }
-    private val preferencesGateway by lazy(LazyThreadSafetyMode.NONE) {
-        LibraryPreferencesGateway(
-            context = requireContext().applicationContext,
-            prefs = appContainer.libraryPrefs,
-            repository = appContainer.libraryRepository
-        )
-    }
-    private val readingProgressStore by lazy(LazyThreadSafetyMode.NONE) {
-        appContainer.readingProgressStore
-    }
+    private val translationStore get() = appContainer.translationStore
+    private val settingsStore get() = appContainer.settingsStore
+    private val readingProgressStore get() = appContainer.readingProgressStore
     private var currentImageFile: java.io.File? = null
     private var currentTranslation: TranslationResult? = null
     private var translationWatchJob: Job? = null
@@ -105,7 +95,7 @@ class ReadingFragment : Fragment() {
     private var readingDisplayMode = ReadingDisplayMode.FIT_WIDTH
     private var folderReadingMode = FolderReadingMode.STANDARD
     private var isEditMode = false
-    private val glossaryStore by lazy(LazyThreadSafetyMode.NONE) { appContainer.glossaryStore }
+    private var createBubbleShape = ManualBubbleShape.RECTANGLE
     private lateinit var emptyBubbleCoordinator: ReadingEmptyBubbleCoordinator
     private var emptyBubbleJob: Job? = null
     private var activeEmptyBubbleModelErrorDialog: AlertDialog? = null
@@ -130,6 +120,11 @@ class ReadingFragment : Fragment() {
     private val pageTransitionInterpolator = FastOutSlowInInterpolator()
     private val incomingPageParallaxDp = 28f
     private val webtoonTranslationWarmRadius = 2
+
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        appContainer = context.appContainer
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -1402,26 +1397,30 @@ class ReadingFragment : Fragment() {
     }
 
     private suspend fun reloadCurrentImageTranslation(imageFile: java.io.File) {
-        if (currentImageFile?.absolutePath != imageFile.absolutePath) return
+        if (currentImageFile?.absolutePath != imageFile.absolutePath || isEditMode) return
+        val previousTranslation = currentTranslation
         val translation = withContext(Dispatchers.IO) {
             loadValidTranslationForCurrentFolder(imageFile)
         }
-        if (currentImageFile?.absolutePath != imageFile.absolutePath) return
+        // Saving a manual frame can queue a read of the pending result. Do not let
+        // that read replace a completed translation or edits made while IO ran.
+        if (currentImageFile?.absolutePath != imageFile.absolutePath || isEditMode ||
+            currentTranslation !== previousTranslation
+        ) return
+        val imageView = _binding?.readingImage ?: return
         currentTranslation = translation
-        binding.readingImage.post {
+        imageView.post {
+            if (_binding?.readingImage !== imageView || isEditMode ||
+                currentImageFile?.absolutePath != imageFile.absolutePath ||
+                currentTranslation !== translation
+            ) return@post
             updateOverlay(translation, currentBitmap)
         }
     }
 
     private fun loadValidTranslationForCurrentFolder(imageFile: java.io.File): TranslationResult? {
-        val folder = readingSessionViewModel.currentFolder.value ?: return translationStore.load(imageFile)
-        return translationPipeline.loadValidTranslation(
-            imageFile = imageFile,
-            fullTranslate = preferencesGateway.isFullTranslateEnabled(folder),
-            useVlDirectTranslate = preferencesGateway.isVlDirectTranslateEnabled(folder),
-            language = preferencesGateway.getTranslationLanguage(folder),
-            readingMode = preferencesGateway.getReadingMode(folder)
-        )
+        // Saved translations are user data, independent of current folder settings.
+        return translationStore.load(imageFile)
     }
 
     private fun warmNearbyWebtoonTranslations() {
@@ -1731,13 +1730,26 @@ class ReadingFragment : Fragment() {
     private fun enterCreateBubbleMode() {
         if (!isEditMode) return
         if (blockBubbleEditingWhileZoomed()) return
+        val shapes = ManualBubbleShape.entries
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.reading_bubble_shape_title)
+            .setItems(shapes.map { getString(it.labelRes) }.toTypedArray()) { _, which ->
+                if (!isAdded || _binding == null || !isEditMode) return@setItems
+                startCreateBubbleMode(shapes[which])
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun startCreateBubbleMode(shape: ManualBubbleShape) {
+        createBubbleShape = shape
         if (folderReadingMode == FolderReadingMode.WEBTOON_SCROLL) {
             addNewBubble()
             return
         }
         binding.readingEditControls.visibility = View.GONE
         exitBubbleResizeMode()
-        binding.translationOverlay.setCreateBubbleMode(true)
+        binding.translationOverlay.setCreateBubbleMode(true, shape)
         Toast.makeText(
             requireContext(),
             R.string.reading_create_bubble_hint,
@@ -1756,11 +1768,13 @@ class ReadingFragment : Fragment() {
             RectF(rect),
             "",
             BubbleSource.MANUAL,
+            maskContour = createBubbleShape.contour(rect, translation.width, translation.height),
             ownerImageName = currentImageFile?.name
         )
         val updated = translation.copy(bubbles = translation.bubbles + newBubble)
         currentTranslation = updated
         renderAndMaybePersistCurrentTranslation()
+        enterBubbleResizeMode(nextId)
     }
 
     private fun handleBubbleResized(bubbleId: Int, newRect: RectF) {
@@ -1772,7 +1786,7 @@ class ReadingFragment : Fragment() {
         }
         val updatedBubbles = translation.bubbles.map { bubble ->
             if (bubble.id == bubbleId) {
-                bubble.copy(rect = RectF(materializedRect))
+                bubble.withResizedGeometry(materializedRect, translation.width, translation.height)
             } else {
                 bubble
             }
@@ -1838,7 +1852,9 @@ class ReadingFragment : Fragment() {
 
         val updatedRect = RectF(left, top, right, bottom)
         val updatedBubbles = translation.bubbles.map { current ->
-            if (current.id == bubbleId) current.copy(rect = updatedRect) else current
+            if (current.id == bubbleId) {
+                current.withResizedGeometry(updatedRect, translation.width, translation.height)
+            } else current
         }
         currentTranslation = translation.copy(bubbles = updatedBubbles)
         if (offset != (0f to 0f)) {
@@ -1880,6 +1896,7 @@ class ReadingFragment : Fragment() {
             rect,
             "",
             BubbleSource.MANUAL,
+            maskContour = createBubbleShape.contour(rect, translation.width, translation.height),
             ownerImageName = currentImageFile?.name
         )
         val updated = translation.copy(bubbles = translation.bubbles + newBubble)
@@ -1935,16 +1952,16 @@ class ReadingFragment : Fragment() {
                         } else {
                             binding.translationOverlay.setTranslations(outcome.updatedTranslation)
                         }
-                        if (outcome.translatedByLlm) {
-                            Toast.makeText(
-                                requireContext(),
-                                R.string.reading_empty_bubble_translated,
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        } else if (outcome.ocrFailedCount > 0) {
+                        if (outcome.ocrFailedCount > 0) {
                             Toast.makeText(
                                 requireContext(),
                                 R.string.reading_empty_bubble_failed,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else if (outcome.translatedByLlm) {
+                            Toast.makeText(
+                                requireContext(),
+                                R.string.reading_empty_bubble_translated,
                                 Toast.LENGTH_SHORT
                             ).show()
                         }

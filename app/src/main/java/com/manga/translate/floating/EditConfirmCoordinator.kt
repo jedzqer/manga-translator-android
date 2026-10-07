@@ -8,6 +8,7 @@ import com.manga.translate.model.TranslationResult
 import com.manga.translate.network.LlmErrorCode
 import com.manga.translate.network.LlmRequestException
 import com.manga.translate.network.LlmResponseException
+import com.manga.translate.network.executeWithModelResponseRetries
 import com.manga.translate.platform.AppLogger
 import com.manga.translate.settings.SettingsStore
 import kotlinx.coroutines.Dispatchers
@@ -252,33 +253,6 @@ internal class EditConfirmCoordinator(
         fun onCommitted(translation: TranslationResult)
     }
 }
-
-/**
- * Shared by the confirm flow and the floating detection flow: silently retries
- * invalid model responses up to [MODEL_RESPONSE_SILENT_RETRY_COUNT] times
- * before rethrowing the last [LlmResponseException].
- */
-internal suspend fun <T> executeWithModelResponseRetries(
-    logTag: String,
-    block: suspend () -> T
-): T {
-    var lastError: LlmResponseException? = null
-    repeat(MODEL_RESPONSE_SILENT_RETRY_COUNT) { attempt ->
-        try {
-            return block()
-        } catch (e: LlmResponseException) {
-            lastError = e
-            AppLogger.log(
-                logTag,
-                "Model response invalid, retry ${attempt + 1}/$MODEL_RESPONSE_SILENT_RETRY_COUNT",
-                e
-            )
-        }
-    }
-    throw requireNotNull(lastError)
-}
-
-private const val MODEL_RESPONSE_SILENT_RETRY_COUNT = 3
 
 private fun TranslationResult.deepCopy(): TranslationResult {
     return copy(

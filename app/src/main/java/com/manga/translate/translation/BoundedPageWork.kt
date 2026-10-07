@@ -1,6 +1,7 @@
 package com.manga.translate.translation
 
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -29,5 +30,38 @@ internal suspend fun <T> List<T>.forEachBounded(
                 }
             }
         }.joinAll()
+    }
+}
+
+/**
+ * Fixed workers with rendezvous result lanes. A slow earlier page cannot cause an
+ * unbounded reorder buffer: each worker retains at most one completed result.
+ */
+internal suspend fun <T, R> List<T>.forEachOrderedBounded(
+    concurrency: Int,
+    prepare: suspend (T) -> R,
+    consume: suspend (R) -> Unit
+) = coroutineScope {
+    require(concurrency > 0)
+    val workers = minOf(concurrency, size)
+    val lanes = List(workers) { Channel<R>(Channel.RENDEZVOUS) }
+    val jobs = lanes.mapIndexed { worker, lane ->
+        launch {
+            try {
+                for (index in worker until size step workers) {
+                    currentCoroutineContext().ensureActive()
+                    lane.send(prepare(this@forEachOrderedBounded[index]))
+                }
+            } finally {
+                lane.close()
+            }
+        }
+    }
+    try {
+        for (index in indices) consume(lanes[index % workers].receive())
+        jobs.joinAll()
+    } finally {
+        jobs.forEach { it.cancel() }
+        lanes.forEach { it.cancel() }
     }
 }

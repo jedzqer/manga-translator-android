@@ -3,11 +3,12 @@ package com.manga.translate.network
 import com.manga.translate.platform.AppLogger
 import com.manga.translate.settings.SettingsStore
 import kotlinx.coroutines.delay
+import kotlin.random.Random
 
 /**
  * 重试判定与退避：重试次数来自 SettingsStore（loadApiRetryCount），
  * 可重试范围与原始实现一致——网络错误、超时、HTTP 408/429/5xx、明确的暂时不可用响应。
- * 退避逻辑（指数退避 + 上限 / 固定延迟）原样迁移，不新增网络行为。
+ * 是否继续尝试与退避等待分离；仅可重试错误等待带随机扰动的有上限指数退避。
  */
 internal class RetryHandler(private val settingsStore: SettingsStore) {
     /** 门面传入默认 RETRY_COUNT 时改用 SettingsStore 的配置值，否则使用调用方显式值。 */
@@ -19,24 +20,28 @@ internal class RetryHandler(private val settingsStore: SettingsStore) {
         )
     }
 
-    suspend fun maybeBackoffBeforeRetry(
+    fun canRetry(
         attempt: Int,
         retryPolicy: RetryPolicy,
         errorCode: String?,
         errorBody: String?
-    ) {
-        if (attempt >= retryPolicy.maxAttempts || !shouldRetry(errorCode, errorBody, retryPolicy.mode)) {
-            return
-        }
-        val delayMs = when (retryPolicy.mode) {
-            RetryMode.DEFAULT -> (RETRY_BASE_DELAY_MS shl (attempt - 1)).coerceAtMost(RETRY_MAX_DELAY_MS)
-            RetryMode.CONFIGURABLE -> CONFIGURED_RETRY_DELAY_MS
-        }
+    ): Boolean = attempt < retryPolicy.maxAttempts &&
+        shouldRetry(errorCode, errorBody, retryPolicy.mode)
+
+    suspend fun backoffBeforeRetry(attempt: Int, retryPolicy: RetryPolicy, errorCode: String?) {
+        val delayMs = retryDelayMs(attempt, retryPolicy.mode)
         AppLogger.log(
             "LlmClient",
             "Retrying request after ${delayMs}ms delay (attempt ${attempt + 1}/${retryPolicy.maxAttempts}, error=$errorCode)"
         )
-        delay(delayMs.toLong())
+        delay(delayMs)
+    }
+
+    internal fun retryDelayMs(attempt: Int, mode: RetryMode): Long {
+        val base = if (mode == RetryMode.DEFAULT) RETRY_BASE_DELAY_MS else CONFIGURED_RETRY_DELAY_MS
+        val ceiling = (base.toLong() shl (attempt - 1).coerceIn(0, 16))
+            .coerceAtMost(RETRY_MAX_DELAY_MS.toLong())
+        return Random.nextLong(ceiling / 2, ceiling + 1)
     }
 
     private fun shouldRetry(
@@ -59,7 +64,7 @@ internal class RetryHandler(private val settingsStore: SettingsStore) {
             return false
         }
         val status = errorCode.removePrefix("HTTP ").toIntOrNull() ?: return false
-        return status >= 500
+        return status in 500..599
     }
 
     private fun shouldRetryWithConfiguredMode(errorCode: String?, errorBody: String?): Boolean {
@@ -68,7 +73,7 @@ internal class RetryHandler(private val settingsStore: SettingsStore) {
             return true
         }
         val status = errorCode.removePrefix("HTTP ").toIntOrNull()
-        if (status != null && status >= 500) {
+        if (status != null && status in 500..599) {
             return true
         }
         if (errorBody != null) {

@@ -126,7 +126,7 @@ data class BubbleTranslation(
     val maskContour: FloatArray? = null,
     val ownerImageName: String? = null
 ) {
-    fun supportsResizeEditing(): Boolean = maskContour == null
+    fun supportsResizeEditing(): Boolean = maskContour == null || source == BubbleSource.MANUAL
 
     fun resolvedOwnerImageName(defaultImageName: String): String {
         return ownerImageName?.trim().orEmpty().ifBlank { defaultImageName }

@@ -33,7 +33,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/settings_group_api"
-                android:textAppearance="@style/Widget.MangaTranslator.SectionLabel" />
+                style="@style/Widget.MangaTranslator.SectionTab" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -122,6 +122,14 @@
                     android:layout_height="wrap_content"
                     android:inputType="number" />
             </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:id="@+id/api_timeout_policy_description"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/api_timeout_policy_description"
+                android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/api_retry_count_layout"
@@ -216,7 +224,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/settings_group_translation"
-                android:textAppearance="@style/Widget.MangaTranslator.SectionLabel" />
+                style="@style/Widget.MangaTranslator.SectionTab" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -294,7 +302,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/settings_group_experience"
-                android:textAppearance="@style/Widget.MangaTranslator.SectionLabel" />
+                style="@style/Widget.MangaTranslator.SectionTab" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -363,7 +371,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/settings_group_support"
-                android:textAppearance="@style/Widget.MangaTranslator.SectionLabel" />
+                style="@style/Widget.MangaTranslator.SectionTab" />
 
             <TextView
                 android:layout_width="wrap_content"

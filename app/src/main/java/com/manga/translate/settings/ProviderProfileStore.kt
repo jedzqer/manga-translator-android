@@ -229,6 +229,9 @@ internal class ProviderProfileStore(
                 "ocrSettings",
                 JSONObject()
                     .put("useLocalOcr", profile.ocrSettings.useLocalOcr)
+                    .put("apiSupplementEnabled", profile.ocrSettings.apiSupplementEnabled)
+                    .put("apiSupplementLevel", profile.ocrSettings.apiSupplementLevel)
+                    .put("manualBubblesUseApi", profile.ocrSettings.manualBubblesUseApi)
                     .put("apiUrl", profile.ocrSettings.apiUrl)
                     .put("apiKey", profile.ocrSettings.apiKey)
                     .put("modelName", profile.ocrSettings.modelName)
@@ -358,6 +361,9 @@ internal class ProviderProfileStore(
             ),
             ocrSettings = OcrApiSettings(
                 useLocalOcr = ocrJson.optBoolean("useLocalOcr", true) || hasUnsupportedOcrFormat,
+                apiSupplementEnabled = !hasUnsupportedOcrFormat && ocrJson.optBoolean("apiSupplementEnabled", false),
+                apiSupplementLevel = ocrJson.optInt("apiSupplementLevel", 2).coerceIn(1, 3),
+                manualBubblesUseApi = !hasUnsupportedOcrFormat && ocrJson.optBoolean("manualBubblesUseApi", false),
                 apiUrl = if (hasUnsupportedOcrFormat) {
                     ""
                 } else {
@@ -383,13 +389,7 @@ internal class ProviderProfileStore(
                     SettingsStore.MIN_OCR_API_CONCURRENCY,
                     SettingsStore.MAX_OCR_API_CONCURRENCY
                 ),
-                localOcrConcurrencyLimit = ocrJson.optInt(
-                    "localOcrConcurrencyLimit",
-                    SettingsStore.DEFAULT_LOCAL_OCR_CONCURRENCY
-                ).coerceIn(
-                    SettingsStore.MIN_LOCAL_OCR_CONCURRENCY,
-                    SettingsStore.MAX_LOCAL_OCR_CONCURRENCY
-                ),
+                localOcrConcurrencyLimit = SettingsStore.DEFAULT_LOCAL_OCR_CONCURRENCY,
                 ocrApiFormat = OcrApiFormat.fromPref(ocrApiFormatPref)
             ),
             floatingTranslateSettings = FloatingTranslateApiSettings(

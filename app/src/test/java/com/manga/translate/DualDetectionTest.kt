@@ -131,4 +131,42 @@ class DualDetectionTest {
         assertEquals(2, blocks.size) // Adjacent model blocks must not be regrouped as lines.
         assertTrue(blocks.all { it.lines.isEmpty() })
     }
+
+    @Test
+    fun `overlapping text blocks retain the full union and update the mask`() {
+        val first = RectF(20f, 20f, 80f, 80f)
+        val second = RectF(60f, 20f, 120f, 80f)
+        val block = dualTextBlocks(listOf(first, second, RectF(first)), 200, 200).single()
+        assertEquals(RectF(20f, 20f, 120f, 80f), block.rect)
+        assertArrayEquals(floatArrayOf(0.1f, 0.1f, 0.1f, 0.4f, 0.6f, 0.4f, 0.6f, 0.1f),
+            block.maskContour, 0.0001f)
+        assertTrue(block.lines.isEmpty())
+        assertEquals(RectF(20f, 20f, 80f, 80f), first)
+        assertEquals(RectF(60f, 20f, 120f, 80f), second)
+    }
+
+    @Test
+    fun `contained text and overlap chains merge regardless of input order`() {
+        val rects = listOf(RectF(0f, 0f, 100f, 100f), RectF(70f, 0f, 170f, 100f),
+            RectF(140f, 0f, 240f, 100f), RectF(10f, 10f, 20f, 20f))
+        for (order in listOf(rects, rects.reversed(), listOf(rects[2], rects[0], rects[3], rects[1]))) {
+            assertEquals(RectF(0f, 0f, 240f, 100f), dualTextBlocks(order, 300, 200).single().rect)
+        }
+    }
+
+    @Test
+    fun `slight overlap and edge contact keep separate text blocks`() {
+        val rects = listOf(RectF(0f, 0f, 100f, 100f), RectF(80f, 0f, 180f, 100f),
+            RectF(180f, 0f, 280f, 100f))
+        assertEquals(rects, dualTextBlocks(rects, 300, 200).map { it.rect })
+        assertTrue(dualTextBlocks(emptyList(), 300, 200).isEmpty())
+    }
+
+    @Test
+    fun `empty space inside a merged bounding box does not absorb unrelated text`() {
+        val rects = listOf(RectF(0f, 0f, 100f, 40f), RectF(0f, 0f, 40f, 100f),
+            RectF(60f, 60f, 90f, 90f))
+        assertEquals(listOf(RectF(0f, 0f, 100f, 100f), rects[2]),
+            dualTextBlocks(rects, 200, 200).map { it.rect })
+    }
 }

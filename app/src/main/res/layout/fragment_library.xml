@@ -63,7 +63,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/library_quick_actions"
-                        android:textAppearance="@style/Widget.MangaTranslator.SectionLabel" />
+                        style="@style/Widget.MangaTranslator.SectionTab" />
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -72,88 +72,90 @@
                         android:text="@string/library_quick_actions_title"
                         android:textAppearance="@style/Widget.MangaTranslator.CardTitle" />
 
-                    <androidx.constraintlayout.widget.ConstraintLayout
+                    <!-- Rows stretch both tiles to the taller label so long translations never overlap. -->
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
+                        android:baselineAligned="false"
                         android:clipChildren="false"
                         android:clipToPadding="false"
+                        android:orientation="horizontal"
                         android:paddingStart="2dp"
                         android:paddingEnd="2dp">
 
                         <androidx.appcompat.widget.AppCompatButton
                             android:id="@+id/import_ehviewer_button"
                             android:layout_width="0dp"
-                            android:layout_height="56dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
                             android:layout_marginEnd="8dp"
                             android:background="@drawable/bg_action_tile"
                             android:gravity="center_vertical|start"
-                            android:minHeight="0dp"
+                            android:minHeight="64dp"
                             android:paddingStart="12dp"
                             android:paddingEnd="12dp"
                             android:text="@string/import_ehviewer"
                             android:textAlignment="viewStart"
-                            android:textAllCaps="false"
-                            app:layout_constraintEnd_toStartOf="@id/import_cbz_button"
-                            app:layout_constraintHorizontal_chainStyle="spread"
-                            app:layout_constraintStart_toStartOf="parent"
-                            app:layout_constraintTop_toTopOf="parent" />
+                            android:textAllCaps="false" />
 
                         <androidx.appcompat.widget.AppCompatButton
                             android:id="@+id/import_cbz_button"
                             android:layout_width="0dp"
-                            android:layout_height="56dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
                             android:layout_marginStart="8dp"
                             android:background="@drawable/bg_action_tile"
                             android:gravity="center_vertical|start"
-                            android:minHeight="0dp"
+                            android:minHeight="64dp"
                             android:paddingStart="12dp"
                             android:paddingEnd="12dp"
                             android:text="@string/import_cbz"
                             android:textAlignment="viewStart"
-                            android:textAllCaps="false"
-                            app:layout_constraintEnd_toEndOf="parent"
-                            app:layout_constraintStart_toEndOf="@id/import_ehviewer_button"
-                            app:layout_constraintTop_toTopOf="@id/import_ehviewer_button" />
+                            android:textAllCaps="false" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:baselineAligned="false"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:orientation="horizontal"
+                        android:paddingStart="2dp"
+                        android:paddingEnd="2dp">
 
                         <androidx.appcompat.widget.AppCompatButton
                             android:id="@+id/floating_translate_button"
                             android:layout_width="0dp"
-                            android:layout_height="56dp"
-                            android:layout_marginTop="8dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
                             android:layout_marginEnd="8dp"
                             android:background="@drawable/bg_action_tile"
                             android:gravity="center_vertical|start"
-                            android:minHeight="0dp"
+                            android:minHeight="64dp"
                             android:paddingStart="12dp"
                             android:paddingEnd="12dp"
                             android:text="@string/floating_translate_button"
                             android:textAlignment="viewStart"
-                            android:textAllCaps="false"
-                            app:layout_constraintEnd_toStartOf="@id/tutorial_button"
-                            app:layout_constraintStart_toStartOf="parent"
-                            app:layout_constraintTop_toBottomOf="@id/import_ehviewer_button" />
+                            android:textAllCaps="false" />
 
                         <androidx.appcompat.widget.AppCompatButton
                             android:id="@+id/tutorial_button"
                             android:layout_width="0dp"
-                            android:layout_height="56dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
                             android:layout_marginStart="8dp"
-                            android:layout_marginTop="8dp"
                             android:background="@drawable/bg_action_tile"
                             android:gravity="center_vertical|start"
-                            android:minHeight="0dp"
+                            android:minHeight="64dp"
                             android:paddingStart="12dp"
                             android:paddingEnd="12dp"
                             android:text="@string/tutorial_button"
                             android:textAlignment="viewStart"
-                            android:textAllCaps="false"
-                            app:layout_constraintBottom_toBottomOf="parent"
-                            app:layout_constraintEnd_toEndOf="parent"
-                            app:layout_constraintStart_toEndOf="@id/floating_translate_button"
-                            app:layout_constraintTop_toBottomOf="@id/import_cbz_button" />
-
-                    </androidx.constraintlayout.widget.ConstraintLayout>
+                            android:textAllCaps="false" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <LinearLayout
@@ -169,7 +171,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/library_collection_label"
-                        android:textAppearance="@style/Widget.MangaTranslator.SectionLabel" />
+                        style="@style/Widget.MangaTranslator.SectionTab" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -348,7 +350,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/library_action_panel_label"
-                        android:textAppearance="@style/Widget.MangaTranslator.SectionLabel" />
+                        style="@style/Widget.MangaTranslator.SectionTab" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -525,23 +527,27 @@
                         android:paddingEnd="10dp"
                         android:paddingBottom="10dp">
 
-                        <androidx.appcompat.widget.SwitchCompat
-                            android:id="@+id/folder_full_translate_switch"
+                        <TextView
+                            android:id="@+id/folder_full_translate_label"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
+                            android:minHeight="48dp"
+                            android:gravity="center_vertical"
+                            android:labelFor="@id/folder_full_translate_switch"
                             android:text="@string/folder_full_translate" />
 
-                        <TextView
+                        <androidx.appcompat.widget.AppCompatImageButton
                             android:id="@+id/folder_full_translate_info"
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:background="?attr/selectableItemBackgroundBorderless"
-                            android:contentDescription="@string/folder_full_translate_info_desc"
-                            android:gravity="center"
-                            android:text="@string/exclamation_mark"
-                            android:textSize="18sp"
-                            android:textStyle="bold" />
+                            style="@style/Widget.MangaTranslator.HelpButton"
+                            android:contentDescription="@string/folder_full_translate_info_desc" />
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/folder_full_translate_switch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:contentDescription="@string/folder_full_translate" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -555,24 +561,28 @@
                         android:paddingTop="10dp"
                         android:paddingEnd="10dp"
                         android:paddingBottom="10dp">
+
+                        <TextView
+                            android:id="@+id/folder_glossary_processing_label"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:minHeight="48dp"
+                            android:gravity="center_vertical"
+                            android:labelFor="@id/folder_glossary_processing_switch"
+                            android:text="@string/folder_glossary_processing" />
+
+                        <androidx.appcompat.widget.AppCompatImageButton
+                            android:id="@+id/folder_glossary_processing_info"
+                            style="@style/Widget.MangaTranslator.HelpButton"
+                            android:contentDescription="@string/folder_glossary_processing_info_desc" />
 
                         <androidx.appcompat.widget.SwitchCompat
                             android:id="@+id/folder_glossary_processing_switch"
-                            android:layout_width="0dp"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/folder_glossary_processing" />
-
-                        <TextView
-                            android:id="@+id/folder_glossary_processing_info"
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:background="?attr/selectableItemBackgroundBorderless"
-                            android:contentDescription="@string/folder_glossary_processing_info_desc"
-                            android:gravity="center"
-                            android:text="@string/exclamation_mark"
-                            android:textSize="18sp"
-                            android:textStyle="bold" />
+                            android:minHeight="48dp"
+                            android:contentDescription="@string/folder_glossary_processing" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -587,23 +597,27 @@
                         android:paddingEnd="10dp"
                         android:paddingBottom="10dp">
 
-                        <androidx.appcompat.widget.SwitchCompat
-                            android:id="@+id/folder_vl_direct_translate_switch"
+                        <TextView
+                            android:id="@+id/folder_vl_direct_translate_label"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
+                            android:minHeight="48dp"
+                            android:gravity="center_vertical"
+                            android:labelFor="@id/folder_vl_direct_translate_switch"
                             android:text="@string/folder_use_vl_direct_translate" />
 
-                        <TextView
+                        <androidx.appcompat.widget.AppCompatImageButton
                             android:id="@+id/folder_vl_direct_translate_info"
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:background="?attr/selectableItemBackgroundBorderless"
-                            android:contentDescription="@string/folder_use_vl_direct_translate_info_desc"
-                            android:gravity="center"
-                            android:text="@string/exclamation_mark"
-                            android:textSize="18sp"
-                            android:textStyle="bold" />
+                            style="@style/Widget.MangaTranslator.HelpButton"
+                            android:contentDescription="@string/folder_use_vl_direct_translate_info_desc" />
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/folder_vl_direct_translate_switch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:contentDescription="@string/folder_use_vl_direct_translate" />
                     </LinearLayout>
 
                     <androidx.appcompat.widget.AppCompatButton
@@ -806,10 +820,12 @@
         android:layout_height="wrap_content"
         android:contentDescription="@string/create_folder"
         android:src="@android:drawable/ic_input_add"
-        app:backgroundTint="?attr/heroStartColor"
-        app:elevation="8dp"
+        android:rotation="-3"
+        app:backgroundTint="?attr/buttonFillColor"
+        app:elevation="5dp"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.MangaTranslator.StickerFab"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:tint="@android:color/white" />
+        app:tint="?attr/buttonTextColor" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

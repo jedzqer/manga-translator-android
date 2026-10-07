@@ -21,6 +21,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.widget.SwitchCompat
+import androidx.core.graphics.ColorUtils
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.textfield.TextInputLayout
@@ -52,7 +53,10 @@ object CustomThemeUiApplier {
 
     private fun apply(view: View, palette: ThemePalette, semantic: SemanticColors) {
         when (view) {
-            is Button -> view.setTextColor(palette.buttonText)
+            is Button -> view.setTextColor(ColorStateList(
+                arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
+                intArrayOf(palette.mutedForeground, palette.buttonText)
+            ))
             is TextView -> {
                 val current = view.textColors.defaultColor
                 val target = when (current) {
@@ -69,9 +73,9 @@ object CustomThemeUiApplier {
             }
         }
         when (view) {
-            is TabLayout -> view.setTabTextColors(palette.mutedForeground, palette.buttonText)
+            is TabLayout -> view.setTabTextColors(palette.mutedForeground, palette.heroText)
             is FloatingActionButton -> {
-                view.backgroundTintList = ColorStateList.valueOf(palette.accent)
+                view.backgroundTintList = ColorStateList.valueOf(palette.buttonFill)
                 view.imageTintList = ColorStateList.valueOf(palette.buttonText)
             }
             is SwitchCompat -> {
@@ -136,7 +140,19 @@ object CustomThemeUiApplier {
             }
             is LayerDrawable -> {
                 repeat(drawable.numberOfLayers) { index ->
-                    recolorDrawable(drawable.getDrawable(index), palette, semantic, density)
+                    val child = drawable.getDrawable(index)
+                    if (drawable.getId(index) == R.id.card_accent_strip && child is GradientDrawable) {
+                        // Keep decorative strips softer than text, even when the chosen accent
+                        // matches the card. Identify the layer instead of matching shared colors.
+                        val accent = if (ColorUtils.calculateContrast(palette.accent, palette.surfaceAlt) >= 1.5) {
+                            palette.accent
+                        } else {
+                            palette.foreground
+                        }
+                        child.setColor(ColorUtils.blendARGB(palette.surfaceAlt, accent, 0.35f))
+                    } else {
+                        recolorDrawable(child, palette, semantic, density)
+                    }
                 }
             }
             is DrawableWrapper -> drawable.drawable?.let { child ->

@@ -6,10 +6,10 @@ import java.util.LinkedHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -21,13 +21,13 @@ import org.json.JSONObject
 /**
  * 纯传输职责：OkHttp 请求头组装、执行、超时、取消与按超时缓存连接配置的客户端池。
  *
- * 超时/重试策略的实际取值与原始 LlmClient 实现完全一致，不在此新增网络行为。
+ * 响应消费完成后才恢复协程，确保取消覆盖响应体读取。
  */
 internal class HttpTransport {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val baseHttpClient = OkHttpClient()
-    private val httpClientCache = object : LinkedHashMap<Int, OkHttpClient>(MAX_CACHED_HTTP_CLIENTS, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, OkHttpClient>?): Boolean {
+    private val httpClientCache = object : LinkedHashMap<Pair<Int, Int>, OkHttpClient>(MAX_CACHED_HTTP_CLIENTS, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<Int, Int>, OkHttpClient>?): Boolean {
             return size > MAX_CACHED_HTTP_CLIENTS
         }
     }
@@ -60,67 +60,76 @@ internal class HttpTransport {
         return requestBuilder.build()
     }
 
-    suspend fun executeRequest(request: Request, timeoutMs: Int): Response {
-        val client = getOrBuildClient(timeoutMs)
-        return executeCallCancellable(client.newCall(request))
+    suspend fun <T> executeRequest(
+        request: Request,
+        timeoutMs: Int,
+        writeTimeoutMs: Int = timeoutMs,
+        consume: (Response) -> T
+    ): T {
+        val client = getOrBuildClient(timeoutMs, writeTimeoutMs)
+        return executeCallCancellable(client.newCall(request), consume)
     }
 
-    private fun getOrBuildClient(timeoutMs: Int): OkHttpClient {
+    internal fun getOrBuildClient(timeoutMs: Int, writeTimeoutMs: Int = timeoutMs): OkHttpClient {
         return synchronized(httpClientCache) {
-            httpClientCache.getOrPut(timeoutMs) {
+            httpClientCache.getOrPut(timeoutMs to writeTimeoutMs) {
                 baseHttpClient.newBuilder()
-                    .connectTimeout(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
+                    .connectTimeout(minOf(timeoutMs, RequestTimeoutPolicy.CONNECT_TIMEOUT_MS).toLong(), TimeUnit.MILLISECONDS)
                     .readTimeout(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
-                    .writeTimeout(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
+                    .writeTimeout(minOf(timeoutMs, writeTimeoutMs).toLong(), TimeUnit.MILLISECONDS)
                     .callTimeout(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
                     .build()
             }
         }
     }
 
-    private suspend fun executeCallCancellable(call: Call): Response =
+    private suspend fun <T> executeCallCancellable(call: Call, consume: (Response) -> T): T =
         suspendCancellableCoroutine { continuation ->
-            continuation.invokeOnCancellation {
-                call.cancel()
-            }
+            continuation.invokeOnCancellation { call.cancel() }
             try {
-                val response = call.execute()
-                if (continuation.isActive) {
-                    continuation.resume(response)
-                } else {
-                    response.close()
+                call.execute().use { response ->
+                    if (continuation.isActive) {
+                        val result = consume(response)
+                        if (continuation.isActive) continuation.resume(result)
+                    }
                 }
             } catch (t: Throwable) {
-                if (continuation.isActive) {
-                    continuation.resumeWithException(t)
-                }
+                if (continuation.isActive) continuation.resumeWithException(t)
             }
         }
 }
 
 /** 动态并发限流：OCR 请求并发数来自 OcrApiSettings，默认至少 1。 */
 internal class DynamicConcurrencyLimiter {
-    private val mutex = Mutex()
+    private val lock = Any()
     private var active = 0
+    private var released = CompletableDeferred<Unit>()
 
     suspend fun <T> withPermit(limit: Int, block: suspend () -> T): T {
         val normalizedLimit = limit.coerceAtLeast(1)
         while (true) {
-            val acquired = mutex.withLock {
+            currentCoroutineContext().ensureActive()
+            val signal = synchronized(lock) {
                 if (active < normalizedLimit) {
                     active++
-                    true
+                    null
                 } else {
-                    false
+                    released
                 }
             }
-            if (acquired) break
-            delay(10)
+            if (signal == null) break
+            signal.await()
         }
         return try {
+            currentCoroutineContext().ensureActive()
             block()
         } finally {
-            mutex.withLock { active-- }
+            // Releasing must not suspend: a cancelled caller must still return its permit.
+            val signal = synchronized(lock) {
+                active--
+                released.also { released = CompletableDeferred() }
+            }
+            signal.complete(Unit)
         }
     }
 }

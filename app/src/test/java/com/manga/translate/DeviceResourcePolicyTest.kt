@@ -55,6 +55,17 @@ class DeviceResourcePolicyTest {
     }
 
     @Test
+    fun `ocr recommendation accounts for a shared model budget`() {
+        val recommendation = DeviceResourcePolicy.recommendConcurrency(
+            snapshot = snapshot(systemMib = 256, heapMib = 256, cpuCores = 8),
+            perWorkerBytes = DeviceResourcePolicy.OCR_INSTANCE_BYTES,
+            hardCap = 8
+        )
+
+        assertEquals(3, recommendation)
+    }
+
+    @Test
     fun `manual concurrency above recommendation warns`() {
         val assessment = DeviceResourcePolicy.assessConcurrency(
             snapshot = snapshot(systemMib = 512, heapMib = 512, cpuCores = 4),

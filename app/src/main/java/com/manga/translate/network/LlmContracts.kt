@@ -61,7 +61,8 @@ interface LlmGateway {
         promptAsset: String = "prompts/llm_prompts.json",
         requestTimeoutMs: Int? = null,
         retryCount: Int = 3,
-        apiSettings: ApiSettings? = null
+        apiSettings: ApiSettings? = null,
+        glossaryProcessingEnabled: Boolean = true
     ): LlmBubbleTranslationResult?
     suspend fun extractGlossary(
         text: String,
@@ -69,6 +70,8 @@ interface LlmGateway {
         promptAsset: String
     ): Map<String, String>?
     suspend fun recognizeImageText(image: Bitmap, language: TranslationLanguage): String?
+    suspend fun recognizePageRegions(image: Bitmap, requestedIds: List<Int>): Map<Int, String> =
+        throw UnsupportedOperationException("Page OCR supplement unavailable")
     suspend fun translateImageBubble(
         imageBase64: String,
         promptAsset: String,
@@ -80,6 +83,16 @@ interface LlmGateway {
     ): LlmTranslationResult?
     suspend fun translateImageItems(
         imageBase64: String,
+        requestedIds: List<Int>,
+        promptAsset: String,
+        glossary: Map<String, String>,
+        glossaryProcessingEnabled: Boolean,
+        requestTimeoutMs: Int,
+        retryCount: Int,
+        apiSettings: ApiSettings
+    ): LlmBubbleTranslationResult? = throw UnsupportedOperationException("Structured image translation unavailable")
+    suspend fun translateMultiImageItems(
+        imagesBase64: List<String>,
         requestedIds: List<Int>,
         promptAsset: String,
         glossary: Map<String, String>,

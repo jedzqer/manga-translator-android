@@ -55,6 +55,76 @@ class LlmClientPayloadTest {
     }
 
     @Test
+    fun `API OCR accepts local mode with supplement or manual preference`() = runBlocking {
+        val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+        try {
+            for (manual in listOf(false, true)) {
+                settingsStore.saveOcrApiSettings(settingsStore.loadOcrApiSettings().copy(
+                    useLocalOcr = true, apiSupplementEnabled = !manual, manualBubblesUseApi = manual,
+                    apiUrl = server.url("/").toString(), apiKey = "test", modelName = "ocr"))
+                server.enqueue(MockResponse().setBody("""{"choices":[{"message":{"content":"recognized text"}}]}"""))
+                assertEquals("recognized text", LlmClient(context, settingsStore).recognizeImageText(
+                    bitmap, com.manga.translate.model.TranslationLanguage.EN_TO_ZH))
+                assertEquals("/chat/completions", server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS)?.path)
+            }
+        } finally { bitmap.recycle() }
+    }
+
+    @Test
+    fun `multi image client sends one request and parses reordered results for each API`() = runBlocking {
+        val client = LlmClient(context, settingsStore)
+        val content = """{"items":[{"id":1,"translation":"second"},{"id":0,"translation":"first"}],"glossary_used":{"name":"Name"}}"""
+        for (format in ApiFormat.entries) {
+            val response = when (format) {
+                ApiFormat.OPENAI_COMPATIBLE -> JSONObject().put("choices", org.json.JSONArray().put(
+                    JSONObject().put("message", JSONObject().put("content", content))))
+                ApiFormat.OPENAI_RESPONSES -> JSONObject().put("output_text", content)
+                ApiFormat.GEMINI -> JSONObject().put("candidates", org.json.JSONArray().put(
+                    JSONObject().put("content", JSONObject().put("parts", org.json.JSONArray().put(JSONObject().put("text", content))))))
+            }
+            server.enqueue(MockResponse().setBody(response.toString()))
+            val settings = ApiSettings(server.url("/").toString(), "test-key", "vision", format)
+            val result = requireNotNull(client.translateMultiImageItems(listOf("first-image", "second-image"),
+                listOf(0, 1), "prompts/vl_page_prompts.json", emptyMap(), false, 5000, 0, settings))
+            assertEquals(listOf(1, 0), result.items.map { it.id })
+            assertTrue(result.glossaryUsed.isEmpty())
+            val request = requireNotNull(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS))
+            val body = request.body.readUtf8()
+            assertTrue(body.indexOf("first-image") < body.indexOf("second-image"))
+            assertTrue(body.contains("second-image"))
+        }
+        assertEquals(ApiFormat.entries.size, server.requestCount)
+    }
+
+    @Test
+    fun `all image APIs preserve multiple images in a single ordered user message`() {
+        val builder = com.manga.translate.network.PayloadBuilder(context, settingsStore)
+        for (format in ApiFormat.entries) {
+            val settings = settingsStore.load().copy(apiFormat = format)
+            val payload = builder.buildImageTranslationPayload(settings, "vision", "first",
+                "prompts/vl_page_prompts.json", format, requestedIds = listOf(0, 1, 2),
+                imagesBase64 = listOf("first", "second", "third"))
+            val messages = payload.getJSONArray(when (format) {
+                ApiFormat.OPENAI_COMPATIBLE -> "messages"
+                ApiFormat.OPENAI_RESPONSES -> "input"
+                ApiFormat.GEMINI -> "contents"
+            })
+            val parts = messages.getJSONObject(messages.length() - 1)
+                .getJSONArray(if (format == ApiFormat.GEMINI) "parts" else "content")
+            assertEquals(4, parts.length())
+            assertTrue(parts.getJSONObject(0).getString("text").contains("[0,1,2]"))
+            listOf("first", "second", "third").forEachIndexed { i, encoded ->
+                val part = parts.getJSONObject(i + 1)
+                when (format) {
+                    ApiFormat.OPENAI_COMPATIBLE -> assertEquals("data:image/jpeg;base64,$encoded", part.getJSONObject("image_url").getString("url"))
+                    ApiFormat.OPENAI_RESPONSES -> assertEquals("data:image/jpeg;base64,$encoded", part.getString("image_url"))
+                    ApiFormat.GEMINI -> assertEquals(encoded, part.getJSONObject("inline_data").getString("data"))
+                }
+            }
+        }
+    }
+
+    @Test
     fun `VL rejects missing invalid and malformed translation fields`() {
         val parser = ResponseParser()
         for (content in listOf("{}", """{"text":"source"}""", """{"translation":null}""", """{"translation":42}""", "{")) {
@@ -440,6 +510,87 @@ class LlmClientPayloadTest {
             }
         }
         assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun `non retryable HTTP errors stop text image OCR and model list immediately`() = runBlocking {
+        settingsStore.saveApiRetryCount(5)
+        val client = LlmClient(context, settingsStore)
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        settingsStore.saveOcrApiSettings(settingsStore.loadOcrApiSettings().copy(
+            useLocalOcr = false, apiUrl = server.url("/").toString(), apiKey = "key", modelName = "ocr"
+        ))
+        try {
+            for (status in listOf(400, 401, 403)) {
+                for (operation in 0..3) {
+                    val before = server.requestCount
+                    server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                        override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) =
+                            MockResponse().setResponseCode(status).setBody("invalid request")
+                    }
+                    try {
+                        when (operation) {
+                            0 -> client.translate("hello", emptyMap(), apiSettings = apiSettings(ApiFormat.OPENAI_COMPATIBLE))
+                            1 -> client.translateImageBubble("aW1hZ2U=", "prompts/vl_bubble_prompts.json",
+                                apiSettings = apiSettings(ApiFormat.OPENAI_COMPATIBLE))
+                            2 -> assertEquals(null, client.recognizeImageText(bitmap, com.manga.translate.model.TranslationLanguage.JA_TO_ZH))
+                            3 -> client.fetchModelList(server.url("/").toString(), "key", ApiFormat.OPENAI_COMPATIBLE)
+                        }
+                        assertEquals(2, operation)
+                    } catch (error: LlmRequestException) {
+                        assertEquals(LlmErrorCode.Http(status), error.errorCode)
+                    }
+                    assertEquals("status=$status operation=$operation", before + 1, server.requestCount)
+                }
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test
+    fun `rate limit retries but subsequent authentication failure ends attempts`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(429).setBody("temporarily unavailable"))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("bad key"))
+        val error = org.junit.Assert.assertThrows(LlmRequestException::class.java) {
+            runBlocking {
+                LlmClient(context, settingsStore).translate("hello", emptyMap(), retryCount = 5,
+                    apiSettings = apiSettings(ApiFormat.OPENAI_COMPATIBLE))
+            }
+        }
+        assertEquals(LlmErrorCode.Http(401), error.errorCode)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun `text glossary switch retains context and disables extraction for all formats`() = runBlocking {
+        val client = LlmClient(context, settingsStore)
+        val content = """{"items":[{"id":1,"translation":"Alice"}],"glossary_used":{"new":"New"}}"""
+        for (format in ApiFormat.entries) {
+            for (enabled in listOf(false, true)) {
+                val response = when (format) {
+                    ApiFormat.OPENAI_COMPATIBLE -> JSONObject().put("choices", org.json.JSONArray().put(
+                        JSONObject().put("message", JSONObject().put("content", content))))
+                    ApiFormat.OPENAI_RESPONSES -> JSONObject().put("output_text", content)
+                    ApiFormat.GEMINI -> JSONObject().put("candidates", org.json.JSONArray().put(
+                        JSONObject().put("content", JSONObject().put("parts", org.json.JSONArray().put(
+                            JSONObject().put("text", content))))))
+                }
+                server.enqueue(MockResponse().setBody(response.toString()))
+                val result = client.translateBubbleItems(
+                    items = listOf(com.manga.translate.network.LlmBubbleTranslationRequestItem(1, "source")),
+                    glossary = mapOf("existing-name" to "Alice"),
+                    glossaryProcessingEnabled = enabled,
+                    apiSettings = apiSettings(format)
+                )
+                val payload = server.takeRequest().body.readUtf8()
+                assertTrue(payload.contains("existing-name"))
+                assertTrue(payload.contains("Alice"))
+                assertEquals(!enabled, payload.contains("Glossary extraction is disabled"))
+                assertEquals(if (enabled) mapOf("new" to "New") else emptyMap(), result?.glossaryUsed)
+                assertEquals("Alice", result?.items?.single()?.translation)
+            }
+        }
     }
 
     private fun apiSettings(apiFormat: ApiFormat): ApiSettings {

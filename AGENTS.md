@@ -113,9 +113,10 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 - 翻译固定使用主供应商，不得再引入附加供应商池或调度。
 - 自定义请求参数作用于主供应商，参数键不可重复。
-- 并发逐页翻译使用 glossary 快照，成功后串行合并。关闭译名处理时仍可读取已有 `glossary.json` 作为上下文，但不得提取、合并或写入新译名。
-- VL 整页直译由共享 `VlPageTranslationCoordinator` 处理：蒙板保留原图、白底着色并标注 ID，每页或长图检测分块发送一次结构化图片请求。文本块优先编号，无文本块气泡单独编号；响应 ID 必须与请求完全一致。回填时同一气泡内的非空文字块译文合并到父气泡的坐标与蒙版，游离文字保持文字块几何；误检与纯拟声词返回空译文并过滤。漫画库沿用译名处理开关，开启时使用 glossary 快照并在成功后串行合并，关闭时只读已有译名。悬浮窗暂不处理译名；携带译名上下文或启用译名提取的图片请求不得复用悬浮窗图片缓存。全文速译不接入 VL。
-- 多页气泡合并仅合并 AI 请求，不拼接图片或改写页内坐标；由 `TranslationPipeline.translatePagesWithGlossary()` 分配请求级唯一 ID 并拆回逐页结果。合并后的请求受 AI 并发数限制，超时按实际含文字页数扩展；已有部分译文仍走补填流程，已有缓存不因合并页数变化而失效。
+- 并发逐页翻译使用 glossary 快照，成功后串行合并。关闭译名处理时仍可读取已有 `glossary.json` 作为上下文，但不得提取、合并或写入新译名；文字请求必须将开关传至请求构造层，关闭时明确要求 `glossary_used` 为空对象。
+- VL 整页直译由共享 `VlPageTranslationCoordinator` 处理：蒙板保留原图、白底着色并标注 ID，默认每页或长图检测分块发送一次结构化图片请求；合并设置大于 1 时，漫画库按页序将多页及其检测分块作为独立图片合并发送，ID 按图片顺序在请求内连续编号，响应拆回各页原始 ID 与几何。合并请求受 AI 并发数限制，超时按含目标页数扩展，逐张编码后释放位图；已有结果仍直接读取，部分结果单独补填。文本块优先编号，无文本块气泡单独编号；响应 ID 必须与请求完全一致。回填时同一气泡内的非空文字块译文合并到父气泡的坐标与蒙版，游离文字保持文字块几何；误检与纯拟声词返回空译文并过滤。漫画库沿用译名处理开关，开启时使用 glossary 快照并在成功后串行合并，关闭时只读已有译名。悬浮窗暂不处理译名；携带译名上下文或启用译名提取的图片请求不得复用悬浮窗图片缓存。全文速译不接入 VL。
+- 多页气泡合并仅合并 AI 请求，不拼接图片或改写页内坐标；由 `TranslationPipeline.translatePagesWithGlossary()` 分配请求级唯一 ID 并拆回逐页结果。合并后的请求受 AI 并发数限制，超时按实际含文字页数扩展；已有部分译文仍走补填流程，已有缓存不因合并页数变化而失效。普通阅读模式使用有界、保持页序的 OCR 队列，凑批后即可发送并继续准备后续页面；不得将该流水线直接套用于条漫或全文速译。
+- 全文速译按有界窗口依次完成 OCR、译名提取和翻译落盘，译名请求同时限制文本量并沿用已累积的译名；不得恢复为整文件夹 OCR 结果常驻或一次性全文译名请求。条漫窗口须保留相邻页衔接，跨页合并结果仍只存在于内存。
 - 全文速译固定启用译名处理；`CrossPageBubbleMerger` 只用于 `WEBTOON_SCROLL`，普通横向阅读不得执行跨页气泡合并。
 
 ### 检测与 OCR
@@ -123,8 +124,11 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - `PageRegionDetector` 是主翻译与悬浮窗共享的页面区域入口，固定使用双标签模型同时检测普通气泡和游离文字，不提供检测模式切换。
 - 普通气泡来自 `BubbleDetector`，标记为 `BubbleSource.BUBBLE_DETECTOR`；当前双标签分割模型类别 0 为气泡、类别 1 为文字，气泡提供 `maskContour`。文字类别覆盖气泡内外，VL 内存检测结果保留全部文本蒙板和实际检测分块；普通 OCR 页面层过滤归属于气泡的文字块后，其余文字块标记为 `BubbleSource.TEXT_DETECTOR`，不得作为 OCR 行框复用。页面检测统一使用 TFLite，Paddle 仅保留 OCR 阶段按需行检测；`TextBlockMerger` 保留为行框工具。
 - `BubbleDetector` 持有共享 LiteRT GPU / CPU 会话，推理与关闭必须串行；`PageRegionDetector.releaseLoadedDetectors()` 负责释放。模型 assets 使用不压缩的 `.tflite` 以支持映射加载。 GPU CompiledModel 的创建、推理和释放必须在同一专用线程执行；不支持 GPU 或 GPU 初始化、推理失败时回退 CPU，并重试当前图片。
+- 云端 OCR 区域处理使用有界 worker，裁剪、编码、请求到图片释放的整个生命周期受并发约束，同时保留共享网络限流；不得为每个区域一次性启动持有图片的等待任务。
+- 漫画库页面 API OCR 与本地 OCR 的批量 API 补充复用 VL 的白底蒙版、着色和 ID 标注，按检测结果中的实际分块发送结构化请求；每个待识别区域只分配到一个块，跨块区域完整保留，响应 ID 必须与当前块一致，结果恢复原页 ID 与几何。任一块失败不得保存本次 OCR 缓存。
 - 长图分块、坐标映射、去重阈值和模型输入细节属于检测模块，不得复制到 Pipeline 或悬浮窗 Service。
 - 本地 OCR 的语言路由、裁剪、行识别和 API fallback 统一在 `OcrSharedTools.kt` 调整。除韩语专用模型和俄语 API OCR 外，本地文字识别统一使用 PP-OCRv6 CPU 推理，不调用 PP-OCRv5 LiteRT。识别引擎由 `OcrEngineRegistry` 共享。日文行检测比较原方向与旋转方向，选中的行框必须映射回原裁剪坐标。
+- AI OCR 补充模式在本地行过滤前检查识别置信度，对低置信度区域发送整块裁剪图；手动框选默认 API OCR 为独立开关，阅读页与悬浮窗共用识别路由。补充请求失败不得保存本次 OCR 缓存；补充模式及 API 配置计入 OCR 缓存匹配，已有翻译结果仍直接读取。
 
 ### 阅读与渲染
 
@@ -147,6 +151,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 ### 网络请求
 
 - 文字、图片、OCR 和模型列表请求统一由 `LlmClient` 通过 OkHttp 执行；超时、取消、请求头和重试策略不得散落到 Coordinator。
+- 主 AI 请求的连接超时独立于页数；按含文字页数扩展的单次超时必须封顶，网络重试、模型响应重试及退避共享有上限的总预算。预算耗尽不得重新获取预算继续重试，取消必须覆盖响应体读取；OCR 保留独立超时设置。
 - OpenAI 兼容地址：已以 `/chat/completions` 结尾则原样使用，否则直接追加该路径；不得自动插入 `/v1`。
 - OpenAI Responses 地址同理追加 `/responses`；两种 OpenAI 格式的模型列表地址追加 `/models`。
 - `OPENAI_RESPONSES` 用 `model`、`input` 和可选 `instructions`，响应优先读 `output_text`，再解析 `output[].content[].text`。
@@ -174,7 +179,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 | 页级任务进度 | `TranslationProgressStore` |
 | `cache/floating_translate_cache.json` | `FloatingTranslationCacheStore`；清除应用缓存即可删除 |
 | `files/ai_provider_profiles.json` | `ProviderProfileStore` |
-| 应用备份包（ZIP） | `AppBackupManager`；包含 `manga_library/`、设置偏好、AI profile 和自定义字体 |
+| 应用备份包（ZIP） | `AppBackupManager`；可独立选择漫画和译文（含库偏好、阅读进度）与软件配置（含 AI profile、自定义字体），沿用 v2 格式；迁移约定见 `dev_doc/备份迁移协议.md` |
 | 当前后台任务描述 | `TranslationTaskPersistence` |
 | 阅读进度 | `ReadingProgressStore` |
 

@@ -78,7 +78,9 @@ internal class ImportCoordinator(
         scope: CoroutineScope,
         riskAlreadyAccepted: Boolean,
         onConfirmMemoryRisk: suspend (ResourceAssessment) -> Boolean,
-        onShowFolderList: () -> Unit
+        onShowFolderList: () -> Unit,
+        targetCollection: File? = null,
+        onImportFinished: (() -> Unit)? = null
     ) {
         scope.launch(Dispatchers.IO) {
             val displayName = runCatching {
@@ -88,6 +90,7 @@ internal class ImportCoordinator(
                 }
             }.getOrNull().orEmpty()
             val isPdf = displayName.substringAfterLast('.', "").lowercase() == "pdf"
+            val collectionWasEmpty = targetCollection?.let { !collectionHasAnyImages(it) } ?: false
             val result = withImportProgress { onConversionStarted ->
                 if (isPdf) {
                     repository.importPdf(uri, pendingPdfPlans.remove(uri.toString()))
@@ -104,15 +107,51 @@ internal class ImportCoordinator(
                     )
                 }
             }
+            var cancelled = false
             try {
-                result?.folder?.let { importedFolder ->
+                val importedFolder = result?.folder?.let { folder ->
+                    targetCollection?.let { collection ->
+                        repository.moveFolderToCollection(folder, collection, uniqueTarget = true)
+                            ?: run {
+                                repository.deleteFolder(folder)
+                                null
+                            }
+                    } ?: folder
+                }
+                importedFolder?.let { importedFolder ->
                     if (result.importedCount > 0) {
+                        val images = repository.listImages(importedFolder)
                         preferencesGateway.autoDetectAndSetReadingMode(
                             importedFolder,
-                            repository.listImages(importedFolder)
+                            images
                         )
+                        if (targetCollection != null) {
+                            preferencesGateway.setCachedFolderStatus(
+                                importedFolder,
+                                FolderStatus.UNTRANSLATED
+                            )
+                            preferencesGateway.setCachedFolderStats(
+                                importedFolder,
+                                imageCount = images.size
+                            )
+                            preferencesGateway.setCachedFolderStatus(
+                                targetCollection,
+                                FolderStatus.UNTRANSLATED
+                            )
+                            preferencesGateway.invalidateCachedFolderStats(targetCollection)
+                            if (collectionWasEmpty) {
+                                val samples = repository.listChildFolders(targetCollection)
+                                    .flatMap(repository::listImages)
+                                    .take(READING_MODE_SAMPLE_LIMIT)
+                                preferencesGateway.autoDetectAndSetReadingMode(
+                                    targetCollection,
+                                    samples
+                                )
+                            }
+                        }
                     }
                 }
+                val importedCount = result?.importedCount ?: 0
                 withContext(Dispatchers.Main) {
                     when {
                         result?.outOfMemory == true -> ui.showToast(R.string.import_out_of_memory)
@@ -120,13 +159,14 @@ internal class ImportCoordinator(
                         result == null -> ui.showToast(
                             if (isPdf) R.string.pdf_import_failed else R.string.cbz_import_failed
                         )
-                        result.importedCount <= 0 -> ui.showToast(
+                        importedFolder == null && importedCount > 0 -> ui.showToast(R.string.import_failed)
+                        importedCount <= 0 -> ui.showToast(
                             if (isPdf) R.string.pdf_import_no_images else R.string.cbz_import_no_images
                         )
                         else -> ui.showToastMessage(
                             uiContext.getString(
                                 if (isPdf) R.string.pdf_import_done else R.string.cbz_import_done,
-                                result.importedCount
+                                importedCount
                             )
                         )
                     }
@@ -136,11 +176,18 @@ internal class ImportCoordinator(
                     }
                 }
             } catch (e: CancellationException) {
+                cancelled = true
                 throw e
             } catch (e: Exception) {
                 AppLogger.log("Library", "Post-import UI update failed", e)
             } catch (e: OutOfMemoryError) {
                 AppLogger.log("Library", "Post-import UI update ran out of memory", e)
+            } finally {
+                if (!cancelled) {
+                    withContext(Dispatchers.Main.immediate) {
+                        onImportFinished?.invoke()
+                    }
+                }
             }
         }
     }
@@ -418,9 +465,22 @@ internal class ImportCoordinator(
                 val images = folder.listFiles().filter { child -> child.isFile && isImageDocument(child) }
                 images.takeIf { it.isNotEmpty() }?.let { ImportChapterSource(folder.name.orEmpty(), folder, it) }
             }
+            val rootImages = files.filter { it.isFile && isImageDocument(it) }
             withContext(Dispatchers.Main) {
                 if (chapters.isNotEmpty()) {
-                    val folders = chapters.mapNotNull { it.folder }
+                    val importSources = buildList {
+                        addAll(chapters)
+                        if (rootImages.isNotEmpty()) {
+                            add(
+                                ImportChapterSource(
+                                    name = rootImageChapterName(root.name.orEmpty(), chapters.map { it.name }),
+                                    folder = root,
+                                    images = rootImages
+                                )
+                            )
+                        }
+                    }
+                    val folders = importSources.mapNotNull { it.folder }
                     dialogs.showDocumentFolderMultiPicker(uiContext, R.string.chapter_import_select_folders, folders) { selected ->
                         if (selected.isEmpty()) ui.showToast(R.string.chapter_import_no_folders)
                         else {
@@ -428,7 +488,7 @@ internal class ImportCoordinator(
                             importChildChapters(
                                 uiContext,
                                 parentFolder,
-                                chapters.filter { it.folder?.uri in selectedUris },
+                                importSources.filter { it.folder?.uri in selectedUris },
                                 scope
                             )
                         }

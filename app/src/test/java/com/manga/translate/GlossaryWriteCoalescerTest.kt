@@ -39,7 +39,7 @@ class GlossaryWriteCoalescerTest {
         clock = { now }
     )
 
-    @Test
+    @Test(timeout = 10_000)
     fun `submits within the throttle window keep only the newest snapshot pending`() = runBlocking {
         val coalescer = newCoalescer()
 
@@ -59,7 +59,7 @@ class GlossaryWriteCoalescerTest {
         )
     }
 
-    @Test
+    @Test(timeout = 10_000)
     fun `passing the throttle window writes through`() = runBlocking {
         val coalescer = newCoalescer(throttleMillis = 100L)
 
@@ -70,7 +70,7 @@ class GlossaryWriteCoalescerTest {
         assertEquals(mapOf("A" to "甲", "B" to "乙"), glossaryStore.load(folder, "zh_hans"))
     }
 
-    @Test
+    @Test(timeout = 10_000)
     fun `writeNow supersedes a pending snapshot`() = runBlocking {
         val coalescer = newCoalescer()
 
@@ -92,7 +92,7 @@ class GlossaryWriteCoalescerTest {
         )
     }
 
-    @Test
+    @Test(timeout = 10_000)
     fun `flushAll covers every folder touched by a batch task`() = runBlocking {
         val coalescer = newCoalescer()
         val other = File(folder.parentFile, "${folder.name}-other").apply { mkdirs() }
@@ -107,7 +107,7 @@ class GlossaryWriteCoalescerTest {
         assertEquals(mapOf("B" to "乙"), glossaryStore.load(other, "zh_hans"))
     }
 
-    @Test
+    @Test(timeout = 10_000)
     fun `target key selects the scoped glossary file`() = runBlocking {
         var targetKey = "zh_hans"
         val coalescer = GlossaryWriteCoalescer(
@@ -123,5 +123,17 @@ class GlossaryWriteCoalescerTest {
 
         assertEquals(mapOf("A" to "甲"), glossaryStore.load(folder, "zh_hans"))
         assertEquals(mapOf("A" to "alpha"), glossaryStore.load(folder, "en"))
+    }
+
+    @Test(timeout = 10_000)
+    fun `disabled throttle persists every addition before submit returns`() = runBlocking {
+        val coalescer = newCoalescer(throttleMillis = 0L)
+
+        coalescer.submit(folder, mapOf("A" to "甲"))
+        assertEquals(mapOf("A" to "甲"), glossaryStore.load(folder, "zh_hans"))
+
+        // Keep the clock unchanged: write-through must not depend on elapsed time.
+        coalescer.submit(folder, mapOf("B" to "乙"))
+        assertEquals(mapOf("A" to "甲", "B" to "乙"), glossaryStore.load(folder, "zh_hans"))
     }
 }

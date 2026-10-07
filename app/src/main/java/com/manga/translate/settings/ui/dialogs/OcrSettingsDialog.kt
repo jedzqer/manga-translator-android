@@ -2,14 +2,12 @@ package com.manga.translate.settings.ui.dialogs
 
 import android.view.View
 import android.widget.ArrayAdapter
+import android.widget.SeekBar
 import androidx.appcompat.app.AlertDialog
 import com.manga.translate.R
 import com.manga.translate.databinding.DialogOcrSettingsBinding
 import com.manga.translate.model.OcrApiFormat
-import com.manga.translate.ocr.LocalOcrConcurrency
 import com.manga.translate.platform.AppLogger
-import com.manga.translate.platform.ResourceWarningDialogs
-import com.manga.translate.platform.showWithScrollableMessage
 import com.manga.translate.settings.OcrApiSettings
 import com.manga.translate.settings.SettingsStore
 import com.manga.translate.settings.ui.SettingsFragment
@@ -26,6 +24,14 @@ internal class OcrSettingsDialog(
         val currentSettings = settingsStore.loadOcrApiSettings()
         val dialogBinding = DialogOcrSettingsBinding.inflate(fragment.layoutInflater)
         dialogBinding.useLocalOcrSwitch.isChecked = currentSettings.useLocalOcr
+        val supplementLabels = listOf(R.string.ocr_supplement_off, R.string.ocr_supplement_low,
+            R.string.ocr_supplement_medium, R.string.ocr_supplement_high)
+        val supplementDescriptions = listOf(R.string.ocr_supplement_off_description,
+            R.string.ocr_supplement_low_description, R.string.ocr_supplement_medium_description,
+            R.string.ocr_supplement_high_description)
+        dialogBinding.apiOcrSupplementSlider.progress =
+            if (currentSettings.apiSupplementEnabled) currentSettings.apiSupplementLevel.coerceIn(1, 3) else 0
+        dialogBinding.manualBubblesApiOcrSwitch.isChecked = currentSettings.manualBubblesUseApi
         dialogBinding.ocrApiUrlInput.setText(currentSettings.apiUrl)
         dialogBinding.ocrApiKeyInput.setText(currentSettings.apiKey)
         dialogBinding.ocrModelNameInput.setText(currentSettings.modelName)
@@ -34,9 +40,6 @@ internal class OcrSettingsDialog(
         )
         dialogBinding.ocrApiConcurrencyInput.setText(
             String.format(Locale.getDefault(), "%d", currentSettings.apiOcrConcurrencyLimit)
-        )
-        dialogBinding.localOcrConcurrencyInput.setText(
-            String.format(Locale.getDefault(), "%d", currentSettings.localOcrConcurrencyLimit)
         )
         // Setup format dropdown
         val formatEntries = OcrApiFormat.entries.map { fragment.getString(it.labelRes) }
@@ -62,7 +65,16 @@ internal class OcrSettingsDialog(
         }
 
         fun updateInputsEnabled(useLocalOcr: Boolean) {
-            val enabled = !useLocalOcr
+            val level = dialogBinding.apiOcrSupplementSlider.progress
+            dialogBinding.apiOcrSupplementLabel.text = fragment.getString(R.string.ocr_supplement_level_label,
+                fragment.getString(supplementLabels[level]))
+            dialogBinding.apiOcrSupplementDescription.setText(supplementDescriptions[level])
+            androidx.core.view.ViewCompat.setStateDescription(dialogBinding.apiOcrSupplementSlider,
+                fragment.getString(supplementLabels[level]))
+            val enabled = !useLocalOcr || level > 0 ||
+                dialogBinding.manualBubblesApiOcrSwitch.isChecked
+            dialogBinding.apiOcrSupplementSlider.isEnabled = useLocalOcr
+            dialogBinding.manualBubblesApiOcrSwitch.isEnabled = useLocalOcr
             dialogBinding.ocrApiFormatLayout.visibility =
                 if (enabled) View.VISIBLE else View.GONE
             dialogBinding.ocrApiUrlLayout.visibility =
@@ -79,14 +91,22 @@ internal class OcrSettingsDialog(
             dialogBinding.ocrApiTimeoutInput.isEnabled = enabled
             dialogBinding.ocrApiConcurrencyLayout.visibility =
                 if (enabled) View.VISIBLE else View.GONE
-            dialogBinding.localOcrConcurrencyLayout.visibility =
-                if (useLocalOcr) View.VISIBLE else View.GONE
             dialogBinding.ocrSettingsNote.setText(
                 if (useLocalOcr) R.string.ocr_settings_note_local else R.string.ocr_settings_note_api
             )
         }
 
         updateInputsEnabled(currentSettings.useLocalOcr)
+        dialogBinding.apiOcrSupplementSlider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                updateInputsEnabled(dialogBinding.useLocalOcrSwitch.isChecked)
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+        })
+        dialogBinding.manualBubblesApiOcrSwitch.setOnCheckedChangeListener { _, _ ->
+            updateInputsEnabled(dialogBinding.useLocalOcrSwitch.isChecked)
+        }
         dialogBinding.useLocalOcrSwitch.setOnCheckedChangeListener { _, isChecked ->
             updateInputsEnabled(isChecked)
         }
@@ -106,19 +126,19 @@ internal class OcrSettingsDialog(
                 val apiOcrConcurrencyLimit = fragment.parseIntInput(concurrencyInput)
                     ?.coerceIn(SettingsStore.MIN_OCR_API_CONCURRENCY, SettingsStore.MAX_OCR_API_CONCURRENCY)
                     ?: currentSettings.apiOcrConcurrencyLimit
-                val localConcurrencyInput = dialogBinding.localOcrConcurrencyInput.text?.toString()?.trim()
-                val localOcrConcurrencyLimit = fragment.parseIntInput(localConcurrencyInput)
-                    ?.coerceIn(0, 8)
-                    ?: currentSettings.localOcrConcurrencyLimit
                 val format = resolveSelectedFormat()
                 val settings = OcrApiSettings(
                     useLocalOcr = dialogBinding.useLocalOcrSwitch.isChecked,
+                    apiSupplementEnabled = dialogBinding.apiOcrSupplementSlider.progress > 0,
+                    apiSupplementLevel = dialogBinding.apiOcrSupplementSlider.progress.takeIf { it > 0 }
+                        ?: currentSettings.apiSupplementLevel,
+                    manualBubblesUseApi = dialogBinding.manualBubblesApiOcrSwitch.isChecked,
                     apiUrl = dialogBinding.ocrApiUrlInput.text?.toString()?.trim().orEmpty(),
                     apiKey = dialogBinding.ocrApiKeyInput.text?.toString()?.trim().orEmpty(),
                     modelName = dialogBinding.ocrModelNameInput.text?.toString()?.trim().orEmpty(),
                     timeoutSeconds = timeoutSeconds,
                     apiOcrConcurrencyLimit = apiOcrConcurrencyLimit,
-                    localOcrConcurrencyLimit = localOcrConcurrencyLimit,
+                    localOcrConcurrencyLimit = SettingsStore.DEFAULT_LOCAL_OCR_CONCURRENCY,
                     ocrApiFormat = format
                 )
                 saveOcrSettingsWithResourceCheck(settings)
@@ -142,21 +162,6 @@ internal class OcrSettingsDialog(
             )
         }
 
-        if (!settings.useLocalOcr || settings.localOcrConcurrencyLimit <= 0) {
-            save()
-            return
-        }
-        val assessment = LocalOcrConcurrency.assess(
-            fragment.requireContext(),
-            settings.localOcrConcurrencyLimit
-        )
-        if (!assessment.shouldWarn) {
-            save()
-            return
-        }
-        ResourceWarningDialogs.createBuilder(fragment.requireContext(), assessment)
-            .setNegativeButton(R.string.resource_continue_anyway) { _, _ -> save() }
-            .setPositiveButton(R.string.resource_cancel, null)
-            .showWithScrollableMessage()
+        save()
     }
 }

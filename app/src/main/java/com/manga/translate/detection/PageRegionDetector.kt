@@ -1637,7 +1637,38 @@ private fun shouldTreatVerticallySplitTileRectsAsSameBubble(a: RectF, b: RectF):
 
 /** Model text outputs are blocks, never reusable OCR line boxes. */
 internal fun dualTextBlocks(rects: List<RectF>, width: Int, height: Int): List<TextBlock> =
-    rects.map { rect ->
+    mergeOverlappingTextRects(rects).map { rect ->
         TextBlock(RectF(rect), emptyList(), TextLineOrientation.AMBIGUOUS,
             normalizedRectContour(rect, width, height))
     }
+
+/** Merge connected original boxes, without using empty space in a union to join other text. */
+private fun mergeOverlappingTextRects(rects: List<RectF>): List<RectF> {
+    val visited = BooleanArray(rects.size)
+    val merged = ArrayList<RectF>(rects.size)
+    for (start in rects.indices) {
+        if (visited[start]) continue
+        val union = RectF(rects[start])
+        val queue = ArrayDeque<Int>()
+        queue.add(start)
+        visited[start] = true
+        while (queue.isNotEmpty()) {
+            val current = rects[queue.removeFirst()]
+            for (next in rects.indices) {
+                if (visited[next]) continue
+                val candidate = rects[next]
+                val minArea = min(rectAreaValue(current), rectAreaValue(candidate))
+                if (minArea <= 0f ||
+                    rectIntersectionArea(current, candidate) / minArea < TEXT_BLOCK_MERGE_OVERLAP_RATIO
+                ) continue
+                visited[next] = true
+                queue.add(next)
+                union.union(candidate)
+            }
+        }
+        merged.add(union)
+    }
+    return merged
+}
+
+private const val TEXT_BLOCK_MERGE_OVERLAP_RATIO = 0.3f

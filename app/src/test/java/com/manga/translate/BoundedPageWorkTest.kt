@@ -1,5 +1,6 @@
 package com.manga.translate
 
+import com.manga.translate.translation.forEachOrderedBounded
 import com.manga.translate.translation.forEachBounded
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
@@ -14,6 +15,44 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BoundedPageWorkTest {
+    @Test
+    fun `slow first page bounds reorder memory and results retain page order`() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val visited = mutableListOf<Int>()
+        val received = mutableListOf<Int>()
+        val job = launch {
+            (0 until 10_000).toList().forEachOrderedBounded(3, prepare = { page ->
+                visited.add(page)
+                if (page == 0) gate.await()
+                page
+            }, consume = { received.add(it) })
+        }
+        repeat(10) { yield() }
+        assertEquals(listOf(0, 1, 2), visited)
+        assertTrue(received.isEmpty())
+        gate.complete(Unit)
+        job.join()
+        assertEquals((0 until 10_000).toList(), received)
+    }
+
+    @Test
+    fun `ordered workers cancel while downstream is blocked`() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        var prepared = 0
+        val job = launch {
+            (0 until 10_000).toList().forEachOrderedBounded(3, prepare = {
+                prepared++
+                it
+            }, consume = { gate.await() })
+        }
+        repeat(10) { yield() }
+        assertTrue(prepared <= 4)
+        job.cancel()
+        job.join()
+        assertTrue(job.children.none())
+        emptyList<Int>().forEachOrderedBounded(2, { error("unexpected") }, { error("unexpected") })
+    }
+
     @Test
     fun `slow translation bounds prepared pages even with ten thousand inputs`() = runBlocking {
         val workers = 3

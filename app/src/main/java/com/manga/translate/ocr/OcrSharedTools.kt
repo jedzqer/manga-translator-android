@@ -22,6 +22,8 @@ class OcrEngineRegistry(
     context: Context,
     private val settingsStore: SettingsStore = SettingsStore(context.applicationContext)
 ) {
+    internal fun loadOcrSettings() = settingsStore.loadOcrApiSettings()
+
     private val appContext = context.applicationContext
     private var ppOcrV6SmallRec: PPOcrV6SmallRec? = null
     private var koreanOcr: KoreanOcr? = null
@@ -135,8 +137,8 @@ class BubbleTextRecognizer(
         bubbleSource: BubbleSource = BubbleSource.UNKNOWN
     ): OcrRecognitionResult {
         val clamped = PipelineBitmapDecoder.clampRect(rect, cropSource.width, cropSource.height)
-            ?: return OcrRecognitionResult.Success("")
-        val crop = cropSource.decodeRegion(clamped) ?: return OcrRecognitionResult.Success("")
+            ?: return OcrRecognitionResult.Failure(IllegalStateException("Unable to crop OCR region"))
+        val crop = cropSource.decodeRegion(clamped) ?: return OcrRecognitionResult.Failure(IllegalStateException("Unable to crop OCR region"))
         return try {
             recognizeCrop(crop, language, useLocalOcr, logTag, bubbleSource)
         } finally {
@@ -150,15 +152,41 @@ class BubbleTextRecognizer(
         useLocalOcr: Boolean,
         logTag: String,
         bubbleSource: BubbleSource = BubbleSource.UNKNOWN,
-        detectedLineRects: List<RectF>? = null
+        detectedLineRects: List<RectF>? = null,
+        deferSupplement: Boolean = false,
+        onSupplementNeeded: (() -> Unit)? = null
     ): OcrRecognitionResult {
-        val resolvedUseLocalOcr = useLocalOcr && language.supportsLocalOcr()
+        return try {
+            recognizeCropInternal(crop, language, useLocalOcr, logTag, bubbleSource, detectedLineRects,
+                deferSupplement, onSupplementNeeded)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLogger.log(logTag, "OCR recognition failed", e)
+            OcrRecognitionResult.Failure(e)
+        }
+    }
+
+    private suspend fun recognizeCropInternal(
+        crop: Bitmap,
+        language: TranslationLanguage,
+        useLocalOcr: Boolean,
+        logTag: String,
+        bubbleSource: BubbleSource,
+        detectedLineRects: List<RectF>?,
+        deferSupplement: Boolean,
+        onSupplementNeeded: (() -> Unit)?
+    ): OcrRecognitionResult {
+        val settings = engineRegistry.loadOcrSettings()
+        val resolvedUseLocalOcr = useLocalOcr && language.supportsLocalOcr() &&
+            !(bubbleSource == BubbleSource.MANUAL && settings.manualBubblesUseApi)
         val reusableLineRects = detectedLineRects?.takeIf {
             shouldReuseDetectedLineRectsForOcr(bubbleSource) && it.isNotEmpty()
         }
         val rawText = if (!resolvedUseLocalOcr) {
             try {
-                llmClient.recognizeImageText(crop, language)?.trim().orEmpty()
+                llmClient.recognizeImageText(crop, language)?.trim()
+                    ?: return OcrRecognitionResult.Failure(IllegalStateException("API OCR returned no result"))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -170,20 +198,101 @@ class BubbleTextRecognizer(
                 ?: return OcrRecognitionResult.Failure(
                     IllegalStateException("Local OCR engine unavailable for ${language.name}")
                 )
-            recognizeLocalCrop(
-                crop, language, bubbleSource, reusableLineRects, engine, logTag,
-                detectLines = {
-                    val detector = engineRegistry.getEnglishLineDetector(logTag)
-                    if (language == TranslationLanguage.JA_TO_ZH) {
-                        detectJapaneseTextLines(crop) { detector?.detectLines(it) }
-                    } else {
-                        detector?.detectLines(crop)
-                    }
+            val scoredEngine = ConfidenceTrackingOcrEngine(engine, settings.apiSupplementLevel, language, bubbleSource)
+            if (deferSupplement && settings.apiSupplementEnabled) {
+                val localText = try {
+                    recognizeLocalCrop(crop, language, bubbleSource, reusableLineRects, scoredEngine,
+                        logTag, onIncompleteRecognition = { scoredEngine.markIncomplete() },
+                        detectLines = {
+                            val detector = engineRegistry.getEnglishLineDetector(logTag)
+                            if (language == TranslationLanguage.JA_TO_ZH) {
+                                detectJapaneseTextLines(crop) { detector?.detectLines(it) }
+                            } else detector?.detectLines(crop)
+                        })
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    scoredEngine.markIncomplete()
+                    ""
                 }
-            )
+                if (scoredEngine.needsSupplement || localText.isBlank()) onSupplementNeeded?.invoke()
+                localText
+            } else recognizeWithOcrSupplement(
+                supplementEnabled = settings.apiSupplementEnabled,
+                needsSupplement = { scoredEngine.needsSupplement },
+                recognizeLocal = {
+                    recognizeLocalCrop(
+                        crop, language, bubbleSource, reusableLineRects,
+                        if (settings.apiSupplementEnabled) scoredEngine else engine, logTag,
+                        onIncompleteRecognition = { scoredEngine.markIncomplete() },
+                        detectLines = {
+                            val detector = engineRegistry.getEnglishLineDetector(logTag)
+                            if (language == TranslationLanguage.JA_TO_ZH) {
+                                detectJapaneseTextLines(crop) { detector?.detectLines(it) }
+                            } else {
+                                detector?.detectLines(crop)
+                            }
+                        }
+                    )
+                },
+                recognizeApi = {
+                    llmClient.recognizeImageText(crop, language)?.trim()
+                }
+            ) ?: return OcrRecognitionResult.Failure(IllegalStateException("Supplemental API OCR returned no result"))
         }
         return OcrRecognitionResult.Success(OcrTextSanitizer.sanitize(rawText, language, logTag))
     }
+}
+
+/** Check both individual lines and the final region; a local failure can have no score. */
+internal suspend fun recognizeWithOcrSupplement(
+    supplementEnabled: Boolean,
+    needsSupplement: () -> Boolean,
+    recognizeLocal: () -> String,
+    recognizeApi: suspend () -> String?
+): String? {
+    val localText = try {
+        recognizeLocal()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        if (!supplementEnabled) throw e
+        return recognizeApi()
+    }
+    return if (supplementEnabled && (needsSupplement() || localText.isBlank())) {
+        recognizeApi()
+    } else localText
+}
+
+/** Observe scores before line filtering, including rejected lines and whole-crop fallback. */
+internal class ConfidenceTrackingOcrEngine(
+    private val delegate: OcrEngine,
+    private val level: Int = 2,
+    private val language: TranslationLanguage = TranslationLanguage.EN_TO_ZH,
+    private val source: BubbleSource = BubbleSource.BUBBLE_DETECTOR
+) : OcrEngine {
+    var needsSupplement: Boolean = false
+        private set
+
+    fun markIncomplete() {
+        needsSupplement = true
+    }
+
+    override fun recognize(bitmap: Bitmap): String = recognizeWithScore(bitmap).text
+
+    override fun recognizeWithScore(bitmap: Bitmap, rect: RectF?): OcrEngine.OcrEngineResult {
+        return delegate.recognizeWithScore(bitmap, rect).also {
+            val base = if (language == TranslationLanguage.KO_TO_ZH) DEFAULT_KO_MIN_LINE_SCORE else DEFAULT_EN_MIN_LINE_SCORE
+            val minimum = requiredOcrLineScore(it.text.trim(), base, source)
+            val threshold = when (level.coerceIn(1, 3)) {
+                1 -> minimum
+                2 -> maxOf(minimum, 0.8f)
+                else -> maxOf(minimum, 0.95f)
+            }
+            if (it.text.isBlank() || !it.score.isFinite() || it.score < threshold) needsSupplement = true
+        }
+    }
+
 }
 
 /** Detect both writing directions before recognition; map columns back to crop coordinates. */
@@ -221,11 +330,15 @@ internal fun recognizeLocalCrop(
     reusableLineRects: List<RectF>?,
     engine: OcrEngine,
     logTag: String,
+    onIncompleteRecognition: () -> Unit = {},
     detectLines: () -> List<RectF>?
 ): String {
     // null means unavailable, whereas an empty list means detection succeeded without lines.
     val detected = reusableLineRects ?: detectLines()
     val lineRects = detected.orEmpty()
+    // No detected lines (including an unavailable detector) cannot establish completeness,
+    // even if whole-crop fallback later returns a high-confidence fragment.
+    if (lineRects.isEmpty()) onIncompleteRecognition()
     val chinese = language == TranslationLanguage.ZH_HANS_TO_TARGET ||
         language == TranslationLanguage.ZH_HANT_TO_TARGET ||
         language == TranslationLanguage.CHN_ENG_TO_ZH
@@ -238,10 +351,13 @@ internal fun recognizeLocalCrop(
         language == TranslationLanguage.KO_TO_ZH -> recognizeKoreanLines(crop, lineRects, engine, bubbleSource = bubbleSource)
         else -> recognizeEnglishLines(crop, lineRects, engine, bubbleSource = bubbleSource)
     }
+    if (recognized.size < lineRects.size) onIncompleteRecognition()
     return resolveCropOcrText(recognized, lineRects.size, logTag) {
         if (language == TranslationLanguage.KO_TO_ZH) {
             val decoded = engine.recognizeWithScore(crop)
-            decoded.text.trim().takeIf { decoded.score >= DEFAULT_KO_MIN_LINE_SCORE }.orEmpty()
+            decoded.text.trim().takeIf {
+                passesOcrLineScore(it, decoded.score, DEFAULT_KO_MIN_LINE_SCORE, bubbleSource)
+            }.orEmpty()
         } else {
             engine.recognize(crop).trim()
         }
@@ -315,12 +431,18 @@ const val DEFAULT_FREE_TEXT_MIN_LINE_SCORE = 0.55f
 const val DEFAULT_SHORT_TEXT_MIN_LINE_SCORE = 0.65f
 
 private fun passesOcrLineScore(text: String, score: Float, base: Float, source: BubbleSource): Boolean {
-    val required = if (source == BubbleSource.TEXT_DETECTOR) {
+    if (text.isBlank()) return false
+    // A manual selection is explicit user intent. Keep every recognized line so
+    // confidence filtering cannot erase its text before translation.
+    if (source == BubbleSource.MANUAL) return true
+    return score >= requiredOcrLineScore(text, base, source)
+}
+
+private fun requiredOcrLineScore(text: String, base: Float, source: BubbleSource): Float =
+    if (source == BubbleSource.TEXT_DETECTOR) {
         if (text.codePointCount(0, text.length) <= 2) DEFAULT_SHORT_TEXT_MIN_LINE_SCORE
         else maxOf(base, DEFAULT_FREE_TEXT_MIN_LINE_SCORE)
     } else base
-    return score >= required && text.isNotBlank()
-}
 
 data class EnglishLine(
     val rect: RectF,

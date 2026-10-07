@@ -1,108 +1,114 @@
 package com.manga.translate.translation
 
-import com.manga.translate.platform.AppLogger
 import com.manga.translate.storage.GlossaryStore
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/**
- * Throttles `glossary.json` writes during batch translation.
- *
- * Callers submit a full glossary snapshot per change. Snapshots are coalesced per
- * folder, so a burst of successful pages produces one write instead of one write
- * per page. The newest submitted snapshot always wins, which keeps the on-disk
- * file a superset-consistent view of the in-memory glossary; [flush] and
- * [writeNow] guarantee the final state is persisted.
- *
- * A [throttleMillis] of `0` disables coalescing: every [submit] writes through
- * immediately. Use it when the write must stay ordered with another persistence
- * step (e.g. the glossary must be durable before the page's `*.json` lands, so a
- * process death cannot lose already-applied entries).
- *
- * **Known limitation**: If the process is killed by the system during the
- * throttle window (Low Memory Killer, vendor cleanup, force-stop, crash, or
- * shutdown), the pending snapshot is lost. This affects glossary context for
- * subsequent pages in batch translation, not already-saved translations (their
- * `*.json` files contain the terms that were applied). The short window (3s)
- * and low probability of system kills make this an acceptable tradeoff for
- * reducing I/O during batch operations.
- *
- * This changes write frequency only. Load, merge and persistence semantics stay
- * in [GlossaryStore].
- */
 internal class GlossaryWriteCoalescer(
     private val glossaryStore: GlossaryStore,
     private val targetKeyProvider: () -> String,
     private val throttleMillis: Long = DEFAULT_THROTTLE_MILLIS,
     private val clock: () -> Long = System::currentTimeMillis
 ) {
-    private class FolderState {
+    private data class ScopeKey(val folderPath: String, val targetKey: String)
+
+    private class PendingWrite(
+        val additions: Map<String, String>,
+        val completion: CompletableDeferred<Unit>
+    )
+
+    private class ScopeState {
         val mutex = Mutex()
-        var pending: Map<String, String>? = null
+        var glossary: LinkedHashMap<String, String>? = null
+        var pending: PendingWrite? = null
         var lastWriteAt = 0L
     }
 
-    private val states = ConcurrentHashMap<String, FolderState>()
+    private val states = ConcurrentHashMap<ScopeKey, ScopeState>()
 
-    private fun stateFor(folder: File): FolderState =
-        states.computeIfAbsent(folder.absolutePath) { FolderState() }
+    private fun scopeKey(folder: File): ScopeKey = ScopeKey(
+        folder.absolutePath,
+        targetKeyProvider().trim().lowercase()
+    )
 
-    /** Records [snapshot] and writes it only if the throttle window has elapsed. */
-    suspend fun submit(folder: File, snapshot: Map<String, String>) {
-        val state = stateFor(folder)
+    private fun stateFor(key: ScopeKey): ScopeState =
+        states.computeIfAbsent(key) { ScopeState() }
+
+    /** Queues throttled additions; use flush to persist them, or throttleMillis = 0 for write-through. */
+    suspend fun submit(folder: File, additions: Map<String, String>) {
+        if (additions.isEmpty()) return
+        val key = scopeKey(folder)
+        val state = stateFor(key)
         state.mutex.withLock {
-            state.pending = snapshot
-            if (clock() - state.lastWriteAt >= throttleMillis) {
-                writeLocked(folder, state)
+            val merged = LinkedHashMap(state.pending?.additions.orEmpty())
+            additions.forEach { (entry, translation) ->
+                if (entry.isNotBlank() && translation.isNotBlank()) merged[entry] = translation
             }
+            if (merged.isEmpty()) return@withLock
+            val pending = state.pending
+            if (pending == null) {
+                PendingWrite(merged, CompletableDeferred()).also { state.pending = it }
+            } else {
+                state.pending = PendingWrite(merged, pending.completion)
+            }
+            val shouldWrite = clock() - state.lastWriteAt >= throttleMillis
+            if (shouldWrite) writeLocked(folder, key, state)
         }
     }
 
-    /** Writes [snapshot] immediately, superseding anything pending for [folder]. */
     suspend fun writeNow(folder: File, snapshot: Map<String, String>) {
-        val state = stateFor(folder)
-        state.mutex.withLock {
-            state.pending = snapshot
-            writeLocked(folder, state)
+        val key = scopeKey(folder)
+        val state = stateFor(key)
+        val completion = state.mutex.withLock {
+            state.pending?.completion?.cancel()
+            val pending = PendingWrite(LinkedHashMap(snapshot), CompletableDeferred())
+            state.pending = pending
+            writeLocked(folder, key, state)
+            pending.completion
         }
+        completion.await()
     }
 
-    /** Writes the pending snapshot for [folder], if any. */
     suspend fun flush(folder: File) {
-        val state = states[folder.absolutePath] ?: return
-        state.mutex.withLock {
-            if (state.pending != null) {
-                writeLocked(folder, state)
+        val key = scopeKey(folder)
+        val state = states[key] ?: return
+        val completion = state.mutex.withLock {
+            state.pending?.let {
+                writeLocked(folder, key, state)
+                it.completion
             }
-        }
+        } ?: return
+        completion.await()
     }
 
-    /** Writes pending snapshots for every folder touched so far. */
     suspend fun flushAll() {
-        for (path in states.keys.toList()) {
-            flush(File(path))
-        }
+        for (key in states.keys.toList()) flush(File(key.folderPath))
     }
 
-    private suspend fun writeLocked(folder: File, state: FolderState) {
-        val snapshot = state.pending ?: return
+    private suspend fun writeLocked(folder: File, key: ScopeKey, state: ScopeState) {
+        val pending = state.pending ?: return
+        val base = state.glossary ?: glossaryStore.load(folder, key.targetKey).toMutableMap().also {
+            state.glossary = LinkedHashMap(it)
+        }
+        pending.additions.forEach { (entry, translation) -> base[entry] = translation }
+        val snapshot = LinkedHashMap(base)
         try {
-            withContext(Dispatchers.IO) {
-                glossaryStore.save(folder, snapshot, targetKeyProvider())
-            }
+            withContext(Dispatchers.IO) { glossaryStore.save(folder, snapshot, key.targetKey) }
+            state.glossary = snapshot
             state.pending = null
             state.lastWriteAt = clock()
-        } catch (e: Exception) {
-            // Keep the snapshot pending so a later flush retries it.
-            AppLogger.log("Glossary", "Failed to persist glossary for ${folder.name}", e)
+            pending.completion.complete(Unit)
+        } catch (error: Throwable) {
+            pending.completion.completeExceptionally(error)
+            state.pending = null
+            throw error
         }
     }
 
-    companion object {
-        private const val DEFAULT_THROTTLE_MILLIS = 3_000L
-    }
+    companion object { private const val DEFAULT_THROTTLE_MILLIS = 3_000L }
 }

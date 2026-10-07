@@ -43,22 +43,6 @@ internal class LlmParamsDialog(
                 }
                 AppLogger.log("Settings", "LLM params updated")
             }
-            .setNeutralButton(R.string.llm_params_clear) { _, _ ->
-                val existing = settingsStore.loadLlmParameters()
-                settingsStore.saveLlmParameters(
-                    LlmParameterSettings(
-                        temperature = null,
-                        topP = null,
-                        topK = null,
-                        maxOutputTokens = null,
-                        enableThinking = existing.enableThinking,
-                        thinkingLength = existing.thinkingLength,
-                        frequencyPenalty = null,
-                        presencePenalty = null
-                    )
-                )
-                AppLogger.log("Settings", "LLM params cleared")
-            }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
     }

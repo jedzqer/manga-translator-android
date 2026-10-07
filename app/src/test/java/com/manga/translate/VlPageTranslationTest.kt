@@ -24,6 +24,56 @@ class VlPageTranslationTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
     private fun bubble(id: Int, rect: RectF) = BubbleTranslation.pending(id, rect, "")
 
+    @Test fun `merged pages use consecutive image IDs and restore local IDs and parent geometry`() = runBlocking {
+        val gateway = PageGateway(context)
+        val coordinator = VlPageTranslationCoordinator(gateway, FloatingTranslationCacheStore(context))
+        val bitmap = Bitmap.createBitmap(200, 400, Bitmap.Config.ARGB_8888)
+        val parent = BubbleDetection(RectF(10f, 10f, 150f, 350f), 1f, 0)
+        val layout = VlPageLayout(200, 400,
+            listOf(bubble(8, RectF(20f, 250f, 80f, 300f)), bubble(4, RectF(20f, 20f, 80f, 80f))),
+            backgrounds = listOf(parent),
+            tiles = listOf(DetectionTile(0, 0, 200, 200), DetectionTile(0, 200, 200, 400)),
+            targetParents = mapOf(8 to 0, 4 to 0))
+        try {
+            val first = PipelineBitmapDecoder.openCropSource(bitmap).use { coordinator.preparePage(it, layout, 0) }
+            val second = PipelineBitmapDecoder.openCropSource(bitmap).use {
+                coordinator.preparePage(it, layout.copy(targetParents = emptyMap()), first.localIds.size)
+            }
+            assertEquals(mapOf(0 to 4, 1 to 8), first.localIds)
+            assertEquals(mapOf(2 to 4, 3 to 8), second.localIds)
+            gateway.emptyIds = setOf(3)
+            val results = coordinator.translatePreparedPages(listOf(first, second), SettingsStore(context).load(),
+                1000, 0, mapOf("old" to "Old"), true)
+            assertEquals(1, gateway.calls)
+            assertEquals(4, gateway.imageCount)
+            assertEquals(listOf(0, 1, 2, 3), gateway.batchIds)
+            assertEquals(parent.rect, results[0].bubbles.single().rect)
+            assertEquals("translated-1\ntranslated-0", results[0].bubbles.single().translatedText)
+            assertEquals(4, results[1].bubbles.single().id)
+            assertEquals("translated-2", results[1].bubbles.single().translatedText)
+            assertEquals(mapOf("new" to "New"), results[1].glossaryUsed)
+            gateway.invalidBatch = true
+            assertThrows(LlmResponseException::class.java) { runBlocking {
+                coordinator.translatePreparedPages(listOf(first, second), SettingsStore(context).load(), 1000, 0, emptyMap(), false)
+            } }
+            gateway.cancel = true
+            assertThrows(CancellationException::class.java) { runBlocking {
+                coordinator.translatePreparedPages(listOf(first), SettingsStore(context).load(), 1000, 0, emptyMap(), false)
+            } }
+        } finally { bitmap.recycle() }
+        Unit
+    }
+
+    @Test fun `merged blank pages avoid network requests`() = runBlocking {
+        val gateway = PageGateway(context)
+        val coordinator = VlPageTranslationCoordinator(gateway, FloatingTranslationCacheStore(context))
+        val blank = VlPageTranslationCoordinator.PreparedPage(VlPageLayout(100, 100, emptyList()), emptyList(), emptyMap())
+        val results = coordinator.translatePreparedPages(listOf(blank, blank), SettingsStore(context).load(), 1000, 0, emptyMap(), false)
+        assertEquals(2, results.size)
+        assertTrue(results.all { it.bubbles.isEmpty() })
+        assertEquals(0, gateway.calls)
+    }
+
     @Test fun `text blocks replace their parent while empty balloons remain and ordinary regions stay unchanged`() {
         val balloons = listOf(BubbleDetection(RectF(10f, 10f, 100f, 100f), 1f, 0),
             BubbleDetection(RectF(150f, 10f, 190f, 90f), 1f, 0))
@@ -200,6 +250,18 @@ class VlPageTranslationTest {
 }
 
 private class PageGateway(private val context: Context) : LlmGateway {
+    var imageCount = 0
+    var batchIds = emptyList<Int>()
+    var invalidBatch = false
+    override suspend fun translateMultiImageItems(imagesBase64: List<String>, requestedIds: List<Int>, promptAsset: String,
+        glossary: Map<String, String>, glossaryProcessingEnabled: Boolean, requestTimeoutMs: Int,
+        retryCount: Int, apiSettings: ApiSettings): LlmBubbleTranslationResult {
+        imageCount = imagesBase64.size
+        batchIds = requestedIds
+        val result = translateImageItems(imagesBase64.first(), requestedIds, promptAsset, glossary,
+            glossaryProcessingEnabled, requestTimeoutMs, retryCount, apiSettings)
+        return if (invalidBatch) result.copy(items = result.items.drop(1)) else result
+    }
     var calls = 0
     var failAt = -1
     var cancel = false
@@ -212,11 +274,11 @@ private class PageGateway(private val context: Context) : LlmGateway {
         retryCount: Int, apiSettings: ApiSettings): LlmBubbleTranslationResult {
         calls++
         if (cancel) throw CancellationException()
-        if (calls == failAt) throw LlmResponseException(LlmErrorCode.MissingTranslationItems, "missing")
+        if (failAt >= 0 && calls >= failAt) throw LlmResponseException(LlmErrorCode.MissingTranslationItems, "missing")
         return LlmBubbleTranslationResult(requestedIds.reversed().map { LlmBubbleTranslationItem(it, if (it in emptyIds) "" else "translated-$it") }, mapOf("new" to "New"))
     }
     override suspend fun translateBubbleItems(items: List<LlmBubbleTranslationRequestItem>, glossary: Map<String, String>, promptAsset: String,
-        requestTimeoutMs: Int?, retryCount: Int, apiSettings: ApiSettings?): LlmBubbleTranslationResult? = error("OCR path must not be used")
+        requestTimeoutMs: Int?, retryCount: Int, apiSettings: ApiSettings?, glossaryProcessingEnabled: Boolean): LlmBubbleTranslationResult? = error("OCR path must not be used")
     override suspend fun translateImageBubble(imageBase64: String, promptAsset: String, glossary: Map<String, String>, glossaryProcessingEnabled: Boolean,
         requestTimeoutMs: Int?, retryCount: Int, apiSettings: ApiSettings?): LlmTranslationResult? = error("Single bubble path must not be used")
     override suspend fun extractGlossary(text: String, glossary: Map<String, String>, promptAsset: String): Map<String, String>? = null

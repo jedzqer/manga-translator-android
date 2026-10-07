@@ -147,6 +147,10 @@ class LibraryRepository(private val context: Context) {
         }
     }
 
+    fun countImages(folder: File): Int = folder.listFiles { file ->
+        file.isFile && isImageFile(file.name)
+    }?.size ?: 0
+
     suspend fun addImages(
         folder: File,
         uris: List<Uri>,
@@ -389,13 +393,20 @@ class LibraryRepository(private val context: Context) {
         return if (libraryFolder.renameTo(canonicalTarget)) canonicalTarget else null
     }
 
-    fun moveFolderToCollection(folder: File, collection: File): File? {
+    fun moveFolderToCollection(
+        folder: File,
+        collection: File,
+        uniqueTarget: Boolean = false
+    ): File? {
         val sourceFolder = canonicalTopLevelFolder(folder) ?: return null
         val collectionFolder = canonicalTopLevelCollection(collection) ?: return null
         if (isCollectionFolder(sourceFolder)) return null
         if (sourceFolder == collectionFolder) return null
-        val target = File(collectionFolder, sourceFolder.name)
-        if (target.exists()) return null
+        val target = if (uniqueTarget) {
+            resolveUniqueFolder(collectionFolder, sourceFolder.name)
+        } else {
+            File(collectionFolder, sourceFolder.name).takeUnless(File::exists)
+        } ?: return null
         val canonicalTarget = canonicalDirectChild(target, collectionFolder) ?: return null
         return if (sourceFolder.renameTo(canonicalTarget)) canonicalTarget else null
     }

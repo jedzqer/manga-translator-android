@@ -22,7 +22,15 @@ import org.json.JSONObject
 class AppBackupManager(private val context: Context) {
     data class ImportResult(val mangaFiles: Int, val preferenceFiles: Int)
 
-    suspend fun exportTo(uri: Uri): Int = withContext(Dispatchers.IO) {
+    data class ExportOptions(
+        val includeManga: Boolean = true,
+        val includeSettings: Boolean = true
+    ) {
+        val hasSelection: Boolean get() = includeManga || includeSettings
+    }
+
+    suspend fun exportTo(uri: Uri, options: ExportOptions = ExportOptions()): Int = withContext(Dispatchers.IO) {
+        require(options.hasSelection) { "Select at least one backup category" }
         val resolver = context.contentResolver
         resolver.openOutputStream(uri)?.use { output ->
             ZipOutputStream(output.buffered()).use { zip ->
@@ -34,20 +42,21 @@ class AppBackupManager(private val context: Context) {
                 )
                 val mangaRoot = File(context.getExternalFilesDir(null) ?: context.filesDir, MANGA_LIBRARY_ROOT)
                 val mtimes = LinkedHashMap<String, Long>()
-                addDirectory(zip, mangaRoot, MANGA_LIBRARY_ROOT) { path, file ->
-                    mtimes[path.removePrefix("$MANGA_LIBRARY_ROOT/")] = file.lastModified()
+                if (options.includeManga) {
+                    addDirectory(zip, mangaRoot, MANGA_LIBRARY_ROOT) { path, file ->
+                        mtimes[path.removePrefix("$MANGA_LIBRARY_ROOT/")] = file.lastModified()
+                    }
+                    addPreferences(zip, "library_prefs")
+                    addPreferences(zip, ReadingProgressStore.PREFS_NAME)
                 }
                 addBytes(zip, MTIMES_ENTRY, mtimesJson(mtimes))
-                addBytes(zip, "preferences/${SettingsStore.PREFS_NAME}.json", preferencesJson(
-                    context.getSharedPreferences(SettingsStore.PREFS_NAME, Context.MODE_PRIVATE)
-                ).toString().toByteArray())
-                addBytes(zip, "preferences/library_prefs.json", preferencesJson(
-                    context.getSharedPreferences("library_prefs", Context.MODE_PRIVATE)
-                ).toString().toByteArray())
-                val profiles = File(context.filesDir, SettingsStore.AI_PROVIDER_PROFILES_FILE_NAME)
-                if (profiles.isFile) addFile(zip, profiles, "files/${profiles.name}")
-                val fonts = File(context.filesDir, "custom_fonts")
-                addDirectory(zip, fonts, "files/custom_fonts")
+                if (options.includeSettings) {
+                    addPreferences(zip, SettingsStore.PREFS_NAME)
+                    val profiles = File(context.filesDir, SettingsStore.AI_PROVIDER_PROFILES_FILE_NAME)
+                    if (profiles.isFile) addFile(zip, profiles, "files/${profiles.name}")
+                    val fonts = File(context.filesDir, "custom_fonts")
+                    addDirectory(zip, fonts, "files/custom_fonts")
+                }
             }
         } ?: error("Unable to open backup destination")
         1
@@ -113,7 +122,7 @@ class AppBackupManager(private val context: Context) {
                 restoreMtimes(destination, mtimes, copiedFiles, copiedDirs)
             }
             var preferenceCount = 0
-            listOf(SettingsStore.PREFS_NAME, "library_prefs").forEach { name ->
+            listOf(SettingsStore.PREFS_NAME, "library_prefs", ReadingProgressStore.PREFS_NAME).forEach { name ->
                 val file = File(staging, "preferences/$name.json")
                 if (file.isFile) {
                     importPreferences(context.getSharedPreferences(name, Context.MODE_PRIVATE), JSONObject(file.readText()))
@@ -135,6 +144,12 @@ class AppBackupManager(private val context: Context) {
         } finally {
             staging.deleteRecursively()
         }
+    }
+
+    private fun addPreferences(zip: ZipOutputStream, name: String) {
+        addBytes(zip, "preferences/$name.json", preferencesJson(
+            context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        ).toString().toByteArray())
     }
 
     private fun preferencesJson(prefs: SharedPreferences): JSONObject {
@@ -179,11 +194,9 @@ class AppBackupManager(private val context: Context) {
     /**
      * Restores original timestamps for entries copied by this import.
      *
-     * Translation and OCR cache validity is checked against the source image's
-     * lastModified/size fingerprint (see TranslationMetadata.matchesSource). A
-     * plain copy gives every restored file a fresh timestamp, which would mark
-     * every restored translation stale; the mtimes manifest shipped with the
-     * backup carries the original timestamps so fingerprints keep matching.
+     * OCR cache validity uses the source image's lastModified/size fingerprint.
+     * Preserve timestamps so restored OCR caches remain usable. Saved translations
+     * are user data and are read independently of source fingerprints.
      */
     private fun restoreMtimes(
         destinationRoot: File,

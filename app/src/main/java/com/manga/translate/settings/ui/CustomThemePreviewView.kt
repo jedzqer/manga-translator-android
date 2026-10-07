@@ -2,12 +2,11 @@ package com.manga.translate.settings.ui
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.View
+import androidx.core.graphics.ColorUtils
 import com.manga.translate.settings.CustomThemeColors
 import com.manga.translate.theming.ThemePalette
 
@@ -16,24 +15,24 @@ class CustomThemePreviewView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
     private val density = resources.displayMetrics.density
-    private val radius = 8f * density
+    private val radius = 0f
     private val lineRadius = 3f * density
     private val buttonTextRadius = 2f * density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val backgroundBounds = RectF()
     private val cardBounds = RectF()
+    private val cardShadowBounds = RectF()
     private val heroBounds = RectF()
     private val titleBounds = RectF()
     private val subtitleBounds = RectF()
     private val buttonBounds = RectF()
     private val buttonTextBounds = RectF()
+    private val buttonShadowBounds = RectF()
     private var palette = ThemePalette.from(CustomThemeColors.DEFAULT)
-    private var heroGradient: LinearGradient? = null
     var colors: CustomThemeColors = CustomThemeColors.DEFAULT
         set(value) {
             field = value
             palette = ThemePalette.from(value)
-            updateHeroGradient()
             invalidate()
         }
 
@@ -41,15 +40,25 @@ class CustomThemePreviewView @JvmOverloads constructor(
         super.onDraw(canvas)
         paint.color = palette.background
         canvas.drawRoundRect(backgroundBounds, radius, radius, paint)
+        paint.color = ColorUtils.blendARGB(palette.background, palette.outline, 0.24f)
+        paint.strokeWidth = density
+        var lineY = 12f * density
+        while (lineY < height) {
+            canvas.drawLine(0f, lineY, width.toFloat(), lineY, paint)
+            lineY += 16f * density
+        }
+        paint.color = 0x38000000
+        canvas.drawRect(cardShadowBounds, paint)
         paint.color = palette.surface
         canvas.drawRoundRect(cardBounds, radius, radius, paint)
-        paint.shader = heroGradient
+        paint.color = palette.heroStart
         canvas.drawRoundRect(heroBounds, radius, radius, paint)
-        paint.shader = null
         paint.color = palette.foreground
         canvas.drawRoundRect(titleBounds, lineRadius, lineRadius, paint)
         paint.color = palette.mutedForeground
         canvas.drawRoundRect(subtitleBounds, lineRadius, lineRadius, paint)
+        paint.color = 0x38000000
+        canvas.drawRect(buttonShadowBounds, paint)
         paint.color = palette.buttonFill
         canvas.drawRoundRect(buttonBounds, radius, radius, paint)
         paint.color = palette.buttonText
@@ -66,7 +75,12 @@ class CustomThemePreviewView @JvmOverloads constructor(
         val margin = 14f * density
         backgroundBounds.set(0f, 0f, w.toFloat(), h.toFloat())
         cardBounds.set(margin, margin, w - margin, h - margin)
-        heroBounds.set(cardBounds.left, cardBounds.top, cardBounds.right, cardBounds.top + 32f * density)
+        cardShadowBounds.set(cardBounds)
+        cardShadowBounds.offset(3f * density, 4f * density)
+        heroBounds.set(
+            cardBounds.left + 14f * density, cardBounds.top + 14f * density,
+            cardBounds.left + 112f * density, cardBounds.top + 34f * density
+        )
         titleBounds.set(
             cardBounds.left + 14f * density,
             cardBounds.top + 50f * density,
@@ -85,28 +99,17 @@ class CustomThemePreviewView @JvmOverloads constructor(
             cardBounds.right - 14f * density,
             cardBounds.bottom - 12f * density
         )
+        buttonShadowBounds.set(
+            buttonBounds.left + 2f * density,
+            buttonBounds.top + 2f * density,
+            buttonBounds.right + 2f * density,
+            buttonBounds.bottom + 2f * density
+        )
         buttonTextBounds.set(
             buttonBounds.left + 18f * density,
             buttonBounds.centerY() - 2f * density,
             buttonBounds.right - 18f * density,
             buttonBounds.centerY() + 2f * density
         )
-        updateHeroGradient()
-    }
-
-    private fun updateHeroGradient() {
-        heroGradient = if (cardBounds.width() > 0f) {
-            LinearGradient(
-                cardBounds.left,
-                cardBounds.top,
-                cardBounds.right,
-                cardBounds.top,
-                palette.heroStart,
-                palette.heroEnd,
-                Shader.TileMode.CLAMP
-            )
-        } else {
-            null
-        }
     }
 }
