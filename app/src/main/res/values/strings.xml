@@ -38,7 +38,7 @@
     <string name="api_format_gemini">Gemini</string>
     <string name="model_name_hint">模型名称</string>
     <string name="api_timeout_hint">API 超时 (秒, 30–1200)</string>
-    <string name="api_timeout_policy_description">连接最多等待 15 秒。合并多页时会延长等待，单次最多 15 分钟，含重试总计最多 20 分钟；设置更短时以设置为准。</string>
+    <string name="api_timeout_policy_description">实际请求时长上限会受合并页数和重试次数影响。</string>
     <string name="api_retry_count_hint">API 最大重试次数 (1–50)</string>
     <string name="floating_api_timeout_hint">悬浮翻译 API 超时 (秒, 30–1200)</string>
     <string name="max_concurrency_hint">AI API 调用并发数 (1–200)</string>
@@ -362,7 +362,7 @@
     <string name="folder_import_chapters">导入子章节</string>
     <string name="folder_export_collection">导出集合</string>
     <string name="folder_export">导出漫画</string>
-    <string name="folder_translate">一键翻译</string>
+    <string name="folder_translate">翻译</string>
     <string name="folder_read">开始阅读</string>
     <string name="folder_back">返回</string>
     <string name="folder_image_count">%1$d 张图片</string>
@@ -446,8 +446,8 @@
     <string name="select_all">全选</string>
     <string name="clear_all">取消全选</string>
     <string name="delete_selected">删除所选</string>
-    <string name="translate_selected">一键翻译</string>
-    <string name="retranslate_selected">重译所选</string>
+    <string name="translate_selected">翻译</string>
+    <string name="retranslate_selected">重译</string>
     <string name="cancel_selection">取消</string>
     <string name="folder_selection_count">已选择 %1$d 张</string>
     <string name="library_selection_count">已选择 %1$d 个项目</string>

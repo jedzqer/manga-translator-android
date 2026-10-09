@@ -26,7 +26,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent">
+        app:layout_constraintBottom_toTopOf="@id/library_selection_actions">
 
         <com.manga.translate.platform.SafeNestedScrollView
             android:layout_width="match_parent"
@@ -240,41 +240,6 @@
                         android:textStyle="bold"
                         android:visibility="gone" />
 
-                    <LinearLayout
-                        android:id="@+id/library_selection_actions"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:orientation="vertical"
-                        android:visibility="gone">
-
-                        <Button
-                            android:id="@+id/library_select_all"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/select_all" />
-
-                        <Button
-                            android:id="@+id/library_translate_selected"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="@string/translate_selected" />
-
-                        <Button
-                            android:id="@+id/library_delete_selected"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="@string/delete_selected" />
-
-                        <Button
-                            android:id="@+id/library_cancel_selection"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="@string/cancel_selection" />
-                    </LinearLayout>
 
                     <com.manga.translate.platform.BoundedRecyclerView
                         android:id="@+id/folder_list"
@@ -311,7 +276,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent">
+        app:layout_constraintBottom_toTopOf="@id/folder_selection_actions">
 
         <com.manga.translate.platform.SafeNestedScrollView
             android:id="@+id/folder_detail_scroll"
@@ -713,49 +678,6 @@
                             android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
                     </LinearLayout>
 
-                    <LinearLayout
-                        android:id="@+id/folder_selection_actions"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:orientation="vertical"
-                        android:visibility="gone">
-
-                        <Button
-                            android:id="@+id/folder_select_all"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/select_all" />
-
-                        <Button
-                            android:id="@+id/folder_delete_selected"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="@string/delete_selected" />
-
-                        <Button
-                            android:id="@+id/folder_rename_selected"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="@string/folder_rename"
-                            android:visibility="gone" />
-
-                        <Button
-                            android:id="@+id/folder_cancel_selection"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="@string/cancel_selection" />
-
-                        <Button
-                            android:id="@+id/folder_retranslate_selected"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="@string/retranslate_selected" />
-                    </LinearLayout>
 
                     <androidx.recyclerview.widget.RecyclerView
                         android:id="@+id/folder_chapter_list"
@@ -813,6 +735,155 @@
                 android:textAppearance="@style/Widget.MangaTranslator.Title" />
         </LinearLayout>
     </FrameLayout>
+
+
+    <LinearLayout
+        android:id="@+id/library_selection_actions"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_surface_card"
+        android:orientation="vertical"
+        android:padding="8dp"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/library_selection_count"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:accessibilityLiveRegion="polite"
+                android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/library_translate_selected"
+                style="@style/Widget.MangaTranslator.SelectionIcon"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:contentDescription="@string/translate_selected"
+                app:tint="?attr/colorAccent"
+                app:srcCompat="@drawable/ic_selection_translate" />
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/library_delete_selected"
+                style="@style/Widget.MangaTranslator.SelectionIcon"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:contentDescription="@string/folder_delete"
+                app:tint="?attr/colorError"
+                app:srcCompat="@drawable/ic_delete_outline" />
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/library_select_all"
+                style="@style/Widget.MangaTranslator.SelectionIcon"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:contentDescription="@string/select_all"
+                app:srcCompat="@drawable/ic_selection_all" />
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/library_cancel_selection"
+                style="@style/Widget.MangaTranslator.SelectionIcon"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:contentDescription="@string/cancel_selection"
+                app:srcCompat="@drawable/ic_selection_close" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/folder_selection_actions"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_surface_card"
+        android:orientation="vertical"
+        android:padding="8dp"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/folder_selection_count"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:accessibilityLiveRegion="polite"
+                android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/folder_retranslate_selected"
+                style="@style/Widget.MangaTranslator.SelectionIcon"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:contentDescription="@string/retranslate_selected"
+                app:tint="?attr/colorAccent"
+                app:srcCompat="@drawable/ic_selection_translate" />
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/folder_delete_selected"
+                style="@style/Widget.MangaTranslator.SelectionIcon"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:contentDescription="@string/folder_delete"
+                app:tint="?attr/colorError"
+                app:srcCompat="@drawable/ic_delete_outline" />
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/folder_select_all"
+                style="@style/Widget.MangaTranslator.SelectionIcon"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:contentDescription="@string/select_all"
+                app:srcCompat="@drawable/ic_selection_all" />
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/folder_cancel_selection"
+                style="@style/Widget.MangaTranslator.SelectionIcon"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:contentDescription="@string/cancel_selection"
+                app:srcCompat="@drawable/ic_selection_close" />
+        </LinearLayout>
+    </LinearLayout>
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/add_folder_fab"

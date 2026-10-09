@@ -33,12 +33,12 @@ class LibraryFolderAdapter(
     private val selectedPaths = LinkedHashSet<String>()
     private var selectionMode = false
 
-    fun submit(list: List<FolderItem>) {
+    fun submit(list: List<FolderItem>, onCommitted: (() -> Unit)? = null) {
         if (selectionMode) {
             val validPaths = list.map { it.folder.absolutePath }.toHashSet()
             selectedPaths.retainAll(validPaths)
         }
-        submitList(list)
+        submitList(list) { onCommitted?.invoke() }
         val current = actionPosition
         if (current != null && current >= list.size) {
             actionPosition = null
@@ -211,7 +211,9 @@ class LibraryFolderAdapter(
                 PopupMenu(anchor.context, anchor).apply {
                     menu.add(0, MENU_RENAME, 0, R.string.folder_rename)
                     menu.add(0, MENU_DELETE, 1, R.string.folder_delete)
-                    menu.add(0, MENU_EDIT_TAGS, 2, R.string.folder_edit_tags)
+                    if (onEditTags != null) {
+                        menu.add(0, MENU_EDIT_TAGS, 2, R.string.folder_edit_tags)
+                    }
                     setOnMenuItemClickListener { menuItem ->
                         when (menuItem.itemId) {
                             MENU_RENAME -> onRename(item)

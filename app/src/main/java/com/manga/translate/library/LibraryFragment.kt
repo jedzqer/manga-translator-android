@@ -7,6 +7,7 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Parcelable
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
@@ -18,6 +19,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.doOnLayout
+import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -88,6 +90,9 @@ class LibraryFragment : Fragment() {
     }
 
     private var currentFolder: File? = null
+    private val folderDetailScrollPositions = mutableMapOf<String, Int>()
+    private val folderListStates = mutableMapOf<String, Parcelable>()
+    private var pendingFolderScrollRestore: String? = null
     private var currentParentFolder: File? = null
     private var pendingChapterImportParent: File? = null
     private var pendingArchiveImportCollection: File? = null
@@ -151,6 +156,7 @@ class LibraryFragment : Fragment() {
         onDelete = { confirmDeleteFolder(it.folder) },
         onRename = { showRenameFolderDialog(it.folder) },
         onMove = { showMoveFolderPicker(it.folder) },
+        showOverflowMenu = true,
         onSelectionChanged = { updateChapterSelectionActions() },
         onItemLongPress = { selectionManager.enterChapterSelectionMode(it.folder) }
     )
@@ -490,6 +496,12 @@ class LibraryFragment : Fragment() {
                 if (isAdded && _binding != null) openTutorial()
             }
         }
+        listOf(
+            binding.libraryTranslateSelected, binding.libraryDeleteSelected,
+            binding.librarySelectAll, binding.libraryCancelSelection,
+            binding.folderRetranslateSelected, binding.folderDeleteSelected,
+            binding.folderSelectAll, binding.folderCancelSelection
+        ).forEach { it.setActionDescription(it.contentDescription) }
         binding.librarySelectAll.setOnClickListener { selectionManager.toggleSelectAllLibraryFolders() }
         binding.libraryTranslateSelected.setOnClickListener { translateSelectedLibraryFolders() }
         binding.libraryDeleteSelected.setOnClickListener { confirmDeleteSelectedLibraryFolders() }
@@ -510,11 +522,13 @@ class LibraryFragment : Fragment() {
         binding.folderCollectionRead.setOnClickListener { startReading() }
         binding.folderSelectAll.setOnClickListener { handleSelectAllClick() }
         binding.folderDeleteSelected.setOnClickListener { handleDeleteSelectedClick() }
-        binding.folderRenameSelected.setOnClickListener { renameSelectedChapter() }
         binding.folderCancelSelection.setOnClickListener { exitActiveSelectionMode() }
         binding.folderRetranslateSelected.setOnClickListener {
-            val folder = currentFolder
-            selectionController.retranslateSelectedImages(folder)
+            if (selectionManager.isChapterSelectionMode) {
+                translateSelectedFolders(selectionManager.chapterSelectedFolders())
+            } else {
+                selectionController.retranslateSelectedImages(currentFolder)
+            }
         }
         binding.folderFullTranslateInfo.setOnClickListener { showFullTranslateInfo() }
         binding.folderFullTranslateLabel.setOnClickListener {
@@ -581,6 +595,10 @@ class LibraryFragment : Fragment() {
                     }
                     if (selectionManager.isLibrarySelectionMode) {
                         selectionManager.exitLibrarySelectionMode()
+                        return
+                    }
+                    if (selectionManager.isChapterSelectionMode) {
+                        selectionManager.exitChapterSelectionMode()
                         return
                     }
                     if (binding.folderDetailContainer.isVisible) {
@@ -701,6 +719,7 @@ class LibraryFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        persistCurrentFolderDetailScroll()
         folderLoadGeneration += 1
         folderLoadJob?.cancel()
         folderLoadJob = null
@@ -724,6 +743,8 @@ class LibraryFragment : Fragment() {
     }
 
     private fun showFolderList() {
+        persistCurrentFolderDetailScroll()
+        pendingFolderScrollRestore = null
         currentFolder = null
         currentParentFolder = null
         folderContentLoadGeneration += 1
@@ -744,17 +765,14 @@ class LibraryFragment : Fragment() {
     }
 
     private fun showFolderDetail(folder: File, parentFolder: File? = null) {
+        persistCurrentFolderDetailScroll()
         currentFolder = folder
         currentParentFolder = parentFolder
+        pendingFolderScrollRestore = folder.absolutePath
         binding.folderDetailScroll.stopNestedScroll()
-        binding.folderDetailScroll.scrollTo(0, 0)
-        lastFolderDetailScrollY = 0
-        binding.folderDetailScroll.post {
-            if (_binding != null && currentFolder?.absolutePath == folder.absolutePath) {
-                binding.folderDetailScroll.scrollTo(0, 0)
-                lastFolderDetailScrollY = 0
-            }
-        }
+        val targetScrollY = folderDetailScrollPositions[folder.absolutePath] ?: 0
+        binding.folderDetailScroll.scrollTo(0, targetScrollY)
+        lastFolderDetailScrollY = targetScrollY
         resetFolderTopBar(forceVisible = true)
         binding.folderTitle.text = buildFolderTitle(folder)
         binding.folderFullTranslateSwitch.isChecked = preferencesGateway.isFullTranslateEnabled(folder)
@@ -1126,7 +1144,9 @@ class LibraryFragment : Fragment() {
             ) return@launch
             when (content) {
                 is FolderContent.Chapters -> {
-                    chapterAdapter.submit(content.items)
+                    chapterAdapter.submit(content.items) {
+                        _binding?.folderChapterList?.let { restoreFolderScroll(folder, generation, it) }
+                    }
                     imageAdapter.submit(emptyList())
                     binding.folderChapterList.visibility = View.VISIBLE
                     binding.folderImageList.visibility = View.GONE
@@ -1136,7 +1156,9 @@ class LibraryFragment : Fragment() {
                     uiCallbacks.clearFolderStatus()
                 }
                 is FolderContent.Images -> {
-                    imageAdapter.submit(content.items)
+                    imageAdapter.submit(content.items) {
+                        _binding?.folderImageList?.let { restoreFolderScroll(folder, generation, it) }
+                    }
                     chapterAdapter.submit(emptyList())
                     binding.folderChapterList.visibility = View.GONE
                     binding.folderImageList.visibility = View.VISIBLE
@@ -1151,6 +1173,39 @@ class LibraryFragment : Fragment() {
                 }
             }
         }
+    }
+
+    private fun persistCurrentFolderDetailScroll() {
+        val folder = currentFolder ?: return
+        if (pendingFolderScrollRestore == folder.absolutePath) return
+        val views = _binding ?: return
+        val scrollY = _binding?.folderDetailScroll?.scrollY ?: lastFolderDetailScrollY
+        folderDetailScrollPositions[folder.absolutePath] = scrollY.coerceAtLeast(0)
+        val list = if (views.folderChapterList.isVisible) views.folderChapterList else views.folderImageList
+        list.layoutManager?.onSaveInstanceState()?.let { folderListStates[folder.absolutePath] = it }
+    }
+
+    private fun restoreFolderScroll(folder: File, generation: Long, list: RecyclerView) {
+        if (_binding == null || generation != folderContentLoadGeneration ||
+            currentFolder?.absolutePath != folder.absolutePath ||
+            pendingFolderScrollRestore != folder.absolutePath
+        ) return
+        val manager = list.layoutManager as? LinearLayoutManager ?: return
+        list.stopScroll()
+        val state = folderListStates[folder.absolutePath]
+        if (state != null) manager.onRestoreInstanceState(state)
+        else manager.scrollToPositionWithOffset(0, 0)
+        list.doOnNextLayout {
+            if (_binding == null || generation != folderContentLoadGeneration ||
+                currentFolder?.absolutePath != folder.absolutePath
+            ) return@doOnNextLayout
+            val scrollY = folderDetailScrollPositions[folder.absolutePath] ?: 0
+            binding.folderDetailScroll.scrollTo(0, scrollY)
+            lastFolderDetailScrollY = binding.folderDetailScroll.scrollY
+            resetFolderTopBar(forceVisible = true)
+            pendingFolderScrollRestore = null
+        }
+        list.requestLayout()
     }
 
     private fun syncExportActionState(folder: File) {
@@ -1885,7 +1940,6 @@ class LibraryFragment : Fragment() {
         binding.folderReadingSettings.visibility =
             if (useParentCollectionSettings) View.GONE else View.VISIBLE
         binding.folderSelectionActions.visibility = View.GONE
-        binding.folderRenameSelected.visibility = View.GONE
         binding.folderRetranslateSelected.visibility = if (isCollection) View.GONE else View.VISIBLE
         if (isCollection) {
             selectionController.exitSelectionMode()
@@ -1904,7 +1958,11 @@ class LibraryFragment : Fragment() {
         if (!selectionManager.isLibrarySelectionMode || _binding == null) return
         val count = selectionManager.librarySelectedCount()
         uiCallbacks.setFolderStatus(getString(R.string.library_selection_count, count))
-        binding.librarySelectAll.text = getString(
+        binding.librarySelectionCount.text = getString(R.string.library_selection_count, count)
+        val canAct = binding.librarySelectAll.isEnabled && count > 0
+        binding.libraryTranslateSelected.isEnabled = canAct
+        binding.libraryDeleteSelected.isEnabled = canAct
+        binding.librarySelectAll.setActionDescription(
             if (selectionManager.isLibraryAllSelected()) R.string.clear_all else R.string.select_all
         )
     }
@@ -1916,25 +1974,33 @@ class LibraryFragment : Fragment() {
         binding.folderExportCollection.isEnabled = enabled
         binding.folderTranslateCollection.isEnabled = enabled
         binding.folderCollectionAddChapter.isEnabled = enabled
-        if (selectionManager.isLibrarySelectionMode) {
-            binding.librarySelectAll.isEnabled = enabled
-            binding.libraryTranslateSelected.isEnabled = enabled
-            binding.libraryDeleteSelected.isEnabled = enabled
-            binding.libraryCancelSelection.isEnabled = enabled
+        val detailHasSelection = when {
+            selectionManager.isChapterSelectionMode -> selectionManager.chapterSelectedCount() > 0
+            selectionController.isSelectionMode -> imageAdapter.selectedCount() > 0
+            else -> true
         }
+        binding.folderRetranslateSelected.isEnabled = enabled && detailHasSelection
+        binding.folderSelectAll.isEnabled = enabled
+        binding.folderDeleteSelected.isEnabled = enabled && detailHasSelection
+        binding.folderCancelSelection.isEnabled = enabled
+        val libraryHasSelection = selectionManager.librarySelectedCount() > 0
+        binding.librarySelectAll.isEnabled = enabled
+        binding.libraryTranslateSelected.isEnabled = enabled && libraryHasSelection
+        binding.libraryDeleteSelected.isEnabled = enabled && libraryHasSelection
+        binding.libraryCancelSelection.isEnabled = enabled
     }
 
     private fun translateSelectedLibraryFolders() {
-        val selected = selectionManager.librarySelectedFolders()
+        translateSelectedFolders(selectionManager.librarySelectedFolders())
+    }
+
+    private fun translateSelectedFolders(selected: List<File>) {
         if (selected.isEmpty()) {
             uiCallbacks.setFolderStatus(getString(R.string.translate_folders_empty))
             return
         }
         val tasks = selected.flatMap { taskFactory.buildTasksForFolder(it, force = false) }
-        _binding?.librarySelectAll?.isEnabled = false
-        _binding?.libraryTranslateSelected?.isEnabled = false
-        _binding?.libraryDeleteSelected?.isEnabled = false
-        _binding?.libraryCancelSelection?.isEnabled = false
+        applyTranslationActionsEnabled(false)
         TranslationKeepAliveService.startTranslationTask(
             requireContext(),
             taskFactory.buildBatchDescriptor(tasks)
@@ -1985,10 +2051,13 @@ class LibraryFragment : Fragment() {
         if (!selectionManager.isChapterSelectionMode) return
         val count = selectionManager.chapterSelectedCount()
         uiCallbacks.setFolderStatus(getString(R.string.chapter_selection_count, count))
-        binding.folderSelectAll.text = getString(
+        binding.folderSelectionCount.text = getString(R.string.chapter_selection_count, count)
+        val canAct = binding.folderSelectAll.isEnabled && count > 0
+        binding.folderRetranslateSelected.isEnabled = canAct
+        binding.folderDeleteSelected.isEnabled = canAct
+        binding.folderSelectAll.setActionDescription(
             if (selectionManager.isChapterAllSelected()) R.string.clear_all else R.string.select_all
         )
-        binding.folderRenameSelected.visibility = if (count == 1) View.VISIBLE else View.GONE
     }
 
     private fun confirmDeleteSelectedChapters() {
@@ -2019,13 +2088,6 @@ class LibraryFragment : Fragment() {
             loadImages(folder)
             loadFolders()
         }
-    }
-
-    private fun renameSelectedChapter() {
-        val selected = selectionManager.chapterSelectedFolders()
-        if (selected.size != 1) return
-        selectionManager.exitChapterSelectionMode()
-        showRenameFolderDialog(selected.first())
     }
 
     private sealed interface FolderFilter {

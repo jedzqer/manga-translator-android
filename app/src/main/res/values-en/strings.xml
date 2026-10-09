@@ -33,7 +33,7 @@
     <string name="api_format_gemini">Gemini</string>
     <string name="model_name_hint">Model name</string>
     <string name="api_timeout_hint">API timeout (seconds, 30–1200)</string>
-    <string name="api_timeout_policy_description">Connections wait up to 15 seconds. Combining pages extends the wait: up to 15 minutes per attempt and 20 minutes including retries. Shorter settings take precedence.</string>
+    <string name="api_timeout_policy_description">The actual request time limit depends on the number of combined pages and retries.</string>
     <string name="api_retry_count_hint">API Maximum number of retries (1–50)</string>
     <string name="floating_api_timeout_hint">Floating translation API timeout (seconds, 30–1200)</string>
     <string name="max_concurrency_hint">AI API Number of concurrent calls (1–200)</string>
@@ -421,8 +421,8 @@
     <string name="select_all">Select All</string>
     <string name="clear_all">Clear Selection</string>
     <string name="delete_selected">Delete Selected</string>
-    <string name="translate_selected">Translate Selected</string>
-    <string name="retranslate_selected">Retranslate Selected</string>
+    <string name="translate_selected">Translate</string>
+    <string name="retranslate_selected">Retranslate</string>
     <string name="cancel_selection">Cancel</string>
     <string name="folder_selection_count">%1$d photos selected</string>
     <string name="library_selection_count">%1$d items selected</string>

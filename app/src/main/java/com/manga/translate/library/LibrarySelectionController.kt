@@ -31,6 +31,10 @@ internal class LibrarySelectionController(
             isSelectionMode = true
             imageAdapter.setSelectionMode(true)
             bindingProvider()?.folderSelectionActions?.visibility = View.VISIBLE
+            bindingProvider()?.folderRetranslateSelected?.apply {
+                visibility = View.VISIBLE
+                setActionDescription(R.string.retranslate_selected)
+            }
         }
         imageAdapter.toggleSelectionAndNotify(target)
         updateSelectionActions()
@@ -49,12 +53,19 @@ internal class LibrarySelectionController(
         val context = contextProvider() ?: return
         val count = imageAdapter.selectedCount()
         ui.setFolderStatus(context.getString(R.string.folder_selection_count, count))
+        bindingProvider()?.folderSelectionCount?.text =
+            context.getString(R.string.folder_selection_count, count)
         val buttonText = if (imageAdapter.areAllSelected()) {
             context.getString(R.string.clear_all)
         } else {
             context.getString(R.string.select_all)
         }
-        bindingProvider()?.folderSelectAll?.text = buttonText
+        bindingProvider()?.folderSelectAll?.setActionDescription(buttonText)
+        bindingProvider()?.let { binding ->
+            val canAct = binding.folderSelectAll.isEnabled && count > 0
+            binding.folderRetranslateSelected.isEnabled = canAct
+            binding.folderDeleteSelected.isEnabled = canAct
+        }
     }
 
     fun toggleSelectAllImages() {

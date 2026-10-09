@@ -19,12 +19,12 @@ class FolderImageAdapter(
     private val selectedPaths = LinkedHashSet<String>()
     private var selectionMode = false
 
-    fun submit(list: List<ImageItem>) {
+    fun submit(list: List<ImageItem>, onCommitted: (() -> Unit)? = null) {
         if (selectionMode) {
             val validPaths = list.map { it.file.absolutePath }.toHashSet()
             selectedPaths.retainAll(validPaths)
         }
-        submitList(list)
+        submitList(list) { onCommitted?.invoke() }
     }
 
     fun setSelectionMode(enabled: Boolean) {

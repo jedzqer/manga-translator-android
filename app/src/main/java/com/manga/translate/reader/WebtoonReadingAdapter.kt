@@ -64,6 +64,12 @@ internal fun projectPreviousSpillBubbles(
         }
         bubble.copy(
             rect = projected,
+            // Contours are normalized to their page, unlike the pixel-based rectangle.
+            // Keep overflow coordinates so both page overlays clip the same full shape.
+            maskContour = bubble.maskContour?.mapIndexed { index, coordinate ->
+                if (index % 2 == 0) coordinate
+                else (coordinate * previousHeight - previousHeight) * fitWidthScale / currentHeight
+            }?.toFloatArray(),
             ownerImageName = previousImageName
         )
     }

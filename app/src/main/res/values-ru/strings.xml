@@ -33,7 +33,7 @@
     <string name="api_format_gemini">Gemini</string>
     <string name="model_name_hint">Название модели</string>
     <string name="api_timeout_hint">Таймаут API (секунды, 30–1200)</string>
-    <string name="api_timeout_policy_description">Ожидание соединения — до 15 секунд. При объединении страниц время увеличивается: до 15 минут на попытку и до 20 минут с повторами. Меньшие заданные значения имеют приоритет.</string>
+    <string name="api_timeout_policy_description">Фактический предел времени запроса зависит от числа объединённых страниц и повторных попыток.</string>
     <string name="api_retry_count_hint">API Максимальное количество повторов (1–50)</string>
     <string name="floating_api_timeout_hint">Тайм-аут трансляции API при наведении (секунды, 30–1200)</string>
     <string name="max_concurrency_hint">AI API Количество одновременных вызовов (1–200)</string>
@@ -421,7 +421,7 @@
     <string name="select_all">Выбрать все</string>
     <string name="clear_all">Снять выделение</string>
     <string name="delete_selected">Удалить выбранное</string>
-    <string name="translate_selected">Перевести выбранное</string>
+    <string name="translate_selected">Перевести</string>
     <string name="retranslate_selected">Перевести заново</string>
     <string name="cancel_selection">Отмена</string>
     <string name="folder_selection_count">Выбрано %1$d фотографий</string>

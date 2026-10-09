@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- ALL lettermark; action descriptions remain localized. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M1,17 L4,7 L6,7 L9,17 L7,17 L6.4,15 L3.6,15 L3,17 Z M4.2,13 L5.8,13 L5,10 Z M10,7 L12,7 L12,15 L16,15 L16,17 L10,17 Z M17,7 L19,7 L19,15 L23,15 L23,17 L17,17 Z" />
+</vector>

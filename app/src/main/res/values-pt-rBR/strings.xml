@@ -33,7 +33,7 @@
     <string name="api_format_gemini">Gemini</string>
     <string name="model_name_hint">Nome do modelo</string>
     <string name="api_timeout_hint">Tempo limite da API (segundos, 30–1200)</string>
-    <string name="api_timeout_policy_description">A conexão aguarda até 15 segundos. Combinar páginas aumenta a espera: até 15 minutos por tentativa e 20 minutos com novas tentativas. Tempos menores configurados têm prioridade.</string>
+    <string name="api_timeout_policy_description">O limite real de duração da solicitação depende do número de páginas combinadas e de novas tentativas.</string>
     <string name="api_retry_count_hint">Número máximo de tentativas da API (1–50)</string>
     <string name="floating_api_timeout_hint">Tempo limite da API de tradução flutuante (segundos, 30–1200)</string>
     <string name="max_concurrency_hint">Número de chamadas simultâneas da API de IA (1–200)</string>
@@ -421,8 +421,8 @@
     <string name="select_all">Selecionar tudo</string>
     <string name="clear_all">Limpar seleção</string>
     <string name="delete_selected">Excluir selecionados</string>
-    <string name="translate_selected">Traduzir selecionados</string>
-    <string name="retranslate_selected">Retraduzir selecionados</string>
+    <string name="translate_selected">Traduzir</string>
+    <string name="retranslate_selected">Retraduzir</string>
     <string name="cancel_selection">Cancelar</string>
     <string name="folder_selection_count">%1$d imagens selecionadas</string>
     <string name="library_selection_count">%1$d itens selecionados</string>

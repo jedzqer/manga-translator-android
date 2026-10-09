@@ -1,6 +1,7 @@
 package com.manga.translate.library
 
 import android.view.View
+import com.manga.translate.R
 import com.manga.translate.databinding.FragmentLibraryBinding
 import java.io.File
 
@@ -19,7 +20,7 @@ import java.io.File
  *
  * The manager only mutates selection state and the selection action bars;
  * the Fragment still refreshes the remaining UI (selection count status,
- * select-all label, rename visibility) through the adapters'
+ * select-all label) through the adapters'
  * `onSelectionChanged` callbacks, reading the state exposed here.
  */
 internal class LibrarySelectionManager(
@@ -42,6 +43,10 @@ internal class LibrarySelectionManager(
             isLibrarySelectionMode = true
             folderAdapter.setSelectionMode(true)
             bindingProvider()?.librarySelectionActions?.visibility = View.VISIBLE
+            bindingProvider()?.addFolderFab?.apply {
+                animate().cancel()
+                visibility = View.GONE
+            }
             ui.clearFolderStatus()
         }
         folderAdapter.toggleSelectionAndNotify(target)
@@ -52,6 +57,15 @@ internal class LibrarySelectionManager(
         isLibrarySelectionMode = false
         folderAdapter.setSelectionMode(false)
         bindingProvider()?.librarySelectionActions?.visibility = View.GONE
+        bindingProvider()?.let { binding ->
+            if (binding.libraryListContainer.visibility == View.VISIBLE &&
+                binding.folderDetailContainer.visibility != View.VISIBLE
+            ) {
+                binding.addFolderFab.alpha = 1f
+                binding.addFolderFab.translationY = 0f
+                binding.addFolderFab.visibility = View.VISIBLE
+            }
+        }
         ui.clearFolderStatus()
     }
 
@@ -78,7 +92,10 @@ internal class LibrarySelectionManager(
             onExitImageSelectionMode()
             chapterAdapter.setSelectionMode(true)
             bindingProvider()?.folderSelectionActions?.visibility = View.VISIBLE
-            bindingProvider()?.folderRetranslateSelected?.visibility = View.GONE
+            bindingProvider()?.folderRetranslateSelected?.apply {
+                visibility = View.VISIBLE
+                setActionDescription(R.string.translate_selected)
+            }
         }
         chapterAdapter.toggleSelectionAndNotify(target)
     }
@@ -88,7 +105,6 @@ internal class LibrarySelectionManager(
         isChapterSelectionMode = false
         chapterAdapter.setSelectionMode(false)
         bindingProvider()?.folderSelectionActions?.visibility = View.GONE
-        bindingProvider()?.folderRenameSelected?.visibility = View.GONE
         bindingProvider()?.folderRetranslateSelected?.visibility = View.GONE
         ui.clearFolderStatus()
     }

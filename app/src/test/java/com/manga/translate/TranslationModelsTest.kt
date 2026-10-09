@@ -1,5 +1,6 @@
 package com.manga.translate
 
+import android.graphics.Path
 import android.graphics.RectF
 import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.BubbleTranslation
@@ -9,6 +10,7 @@ import com.manga.translate.model.TranslationMetadata
 import com.manga.translate.model.TranslationResult
 import com.manga.translate.model.deriveStatus
 import com.manga.translate.reader.projectPreviousSpillBubbles
+import com.manga.translate.rendering.BubbleShapePaths
 import com.manga.translate.translation.CrossPageBubbleMerger
 import com.manga.translate.model.OcrBubble
 import com.manga.translate.model.PageOcrResult
@@ -16,6 +18,7 @@ import com.manga.translate.storage.OcrStore
 import com.manga.translate.translation.withRecognizedTextBubblesOnly
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -201,6 +204,50 @@ class TranslationModelsTest {
         assertEquals(-50f, projected.first().rect.top)
         assertEquals(150f, projected.first().rect.right)
         assertEquals(150f, projected.first().rect.bottom)
+    }
+
+    @Test
+    fun `webtoon spill contour renders in the destination page without changing the original`() {
+        val contour = floatArrayOf(0.1f, 0.9375f, 0.3f, 0.9375f, 0.3f, 1.1875f, 0.1f, 1.1875f)
+        val originalContour = contour.copyOf()
+        val previous = TranslationResult(
+            imageName = "first.jpg",
+            width = 1000,
+            height = 1600,
+            bubbles = listOf(BubbleTranslation.translated(
+                id = 0,
+                rect = RectF(100f, 1500f, 300f, 1900f),
+                translatedText = "translated text",
+                source = BubbleSource.BUBBLE_DETECTOR,
+                maskContour = contour
+            ))
+        )
+
+        // Include equal dimensions, different widths/heights, and overflow beyond both edges.
+        for ((width, height) in listOf(1000 to 1600, 500 to 1200, 2000 to 400)) {
+            val projected = projectPreviousSpillBubbles(previous, "first.jpg", width, height).single()
+            val path = Path()
+            BubbleShapePaths.buildPath(
+                outPath = path,
+                bubble = projected,
+                sourceWidth = width,
+                sourceHeight = height,
+                originX = 0f,
+                originY = 0f,
+                scaleX = 1f,
+                scaleY = 1f
+            )
+            val bounds = RectF()
+            path.computeBounds(bounds, true)
+            val scale = width / 1000f
+            assertEquals(100f * scale, bounds.left, 0.001f)
+            assertEquals(-100f * scale, bounds.top, 0.001f)
+            assertEquals(300f * scale, bounds.right, 0.001f)
+            assertEquals(300f * scale, bounds.bottom, 0.001f)
+            assertNotSame(contour, projected.maskContour)
+            assertArrayEquals(originalContour, contour, 0f)
+            assertEquals(RectF(100f, 1500f, 300f, 1900f), previous.bubbles.single().rect)
+        }
     }
 
     @Test
