@@ -31,6 +31,29 @@ class VlSettingsLayoutTest {
     @Test @Config(qualifiers = "ru-w320dp-h480dp-night")
     fun `batch settings dark narrow screen wraps long warning`() = verifyBatchSettings()
 
+    @Test @Config(qualifiers = "ru-w320dp-h480dp-night")
+    fun `full visual control fits narrow dark library settings`() = verifyFullVisual()
+
+    @Test @Config(qualifiers = "pt-rBR-w320dp-h480dp-notnight")
+    fun `full visual control fits narrow light library settings`() = verifyFullVisual()
+
+    private fun verifyFullVisual() {
+        val context = ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_MangaTranslator)
+        val root = LayoutInflater.from(context).inflate(R.layout.fragment_library, null)
+        val label = root.findViewById<TextView>(R.id.folder_vl_full_visual_label)
+        val toggle = root.findViewById<SwitchCompat>(R.id.folder_vl_full_visual_switch)
+        val row = label.parent as View
+        val width = (280 * context.resources.displayMetrics.density).toInt()
+        row.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        row.layout(0, 0, width, row.measuredHeight)
+        assertTrue(label.width > 0)
+        assertTrue(toggle.right <= width)
+        assertEquals(0, label.layout.getEllipsisCount(label.lineCount - 1))
+        toggle.performClick()
+        assertTrue(toggle.isChecked)
+    }
+
     private fun verifyBatchSettings() {
         val context = ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_MangaTranslator)
         val root = LayoutInflater.from(context).inflate(R.layout.dialog_translation_request_settings, null) as ScrollView

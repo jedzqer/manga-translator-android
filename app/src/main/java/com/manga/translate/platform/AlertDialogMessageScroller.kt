@@ -1,6 +1,5 @@
 package com.manga.translate.platform
 
-import android.text.TextUtils
 import android.text.method.ScrollingMovementMethod
 import android.view.View
 import android.view.ViewGroup
@@ -10,7 +9,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.widget.NestedScrollView
-import com.manga.translate.R
+import androidx.annotation.StringRes
 
 internal fun AlertDialog.Builder.showWithScrollableMessage(): AlertDialog {
     return createWithScrollableMessage().also { dialog ->
@@ -20,8 +19,16 @@ internal fun AlertDialog.Builder.showWithScrollableMessage(): AlertDialog {
 }
 
 internal fun AlertDialog.Builder.createWithScrollableMessage(): AlertDialog {
-    attachSafeScrollableMessageIfNeeded()
     return create()
+}
+
+internal fun AlertDialog.Builder.setScrollableMessage(@StringRes message: Int): AlertDialog.Builder =
+    setScrollableMessage(context.getText(message))
+
+internal fun AlertDialog.Builder.setScrollableMessage(message: CharSequence): AlertDialog.Builder {
+    setMessage(null as CharSequence?)
+    setView(if (message.isEmpty()) null else createSafeScrollableMessageView(message))
+    return this
 }
 
 internal fun AlertDialog.enableScrollableMessage() {
@@ -52,12 +59,6 @@ private fun disableFrameworkScrollBars(view: View) {
     if (view is ViewGroup) {
         view.clipToPadding = true
     }
-}
-
-private fun AlertDialog.Builder.attachSafeScrollableMessageIfNeeded() {
-    val message = extractBuilderMessage() ?: return
-    setView(createSafeScrollableMessageView(message))
-    clearBuilderMessage()
 }
 
 private fun AlertDialog.Builder.createSafeScrollableMessageView(message: CharSequence): View {
@@ -102,23 +103,5 @@ private fun AlertDialog.Builder.createSafeScrollableMessageView(message: CharSeq
             )
         )
         setPadding(paddingHorizontal, paddingTop, paddingHorizontal, paddingBottom)
-    }
-}
-
-private fun AlertDialog.Builder.extractBuilderMessage(): CharSequence? {
-    return runCatching {
-        val paramsField = javaClass.getDeclaredField("P").apply { isAccessible = true }
-        val params = paramsField.get(this) ?: return null
-        val messageField = params.javaClass.getDeclaredField("mMessage").apply { isAccessible = true }
-        messageField.get(params) as? CharSequence
-    }.getOrNull()?.takeUnless { TextUtils.isEmpty(it) }
-}
-
-private fun AlertDialog.Builder.clearBuilderMessage() {
-    runCatching {
-        val paramsField = javaClass.getDeclaredField("P").apply { isAccessible = true }
-        val params = paramsField.get(this) ?: return
-        val messageField = params.javaClass.getDeclaredField("mMessage").apply { isAccessible = true }
-        messageField.set(params, null)
     }
 }

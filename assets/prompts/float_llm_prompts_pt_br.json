@@ -1,4 +1,19 @@
 {
+  "_说明": {
+    "Finalidade": "_说明 serve apenas como documentação. O aplicativo ignora seu conteúdo e não o envia ao modelo.",
+    "Campos": {
+      "system_prompt": "Instruções do sistema que descrevem a tarefa e as regras comuns.",
+      "user_prompt_prefix": "Instruções do usuário para a solicitação atual. O aplicativo acrescenta o conteúdo conforme o modo.",
+      "example_messages": "Lista de exemplos de diálogo. Cada entrada contém role e content; role pode ser system, user ou assistant."
+    },
+    "Protocolo de saída": [
+      "Retorne uma lista items com id e translation em cada entrada. Retorne cada ID solicitado exatamente uma vez, sem adicionar, omitir ou repetir IDs.",
+      "Preencha translation com a tradução; não renomeie o campo para text. Para regiões filtradas, retorne o ID com translation vazio."
+    ],
+    "Regras de edição": [
+      "Mantenha os campos e tipos do modelo. Os campos de texto não podem ficar vazios. A validação do formato não verifica o significado das instruções."
+    ]
+  },
   "system_prompt": "Você é um tradutor de mangás. Traduza o texto fornecido para português brasileiro natural com fidelidade. Responda somente com JSON válido, sem explicações, comentários ou markdown.",
   "user_prompt_prefix": "Traduza o texto de mangá a seguir para português brasileiro natural. Responda somente com JSON válido:\n\n",
   "example_messages": []

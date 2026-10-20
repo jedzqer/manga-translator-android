@@ -84,10 +84,10 @@ internal object VlPageAnnotationRenderer {
     private val colors = intArrayOf(0xffffb3ba.toInt(), 0xffbaffc9.toInt(), 0xffbae1ff.toInt(),
         0xffffffba.toInt(), 0xffdfbaff.toInt(), 0xffffdfba.toInt())
 
-    fun render(source: Bitmap, layout: VlPageLayout, chunk: VlPageChunk): Bitmap {
+    fun render(source: Bitmap, layout: VlPageLayout, chunk: VlPageChunk, fullVisual: Boolean = false): Bitmap {
         val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
-        canvas.drawColor(Color.WHITE)
+        if (fullVisual) canvas.drawBitmap(source, 0f, 0f, null) else canvas.drawColor(Color.WHITE)
         val sx = source.width / chunk.rect.width()
         val sy = source.height / chunk.rect.height()
         fun mapped(rect: RectF) = RectF((rect.left - chunk.rect.left) * sx, (rect.top - chunk.rect.top) * sy,

@@ -4,19 +4,19 @@
 
 本文面向在本仓库中开发、修复和审查代码的 AI Agent，提供必须遵守的约束、验证方式和高频源码入口。
 
-- `必须` / `不得` 表示硬性要求；`优先` 表示没有明确反例时采用的默认方案。
 - 行为细节以现有测试和源码为准。若本文与实现不一致，先确认是文档过期还是代码回归，再同步修正实现、测试或文档，不得静默选择其中一方。
-- 开始修改前检查工作区状态；保留用户已有改动，不得自动拉取远端、切换分支或回退无关文件。
+- 开始修改前检查工作区状态；保留用户已有改动。
 - 修改范围应紧贴任务。不要借机重构无关模块，也不要把临时实现过程或单次调参记录到本文。
 
 ## 项目基线
 
-- 单模块 Android 应用，模块为 `app`。
+- Android 应用按业务领域组织为 `library`、`reader`、`translation`、`detection`、`ocr`、`network`、`rendering`、`floating`、`background`、`settings`、`storage` 等源码模块，共享依赖由 `di/AppContainer.kt` 装配。
+- Gradle 构建模块以 `settings.gradle.kts` 的实际声明为准；当前注册的构建模块为 `:app`。业务源码模块与 Gradle 子项目须明确区分，不得用构建模块数量概括业务架构。
 - JDK 17；Java/Kotlin JVM target 17。
 - `compileSdk` / `targetSdk` 36，`minSdk` 24；仅打包 `arm64-v8a`。
 - Kotlin、AGP 和依赖版本以 `build.gradle.kts`、`app/build.gradle.kts` 为唯一来源。
 - 依赖仓库统一配置在 `settings.gradle.kts`，不得在根或模块构建脚本重复声明。
-- Kotlin 源码根目录：`app/src/main/java/com/manga/translate/`。
+- Kotlin 源码根目录：`app/src/main/java/com/manga/translate/`，其下按业务领域分包；单元测试位于 `app/src/test/java/com/manga/translate/`。
 - Android 资源：`app/src/main/res/`；Manifest：`app/src/main/AndroidManifest.xml`。
 - Assets 同时来自 `app/src/main/assets/` 和根目录 `assets/`。
 
@@ -49,7 +49,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - 不得仅为强制重新处理而修改 `TranslationStore` 的 metadata 可用性规则、结果版本或缓存兼容判定。
 - 已落盘 `*.json` 翻译结果是用户数据，不做缓存有效性校验；文风、语言、模式、供应商、源文件指纹或版本变化不得隐藏、丢弃或自动重译已有结果。只有用户主动重译才替换已有译文；部分结果补填仅处理未译气泡，失败时保留已有内容。metadata（含可选 `styleFingerprint`）只记录产出信息，旧文件缺失新字段仍正常读取。
 - OCR 等可重建缓存继续按各自语义维度严格校验，不得将译文结果的直接读取规则扩展到 OCR 缓存。
-- 悬浮窗翻译缓存的键与相似度匹配范围统一由 `FloatingCacheScope`（语言 + `providerId` + `modelName` + `promptAsset`）决定。该缓存启用相似文本匹配，缺失任一维度会导致静默返回错误译文；新增影响译文的维度必须加入 scope 并提升缓存 schema 版本。
+- 悬浮窗翻译缓存的键与相似度匹配范围统一由 `FloatingCacheScope`（语言 + `providerId` + `modelName` + `promptAsset` + `promptFingerprint`）决定。该缓存启用相似文本匹配，缺失任一维度会导致静默返回错误译文；新增影响译文的维度必须加入 scope 并提升缓存 schema 版本。
 - 跨页合并后的 `PageOcrResult` 只存在于内存中，不得落盘。若将来需要持久化，必须先在 `OcrMetadata` 中记录阅读模式，否则普通阅读会读到跨页坐标。
 - 必须变更持久化格式时，先说明影响并获得用户同意，同时提供向后兼容、迁移或恢复方案。`cacheDir` 下的可重建缓存（如 `floating_translate_cache.json`）可通过提升版本直接丢弃，不属于用户数据。
 - 漫画库文件操作统一经 `LibraryRepository`；翻译、OCR、glossary 和进度数据统一经对应 Store，避免在 UI 或 Coordinator 中另写一套文件协议。
@@ -83,8 +83,8 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 | 领域 | 入口与关键文件 |
 |---|---|
 | 应用入口 | `app/MangaTranslateApp.kt`、`app/MainActivity.kt`、`di/AppContainer.kt` |
-| 漫画库 | `library/LibraryFragment.kt`、`LibraryRepository.kt`、`LibraryImportExportCoordinator.kt`、`LibraryPreferencesGateway.kt` |
-| 阅读 | `reader/ReadingFragment.kt`、`ReadingSessionViewModel.kt`、`ReadingBitmapDecoder.kt`、`ReadingRegionImageView.kt`、`WebtoonReadingAdapter.kt` |
+| 漫画库 | `library/LibraryFragment.kt`、`LibraryViewModel.kt`、`LibraryPageLoader.kt`、`LibraryRepository.kt`、`LibraryImportExportCoordinator.kt`、`LibraryPreferencesGateway.kt` |
+| 阅读 | `reader/ReadingFragment.kt`、`ReadingSessionViewModel.kt`、`ReadingPageTransitionController.kt`、`ReadingBitmapDecoder.kt`、`ReadingRegionImageView.kt`、`WebtoonReadingAdapter.kt` |
 | 翻译主流程 | `translation/TranslationPipeline.kt`、`FolderTranslationCoordinator.kt`、`TextBubbleTranslationCoordinator.kt` |
 | 页面检测 | `detection/PageRegionDetector.kt`、`BubbleDetector.kt`、`TextBlockMerger.kt` |
 | OCR | `ocr/OcrSharedTools.kt`、`OcrEngine.kt`、`PPOcrV6SmallRec.kt`、`KoreanOcr.kt`、`EnglishLineDetector.kt` |
@@ -114,7 +114,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - 翻译固定使用主供应商，不得再引入附加供应商池或调度。
 - 自定义请求参数作用于主供应商，参数键不可重复。
 - 并发逐页翻译使用 glossary 快照，成功后串行合并。关闭译名处理时仍可读取已有 `glossary.json` 作为上下文，但不得提取、合并或写入新译名；文字请求必须将开关传至请求构造层，关闭时明确要求 `glossary_used` 为空对象。
-- VL 整页直译由共享 `VlPageTranslationCoordinator` 处理：蒙板保留原图、白底着色并标注 ID，默认每页或长图检测分块发送一次结构化图片请求；合并设置大于 1 时，漫画库按页序将多页及其检测分块作为独立图片合并发送，ID 按图片顺序在请求内连续编号，响应拆回各页原始 ID 与几何。合并请求受 AI 并发数限制，超时按含目标页数扩展，逐张编码后释放位图；已有结果仍直接读取，部分结果单独补填。文本块优先编号，无文本块气泡单独编号；响应 ID 必须与请求完全一致。回填时同一气泡内的非空文字块译文合并到父气泡的坐标与蒙版，游离文字保持文字块几何；误检与纯拟声词返回空译文并过滤。漫画库沿用译名处理开关，开启时使用 glossary 快照并在成功后串行合并，关闭时只读已有译名。悬浮窗暂不处理译名；携带译名上下文或启用译名提取的图片请求不得复用悬浮窗图片缓存。全文速译不接入 VL。
+- VL 整页直译由共享 `VlPageTranslationCoordinator` 处理：漫画库可按文件夹或集合选择完整画面或仅气泡：完整画面保留原图并标注 ID，仅气泡使用白底蒙版着色标注；悬浮窗和 API OCR 仍使用白底蒙版。默认每页或长图检测分块发送一次结构化图片请求；合并设置大于 1 时，漫画库按页序将多页及其检测分块作为独立图片合并发送，ID 按图片顺序在请求内连续编号，响应拆回各页原始 ID 与几何。合并请求受 AI 并发数限制，超时按含目标页数扩展，逐张编码后释放位图；已有结果仍直接读取，部分结果单独补填。文本块优先编号，无文本块气泡单独编号；响应 ID 必须与请求完全一致。回填时同一气泡内的非空文字块译文合并到父气泡的坐标与蒙版，游离文字保持文字块几何；误检与纯拟声词返回空译文并过滤。漫画库沿用译名处理开关，开启时使用 glossary 快照并在成功后串行合并，关闭时只读已有译名。悬浮窗暂不处理译名；携带译名上下文或启用译名提取的图片请求不得复用悬浮窗图片缓存。全文速译不接入 VL。
 - 多页气泡合并仅合并 AI 请求，不拼接图片或改写页内坐标；由 `TranslationPipeline.translatePagesWithGlossary()` 分配请求级唯一 ID 并拆回逐页结果。合并后的请求受 AI 并发数限制，超时按实际含文字页数扩展；已有部分译文仍走补填流程，已有缓存不因合并页数变化而失效。普通阅读模式使用有界、保持页序的 OCR 队列，凑批后即可发送并继续准备后续页面；不得将该流水线直接套用于条漫或全文速译。
 - 全文速译按有界窗口依次完成 OCR、译名提取和翻译落盘，译名请求同时限制文本量并沿用已累积的译名；不得恢复为整文件夹 OCR 结果常驻或一次性全文译名请求。条漫窗口须保留相邻页衔接，跨页合并结果仍只存在于内存。
 - 全文速译固定启用译名处理；`CrossPageBubbleMerger` 只用于 `WEBTOON_SCROLL`，普通横向阅读不得执行跨页气泡合并。
@@ -145,8 +145,10 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - `FolderTranslationCoordinator` 负责编排并返回任务，不得自行启动或停止保活 Service。
 - `TranslationTaskPersistence` 只记录活动任务描述，供同进程管理和异常清理；应用冷启动或 Service 被系统重建时必须清除，绝不自动续跑旧任务。
 - 进程重启后只能由用户重新发起任务；此时依靠已有 `*.ocr.json` / `*.json` 页级结果跳过已完成页面。
-- Service 状态通过 `LibraryUiBridge` 和 `ServiceLibraryUiCallbacks` 转发，不得让后台任务直接持有 Fragment/View 引用。
-- OCR 后台线程提交的文件夹状态由 `LibraryUiBridge` 切回主线程，并只保留最新的待显示状态；完成或清除状态不得被排队中的旧进度覆盖。
+- Service 的任务展示快照由 `GlobalTaskProgressStore` 提供，`LibraryUiBridge` / `ServiceLibraryUiCallbacks` 仅适配瞬时 UI 操作和待确认错误；不得让后台任务直接持有 Fragment/View 引用。
+- 任务展示状态统一由 `GlobalTaskProgressStore` 的只读 `StateFlow` 提供；Service 接收任务时分配 taskId，Coordinator 仅通过绑定该 ID 的 `TaskProgressWriter` 更新快照。旧任务回调不能更新新任务，同任务完成、取消和失败的首个终态不可被后续进度或终态覆盖；`running` 由 Service 在清理完成后释放。
+- 页面按视图生命周期在主线程收集快照并合并积压进度，完成或清除状态不得被排队中的旧进度覆盖。`LibraryUiBridge` 不维护第二套任务进度，负责带任务 ID 校验的瞬时 UI 操作及待确认错误/决策；无人订阅和视图重建不能丢失未确认错误，决策确认必须幂等，超时或取消清除模型决策。
+- 书架列表、目录、筛选和选择状态由 `LibraryViewModel` 管理，目录加载复用 `LibraryPageLoader`；阅读目录、图片列表、页索引与模式由 `ReadingSessionViewModel` 一次发布一致快照。ViewModel 不持有 Fragment、View 或 Activity，SavedStateHandle 只保存轻量恢复信息。状态写入入口和恢复来源见 `dev_doc/页面状态与任务生命周期.md`。
 
 ### 网络请求
 
@@ -163,7 +165,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - `SettingsStore` 是设置访问门面；新增设置应归入 `ApiSettingsStore`、`OcrSettingsStore`、`RenderSettingsStore`、`AppSettingsStore`、`LlmParameterStore` 或 `ProviderProfileStore`，不得继续膨胀 UI 层持久化逻辑。
 - 文件夹级设置、标签、排序和阅读方式统一经 `LibraryPreferencesGateway`。
 - 文件夹及集合文风由 `LibraryPreferencesGateway` 管理，默认跟随全局；集合内章节共用集合设置。专属空字符串表示不附加文风要求，不能当作跟随全局。实际文风随请求传递，禁止临时修改全局文风实现覆盖。
-- AI 供应商 profile 位于 `files/ai_provider_profiles.json`；附加供应商和其他偏好键以对应 Store 常量为准，不在本文复制完整键表。
+- AI 供应商 profile 位于 `files/ai_provider_profiles.json`；供应商配置和其他偏好键以对应 Store 常量为准，不在本文复制完整键表。
 - 设置弹窗默认对齐 `dialog_ocr_settings.xml`：滚动容器关闭 padding 裁剪，内容边距和控件节奏复用现有布局资源；不要为单个弹窗另建一套视觉规则。
 
 ## 数据位置
@@ -183,7 +185,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 | 当前后台任务描述 | `TranslationTaskPersistence` |
 | 阅读进度 | `ReadingProgressStore` |
 
-Prompt 位于 `assets/prompts/`，基础文件包括 `llm_prompts.json`、`llm_prompts_abstract.json`、`llm_prompts_FullTrans.json`、`float_llm_prompts.json`、`vl_bubble_prompts.json`、`vl_page_prompts.json` 和 `ocr_prompts.json`。加载时必须通过 `PromptAssetResolver` 处理语言变体。
+Prompt 位于 `assets/prompts/`，基础文件包括 `llm_prompts.json`、`llm_prompts_abstract.json`、`llm_prompts_FullTrans.json`、`float_llm_prompts.json`、`vl_bubble_prompts.json`、`vl_page_prompts.json` 和 `ocr_prompts.json`。加载时必须通过 `PromptAssetResolver` 处理语言变体。自定义提示词由 `CustomPromptStore` 按界面语言与模式保存在设置偏好中，请求构造通过该 Store 读取覆盖内容，未配置时读取内置资源。内置提示词以 `_说明` 字段按模式提供说明，编辑器直接展示，导出保留文档自身的说明，不另行注入。导入使用严格 JSON 校验，兼容缺失说明的旧文件；说明不参与协议占位符校验、保存的有效指令或缓存指纹，不得发送给模型。自定义提示词指纹计入悬浮缓存 scope 及使用 API 的 OCR 缓存，不影响已有译文的直接读取规则。
 
 ## 验证要求
 
@@ -214,7 +216,9 @@ Prompt 位于 `assets/prompts/`，基础文件包括 `llm_prompts.json`、`llm_p
 
 ## 更新与文档维护
 
+- 现状类文档（包括本文、README 和架构说明）只记录当前有效的实现、约束与使用方式，不记录修改过程、阶段回顾、前后对比或已废弃方案。实现变化时直接改写或删除过时描述，不追加“原先／本次改为／已完成”等过程记录；变更历史由版本控制和发布说明承载。开发计划只保留尚待执行的事项，完成后同步更新相关现状文档并移除对应计划，不累积完成日志。
 - 更新元数据位于根目录 `update.json`，解析和弹窗入口为 `UpdateChecker.kt` / `MainActivity.kt`。
+- 自动检查更新按持久化的成功时间限频，至少间隔 24 小时；连续无更新逐步延长至最多 30 天，发现新版本恢复每日检查。失败不推进成功记录，自动检查须串行判定限频；手动检查不受此限制。记录通过 `SettingsStore` / `AppSettingsStore` 访问。
 - `update.json` 的 `changelog` 为简体中文默认值；`changelog_hant`、`changelog_en`、`changelog_ru` 为语言覆盖，缺失时回退 `changelog`。
 - 新增模块、资源类型、持久化格式或跨模块行为约束时更新本文；普通实现调整只需更新源码和测试。
-- 本文只保留稳定约束和定位信息。具体阈值、模型尺寸、完整偏好键、版本迁移历史及一次性排查记录应留在源码、测试、提交说明或专项文档中。
+- 本文只保留当前有效的稳定约束和定位信息。具体阈值、模型尺寸和完整偏好键以源码与测试为准；版本迁移历史及一次性排查记录放在提交说明、发布说明或专门的历史记录中，不混入现状文档。兼容和恢复说明只保留当前仍适用的规则。

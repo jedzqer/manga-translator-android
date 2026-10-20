@@ -37,7 +37,12 @@ class TranslationPageBatchTest {
     private val context: Context = RuntimeEnvironment.getApplication()
     private val settings = SettingsStore(context)
     private val gateway = BatchGateway(context)
-    private val pipeline = TranslationPipeline(context, llmClient = gateway, settingsStore = settings)
+    private val pipeline = TranslationPipeline(
+        context,
+        llmClient = gateway,
+        settingsStore = settings,
+        strategyResolver = context.appContainer.translationStrategyResolver
+    )
 
     @Before
     fun setUp() {

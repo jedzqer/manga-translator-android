@@ -132,7 +132,8 @@ class FolderTranslationWindowTest {
                     MockResponse().setResponseCode(400).setBody("test assertion failed")
                 }
             }
-            val coordinator = container.createFolderTranslationCoordinator(pipeline, ui)
+            val coordinator = container.createFolderTranslationCoordinator(pipeline, ui,
+                com.manga.translate.platform.GlobalTaskProgressStore.begin(java.util.UUID.randomUUID().toString(), "Translation", "Preparing"))
             val task = requireNotNull(coordinator.translateFolder(
                 scope, folder, images, false, false, false, false, TranslationLanguage.JA_TO_ZH
             ) { })
@@ -144,7 +145,7 @@ class FolderTranslationWindowTest {
             assertTrue("Translation timed out: ${ui.error.get()}", task.isCompleted)
             serverError.get()?.let { throw AssertionError("Invalid request", it) }
             assertNull(ui.error.get())
-            assertEquals(context.getString(R.string.translation_done), ui.status.get())
+            assertEquals(context.getString(R.string.translation_done), com.manga.translate.platform.GlobalTaskProgressStore.state.value.detail)
             assertEquals(listOf(listOf("source_1", "source_2"), listOf("refill_source"),
                 listOf("source_4", "source_5"), listOf("source_6", "source_7")), translatedGroups)
             assertEquals(mapOf("existing" to "保留"), container.glossaryStore.load(folder, targetKey))
@@ -267,7 +268,8 @@ class FolderTranslationWindowTest {
             }
             server.start()
             settings.save(ApiSettings(server.url("/").toString(), "test-key", "test-model", ApiFormat.OPENAI_COMPATIBLE))
-            val coordinator = container.createFolderTranslationCoordinator(pipeline, ui)
+            val coordinator = container.createFolderTranslationCoordinator(pipeline, ui,
+                com.manga.translate.platform.GlobalTaskProgressStore.begin(java.util.UUID.randomUUID().toString(), "Translation", "Preparing"))
             val task = if (batch) {
                 coordinator.translateBatch(scope, listOf(FolderTranslationTask(
                     folder, images, false, true, true, false, TranslationLanguage.JA_TO_ZH
@@ -284,7 +286,7 @@ class FolderTranslationWindowTest {
             assertTrue("Translation task timed out: ${ui.error.get()}", task.isCompleted)
             serverError.get()?.let { throw AssertionError("Request ordering or payload failed", it) }
             assertNull(ui.error.get())
-            assertEquals(context.getString(R.string.translation_done), ui.status.get())
+            assertEquals(context.getString(R.string.translation_done), com.manga.translate.platform.GlobalTaskProgressStore.state.value.detail)
             assertEquals(listOf(windowSize, 1), requestSizes)
             assertEquals((1..windowSize + 1).map(::source), translatedSources)
             assertEquals(firstWindowGlossaryRequests + 1, glossaryRequests)
@@ -304,8 +306,7 @@ class FolderTranslationWindowTest {
 
     private class TestUi : LibraryUiCallbacks {
         val error = AtomicReference<String?>()
-        val status = AtomicReference("")
-        override fun setFolderStatus(left: String, right: String) { status.set(left) }
+        override fun setFolderStatus(left: String, right: String) = Unit
         override fun clearFolderStatus() = Unit
         override fun setTranslationActionsEnabled(enabled: Boolean) = Unit
         override fun showToast(resId: Int) = Unit

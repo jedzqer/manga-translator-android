@@ -63,6 +63,18 @@ internal class LibraryPreferencesGateway(
         return TranslationLanguage.fromPref(value)
     }
 
+    fun getExportThreads(default: Int = 2): Int =
+        prefs.getInt("export_threads", default)
+
+    fun getExportFormat(default: String? = null): String? =
+        prefs.getString("export_format", default)
+
+    fun isLegacyCbzExportEnabled(): Boolean = prefs.getBoolean("export_as_cbz", false)
+
+    fun setExportPreferences(threads: Int, format: String) {
+        prefs.edit { putInt("export_threads", threads); putString("export_format", format) }
+    }
+
     fun isVlDirectTranslateEnabled(folder: File): Boolean {
         return prefs.getBoolean(
             vlDirectTranslateKeyPrefix + settingsFolder(folder).absolutePath,
@@ -91,6 +103,28 @@ internal class LibraryPreferencesGateway(
     fun setVlDirectTranslateEnabled(folder: File, enabled: Boolean) {
         prefs.edit() {
             putBoolean(vlDirectTranslateKeyPrefix + settingsFolder(folder).absolutePath, enabled)
+        }
+    }
+
+    fun isVlFullVisualEnabled(folder: File): Boolean = prefs.getBoolean(
+        vlFullVisualKeyPrefix + settingsFolder(folder).absolutePath,
+        false
+    )
+
+    fun setVlFullVisualEnabled(folder: File, enabled: Boolean) {
+        prefs.edit { putBoolean(vlFullVisualKeyPrefix + settingsFolder(folder).absolutePath, enabled) }
+    }
+
+    fun isOnlyTranslateBubblesEnabled(folder: File): Boolean {
+        return prefs.getBoolean(
+            onlyTranslateBubblesKeyPrefix + settingsFolder(folder).absolutePath,
+            false
+        )
+    }
+
+    fun setOnlyTranslateBubblesEnabled(folder: File, enabled: Boolean) {
+        prefs.edit {
+            putBoolean(onlyTranslateBubblesKeyPrefix + settingsFolder(folder).absolutePath, enabled)
         }
     }
 
@@ -390,6 +424,8 @@ internal class LibraryPreferencesGateway(
         private const val translationStyleKeyPrefix = "translation_style_"
         private const val languageKeyPrefix = "translation_language_"
         private const val vlDirectTranslateKeyPrefix = "vl_direct_translate_enabled_"
+        private const val vlFullVisualKeyPrefix = "vl_full_visual_enabled_"
+        private const val onlyTranslateBubblesKeyPrefix = "only_translate_bubbles_enabled_"
         private const val readingModeKeyPrefix = "reading_mode_"
         private const val folderTagsKeyPrefix = "folder_tags_"
         private const val folderStatusKeyPrefix = "folder_status_"
@@ -401,6 +437,8 @@ internal class LibraryPreferencesGateway(
             languageKeyPrefix,
             translationStyleKeyPrefix,
             vlDirectTranslateKeyPrefix,
+            vlFullVisualKeyPrefix,
+            onlyTranslateBubblesKeyPrefix,
             readingModeKeyPrefix,
             folderStatusKeyPrefix,
             folderImageCountKeyPrefix,

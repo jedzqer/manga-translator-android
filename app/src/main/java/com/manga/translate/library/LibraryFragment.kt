@@ -1,5 +1,6 @@
 package com.manga.translate.library
 
+import com.manga.translate.platform.setScrollableMessage
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.content.Context
@@ -23,6 +24,12 @@ import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.combine
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -58,13 +65,16 @@ import kotlin.coroutines.resume
 
 class LibraryFragment : Fragment() {
 
-    private sealed interface FolderContent {
-        data class Chapters(val items: List<FolderItem>) : FolderContent
-        data class Images(val items: List<ImageItem>) : FolderContent
-    }
-
     private var _binding: FragmentLibraryBinding? = null
     private val binding get() = _binding!!
+
+    private val pageViewModel: LibraryViewModel by viewModels {
+        viewModelFactory { initializer {
+            LibraryViewModel(createSavedStateHandle(), appContainer.libraryRepository,
+                appContainer.libraryPreferencesGateway, appContainer.translationStore)
+        } }
+    }
+    private val errorController by lazy { LibraryErrorController(this, dialogs) }
 
     private val readingSessionViewModel: ReadingSessionViewModel by activityViewModels()
     private val appContainer by lazy(LazyThreadSafetyMode.NONE) { requireContext().appContainer }
@@ -77,8 +87,6 @@ class LibraryFragment : Fragment() {
     private val settingsStore by lazy(LazyThreadSafetyMode.NONE) { appContainer.settingsStore }
     private val dialogs = LibraryDialogs()
 
-    private val prefs by lazy(LazyThreadSafetyMode.NONE) { appContainer.libraryPrefs }
-
     private lateinit var preferencesGateway: LibraryPreferencesGateway
     private lateinit var importExportCoordinator: LibraryImportExportCoordinator
     private lateinit var selectionController: LibrarySelectionController
@@ -89,23 +97,25 @@ class LibraryFragment : Fragment() {
         FolderTranslationTaskFactory(repository, preferencesGateway, settingsStore)
     }
 
-    private var currentFolder: File? = null
-    private val folderDetailScrollPositions = mutableMapOf<String, Int>()
-    private val folderListStates = mutableMapOf<String, Parcelable>()
+    private val currentFolder get() = pageViewModel.state.value.folder
+    private val folderDetailScrollPositions get() = pageViewModel.detailScrollPositions
+    private val folderListStates get() = pageViewModel.listScrollStates
     private var pendingFolderScrollRestore: String? = null
-    private var currentParentFolder: File? = null
-    private var pendingChapterImportParent: File? = null
-    private var pendingArchiveImportCollection: File? = null
+    private val currentParentFolder get() = pageViewModel.state.value.parent
+    private var pendingChapterImportParent: File?
+        get() = pageViewModel.pendingChapterImportParent
+        set(value) { pageViewModel.pendingChapterImportParent = value }
+    private var pendingArchiveImportCollection: File?
+        get() = pageViewModel.pendingArchiveImportCollection
+        set(value) { pageViewModel.pendingArchiveImportCollection = value }
     private var isFolderTransitionRunning: Boolean = false
     private var isFolderTopBarVisible: Boolean = true
     private var lastFolderDetailScrollY: Int = 0
     private var folderTopBarScrollAccumulated: Int = 0
     private var folderDetailContentBaseTopPadding: Int = 0
-    private var activeFolderFilter: FolderFilter? = null
-    private var folderLoadJob: Job? = null
-    private var folderLoadGeneration: Long = 0L
-    private var folderContentLoadJob: Job? = null
-    private var folderContentLoadGeneration: Long = 0L
+    private var activeFolderFilter: FolderFilter?
+        get() = pageViewModel.state.value.filter
+        set(value) = pageViewModel.setFilter(value)
     private var pendingFloatingTranslateLanguage: TranslationLanguage? = null
     private val modelErrorController by lazy(LazyThreadSafetyMode.NONE) {
         ModelErrorDialogController(this, dialogs)
@@ -132,7 +142,7 @@ class LibraryFragment : Fragment() {
         return locale.language.lowercase() == "zh"
     }
 
-    private val folderAdapter = LibraryFolderAdapter(
+    private val folderAdapter by lazy(LazyThreadSafetyMode.NONE) { LibraryFolderAdapter(
         onClick = { openFolder(it.folder) },
         onDelete = { confirmDeleteFolder(it.folder) },
         onRename = { showRenameFolderDialog(it.folder) },
@@ -142,31 +152,31 @@ class LibraryFragment : Fragment() {
         onStatusClick = null,
         showOverflowMenu = true,
         onSelectionChanged = { updateLibrarySelectionActions() },
-        onItemLongPress = { selectionManager.enterLibrarySelectionMode(it.folder) }
-    )
+        onItemLongPress = { selectionManager.enterLibrarySelectionMode(it.folder) },
+        selection = pageViewModel.folderSelection
+    ) }
 
-    private val imageAdapter = FolderImageAdapter(
+    private val imageAdapter by lazy(LazyThreadSafetyMode.NONE) { FolderImageAdapter(
         onSelectionChanged = { selectionController.updateSelectionActions() },
         onItemLongPress = { selectionController.enterSelectionMode(it.file) },
-        onItemClick = { openImageInReader(it.file) }
-    )
+        onItemClick = { openImageInReader(it.file) },
+        selection = pageViewModel.imageSelection
+    ) }
 
-    private val chapterAdapter = LibraryFolderAdapter(
+    private val chapterAdapter by lazy(LazyThreadSafetyMode.NONE) { LibraryFolderAdapter(
         onClick = { openChildFolder(it.folder) },
         onDelete = { confirmDeleteFolder(it.folder) },
         onRename = { showRenameFolderDialog(it.folder) },
         onMove = { showMoveFolderPicker(it.folder) },
         showOverflowMenu = true,
         onSelectionChanged = { updateChapterSelectionActions() },
-        onItemLongPress = { selectionManager.enterChapterSelectionMode(it.folder) }
-    )
+        onItemLongPress = { selectionManager.enterChapterSelectionMode(it.folder) },
+        selection = pageViewModel.chapterSelection
+    ) }
 
     private val uiCallbacks = object : LibraryUiCallbacks {
         override fun setFolderStatus(left: String, right: String) {
-            _binding?.let {
-                it.folderProgressLeft.text = left
-                it.folderProgressRight.text = right
-            }
+            pageViewModel.setStatus(left, right)
         }
 
         override fun clearFolderStatus() {
@@ -244,7 +254,7 @@ class LibraryFragment : Fragment() {
         }
 
         override fun isUiAttached(): Boolean {
-            return isAdded
+            return isAdded && _binding != null
         }
 
         override fun isFragmentActive(): Boolean {
@@ -411,13 +421,12 @@ class LibraryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         LibraryUiBridge.register(uiCallbacks)
-        preferencesGateway = LibraryPreferencesGateway(requireContext(), prefs, repository)
+        preferencesGateway = appContainer.libraryPreferencesGateway
         importExportCoordinator = LibraryImportExportCoordinator(
             context = requireContext(),
             repository = repository,
             translationStore = translationStore,
             settingsStore = settingsStore,
-            prefs = prefs,
             preferencesGateway = preferencesGateway,
             dialogs = dialogs,
             ui = uiCallbacks,
@@ -544,11 +553,27 @@ class LibraryFragment : Fragment() {
                 binding.folderVlDirectTranslateSwitch.performClick()
             }
         }
+        binding.folderVlFullVisualLabel.setOnClickListener {
+            if (binding.folderVlFullVisualSwitch.isEnabled) {
+                binding.folderVlFullVisualSwitch.performClick()
+            }
+        }
+        binding.folderOnlyTranslateBubblesLabel.setOnClickListener {
+            if (binding.folderOnlyTranslateBubblesSwitch.isEnabled) {
+                binding.folderOnlyTranslateBubblesSwitch.performClick()
+            }
+        }
         binding.folderGlossaryProcessingInfo.setOnClickListener {
             dialogs.showGlossaryProcessingInfo(requireContext())
         }
         binding.folderVlDirectTranslateInfo.setOnClickListener {
             dialogs.showVlDirectTranslateInfo(requireContext())
+        }
+        binding.folderVlFullVisualInfo.setOnClickListener {
+            dialogs.showVlFullVisualInfo(requireContext())
+        }
+        binding.folderOnlyTranslateBubblesInfo.setOnClickListener {
+            dialogs.showOnlyTranslateBubblesInfo(requireContext())
         }
         binding.folderTranslationStyle.setOnClickListener {
             currentFolder?.let { folder ->
@@ -575,12 +600,28 @@ class LibraryFragment : Fragment() {
             currentFolder?.let { folder ->
                 preferencesGateway.setVlDirectTranslateEnabled(folder, isChecked)
                 updateGlossaryProcessingSwitchState(folder)
+                updateVlFullVisualSwitchState(folder)
+                updateOnlyTranslateBubblesSwitchState(folder)
                 if (isChecked) {
                     Toast.makeText(
                         requireContext(),
                         R.string.folder_use_vl_direct_translate_warning,
                         Toast.LENGTH_LONG
                     ).show()
+                }
+            }
+        }
+        binding.folderVlFullVisualSwitch.setOnCheckedChangeListener { _, isChecked ->
+            currentFolder?.let { folder ->
+                if (binding.folderVlFullVisualSwitch.isEnabled) {
+                    preferencesGateway.setVlFullVisualEnabled(folder, isChecked)
+                }
+            }
+        }
+        binding.folderOnlyTranslateBubblesSwitch.setOnCheckedChangeListener { _, isChecked ->
+            currentFolder?.let { folder ->
+                if (binding.folderOnlyTranslateBubblesSwitch.isEnabled) {
+                    preferencesGateway.setOnlyTranslateBubblesEnabled(folder, isChecked)
                 }
             }
         }
@@ -611,7 +652,65 @@ class LibraryFragment : Fragment() {
             }
         )
 
-        showFolderList()
+        val restoredFolder = currentFolder
+        if (restoredFolder == null) showFolderList(restoring = true)
+        else showFolderDetail(restoredFolder, currentParentFolder, restoring = true)
+        collectPageState()
+    }
+
+    private fun collectPageState() {
+        // Overlay decisions may be shown while the Activity is stopped, but never outlive its view.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.CREATED) {
+                pageViewModel.pendingErrors.collect(errorController::render)
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    var rendered: LibraryPageState? = null
+                    pageViewModel.state.collect { state ->
+                        val previous = rendered
+                        rendered = state
+                        if (previous == null || previous.folders !== state.folders || previous.filter != state.filter) {
+                            folderAdapter.submit(state.folders)
+                            binding.libraryEmpty.setText(if (state.filter == null) R.string.folder_empty else R.string.folder_filter_empty)
+                            binding.libraryEmpty.isVisible = state.folders.isEmpty()
+                            updateActiveFolderFilter()
+                            updateLibrarySortControl()
+                        }
+                        if (state.folder != null && state.content != null &&
+                            (previous == null || previous.contentRevision != state.contentRevision || previous.folder != state.folder)) {
+                            renderFolderContent(state.folder, state.content, state.contentRevision)
+                        }
+                    }
+                }
+                launch {
+                    combine(pageViewModel.state, pageViewModel.taskState) { page, task -> page to task }
+                        .collect { (page, task) ->
+                            binding.folderProgressLeft.text = if (task.visible) task.folderLeft else page.statusLeft
+                            binding.folderProgressRight.text = if (task.visible) task.folderRight else page.statusRight
+                            applyTranslationActionsEnabled(!task.running)
+                            currentFolder?.let(::syncExportActionState)
+                        }
+                }
+                launch {
+                    combine(pageViewModel.folderSelection.state, pageViewModel.chapterSelection.state,
+                        pageViewModel.imageSelection.state) { root, chapters, images -> Triple(root, chapters, images) }
+                        .collect { (root, chapters, images) ->
+                            binding.librarySelectionActions.isVisible = root.enabled
+                            if (currentFolder == null) binding.addFolderFab.isVisible = !root.enabled
+                            binding.folderSelectionActions.isVisible = chapters.enabled || images.enabled
+                            binding.folderRetranslateSelected.isVisible = chapters.enabled || images.enabled
+                            if (chapters.enabled) binding.folderRetranslateSelected.setActionDescription(R.string.translate_selected)
+                            else if (images.enabled) binding.folderRetranslateSelected.setActionDescription(R.string.retranslate_selected)
+                            updateLibrarySelectionActions()
+                            updateChapterSelectionActions()
+                            selectionController.updateSelectionActions()
+                        }
+                }
+            }
+        }
     }
 
     private fun handleFloatingTranslateClick() {
@@ -621,7 +720,7 @@ class LibraryFragment : Fragment() {
         }
         AlertDialog.Builder(requireContext())
             .setTitle(getString(R.string.overlay_permission_required_title))
-            .setMessage(getString(R.string.overlay_permission_required_message))
+            .setScrollableMessage(getString(R.string.overlay_permission_required_message))
             .setPositiveButton(android.R.string.ok) { _, _ -> openOverlayPermissionSettings() }
             .setNegativeButton(android.R.string.cancel, null)
             .showWithScrollableMessage()
@@ -645,7 +744,7 @@ class LibraryFragment : Fragment() {
         pendingFloatingTranslateLanguage = language
         AlertDialog.Builder(requireContext())
             .setTitle(getString(R.string.screen_capture_permission_required_title))
-            .setMessage(getString(R.string.screen_capture_permission_required_message))
+            .setScrollableMessage(getString(R.string.screen_capture_permission_required_message))
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 requestScreenCapturePermissionLauncher.launch(manager.createScreenCaptureIntent())
             }
@@ -657,7 +756,7 @@ class LibraryFragment : Fragment() {
         if (!isAdded) return
         AlertDialog.Builder(requireContext())
             .setTitle(getString(R.string.overlay_permission_failed_title))
-            .setMessage(getString(R.string.overlay_permission_failed_message))
+            .setScrollableMessage(getString(R.string.overlay_permission_failed_message))
             .setPositiveButton(android.R.string.ok, null)
             .showWithScrollableMessage()
     }
@@ -666,7 +765,7 @@ class LibraryFragment : Fragment() {
         if (!isAdded) return
         AlertDialog.Builder(requireContext())
             .setTitle(getString(R.string.screen_capture_permission_required_title))
-            .setMessage(getString(R.string.screen_capture_permission_failed))
+            .setScrollableMessage(getString(R.string.screen_capture_permission_failed))
             .setPositiveButton(android.R.string.ok, null)
             .showWithScrollableMessage()
     }
@@ -720,16 +819,14 @@ class LibraryFragment : Fragment() {
 
     override fun onDestroyView() {
         persistCurrentFolderDetailScroll()
-        folderLoadGeneration += 1
-        folderLoadJob?.cancel()
-        folderLoadJob = null
-        folderContentLoadGeneration += 1
-        folderContentLoadJob?.cancel()
-        folderContentLoadJob = null
         importProgressDialog?.dismiss()
         importProgressDialog = null
         LibraryUiBridge.unregister(uiCallbacks)
         modelErrorController.onDestroy()
+        errorController.release()
+        binding.folderList.adapter = null
+        binding.folderImageList.adapter = null
+        binding.folderChapterList.adapter = null
         super.onDestroyView()
         _binding = null
     }
@@ -737,23 +834,23 @@ class LibraryFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         modelErrorController.onResume()
+        errorController.render(pageViewModel.pendingErrors.value)
         currentFolder?.let { folder ->
             syncExportActionState(folder)
+            updateOnlyTranslateBubblesSwitchState(folder)
         }
     }
 
-    private fun showFolderList() {
+    private fun showFolderList(restoring: Boolean = false) {
         persistCurrentFolderDetailScroll()
         pendingFolderScrollRestore = null
-        currentFolder = null
-        currentParentFolder = null
-        folderContentLoadGeneration += 1
-        folderContentLoadJob?.cancel()
-        folderContentLoadJob = null
+        pageViewModel.navigate(null)
         resetFolderTopBar(forceVisible = true)
         uiCallbacks.clearFolderStatus()
-        exitActiveSelectionMode()
-        selectionManager.exitLibrarySelectionMode()
+        if (!restoring) {
+            exitActiveSelectionMode()
+            selectionManager.exitLibrarySelectionMode()
+        }
         folderAdapter.clearActionSelection()
         chapterAdapter.clearActionSelection()
         loadFolders()
@@ -764,10 +861,9 @@ class LibraryFragment : Fragment() {
         animateFolderTransition(showDetail = false)
     }
 
-    private fun showFolderDetail(folder: File, parentFolder: File? = null) {
+    private fun showFolderDetail(folder: File, parentFolder: File? = null, restoring: Boolean = false) {
         persistCurrentFolderDetailScroll()
-        currentFolder = folder
-        currentParentFolder = parentFolder
+        pageViewModel.navigate(folder, parentFolder)
         pendingFolderScrollRestore = folder.absolutePath
         binding.folderDetailScroll.stopNestedScroll()
         val targetScrollY = folderDetailScrollPositions[folder.absolutePath] ?: 0
@@ -780,13 +876,19 @@ class LibraryFragment : Fragment() {
             preferencesGateway.isGlossaryProcessingEnabled(folder)
         binding.folderVlDirectTranslateSwitch.isChecked =
             preferencesGateway.isVlDirectTranslateEnabled(folder)
+        binding.folderVlFullVisualSwitch.isChecked =
+            preferencesGateway.isVlFullVisualEnabled(folder)
+        binding.folderOnlyTranslateBubblesSwitch.isChecked =
+            preferencesGateway.isOnlyTranslateBubblesEnabled(folder)
         updateFolderTranslationSwitchStates(folder)
         updateLanguageSettingButton(folder)
         updateReadingModeButton(folder)
         updateFolderContentMode(folder)
-        exitActiveSelectionMode()
-        chapterAdapter.submit(emptyList())
-        imageAdapter.submit(emptyList())
+        if (!restoring) {
+            exitActiveSelectionMode()
+            chapterAdapter.submit(emptyList())
+            imageAdapter.submit(emptyList())
+        }
         loadImages(folder)
         if (binding.folderDetailContainer.isVisible && !binding.libraryListContainer.isVisible) {
             binding.folderDetailContainer.alpha = 1f
@@ -983,102 +1085,7 @@ class LibraryFragment : Fragment() {
             .start()
     }
 
-    private fun loadFolders() {
-        if (_binding == null || !isAdded) return
-        val generation = ++folderLoadGeneration
-        folderLoadJob?.cancel()
-        val sortField = preferencesGateway.getLibrarySortField()
-        val ascending = preferencesGateway.isLibrarySortAscending()
-        val filter = activeFolderFilter
-        folderLoadJob = viewLifecycleOwner.lifecycleScope.launch {
-            val items = withContext(Dispatchers.IO) {
-                val folders = repository.listFolders(sortField, ascending)
-                buildFolderPreviewItems(folders).filter { item ->
-                    when (filter) {
-                        null -> true
-                        // Status is intentionally not available on the home screen. It requires
-                        // reading every page result and is shown after opening a folder instead.
-                        is FolderFilter.Status -> true
-                        is FolderFilter.CustomTag -> item.customTags.any { it == filter.tag }
-                    }
-                }
-            }
-            if (!isAdded || _binding == null || generation != folderLoadGeneration) return@launch
-            folderAdapter.submit(items)
-            binding.libraryEmpty.text = getString(
-                if (filter == null) R.string.folder_empty else R.string.folder_filter_empty
-            )
-            binding.libraryEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
-            updateActiveFolderFilter()
-            updateLibrarySortControl()
-            if (selectionManager.isLibrarySelectionMode) {
-                updateLibrarySelectionActions()
-            }
-
-            if (items.none { !it.statsLoaded }) return@launch
-            val completedItems = withContext(Dispatchers.IO) {
-                items.map { item ->
-                    currentCoroutineContext().ensureActive()
-                    if (item.statsLoaded) item else loadAndCacheFolderStats(item)
-                }
-            }
-            if (!isAdded || _binding == null || generation != folderLoadGeneration) return@launch
-            folderAdapter.submit(completedItems)
-        }
-    }
-
-    private fun buildFolderPreviewItems(folders: List<File>): List<FolderItem> {
-        val items = ArrayList<FolderItem>(folders.size)
-        for (folder in folders) {
-            val cachedStatus = preferencesGateway.getCachedFolderStatus(folder)
-            val cachedStats = preferencesGateway.getCachedFolderStats(folder)
-            items += FolderItem(
-                folder = folder,
-                imageCount = cachedStats?.imageCount ?: 0,
-                chapterCount = cachedStats?.chapterCount ?: 0,
-                isCollection = repository.isCollectionFolder(folder),
-                status = cachedStatus ?: FolderStatus.UNTRANSLATED,
-                customTags = preferencesGateway.getFolderTags(folder)
-                    .sortedWith(String.CASE_INSENSITIVE_ORDER),
-                statsLoaded = cachedStats != null,
-                statusLoaded = cachedStatus != null
-            )
-        }
-        return items
-    }
-
-    /**
-     * Unified folder stats computation: counts images and chapters, caches the result, and
-     * returns the counts. Used by all three stats-loading paths to ensure consistency.
-     */
-    private fun computeAndCacheFolderStats(folder: File, isCollection: Boolean): Pair<Int, Int> {
-        val chapters = if (isCollection) repository.listChildFolders(folder) else emptyList()
-        val imageCount = if (isCollection) {
-            chapters.sumOf { chapter -> repository.countImages(chapter) }
-        } else {
-            repository.countImages(folder)
-        }
-        preferencesGateway.setCachedFolderStats(folder, imageCount, chapters.size)
-        return imageCount to chapters.size
-    }
-
-    private fun loadAndCacheFolderStats(item: FolderItem): FolderItem {
-        val (imageCount, chapterCount) = computeAndCacheFolderStats(item.folder, item.isCollection)
-        return item.copy(
-            imageCount = imageCount,
-            chapterCount = chapterCount,
-            statsLoaded = true
-        )
-    }
-
-    private suspend fun buildFolderItems(folders: List<File>): List<FolderItem> {
-        val items = ArrayList<FolderItem>(folders.size)
-        for (folder in folders) {
-            currentCoroutineContext().ensureActive()
-            items += buildFolderItem(folder)
-        }
-        return items
-    }
+    private fun loadFolders() = pageViewModel.loadFolders()
 
     private fun toggleLibrarySortField() {
         val next = when (preferencesGateway.getLibrarySortField()) {
@@ -1112,36 +1119,12 @@ class LibraryFragment : Fragment() {
     }
 
     private fun loadImages(folder: File) {
+        if (currentFolder != folder) return
         syncExportActionState(folder)
-        val generation = ++folderContentLoadGeneration
-        folderContentLoadJob?.cancel()
-        folderContentLoadJob = viewLifecycleOwner.lifecycleScope.launch {
-            val content = withContext(Dispatchers.IO) {
-                if (repository.isCollectionFolder(folder)) {
-                    val items = buildFolderItems(repository.listChildFolders(folder))
-                    val (imageCount, chapterCount) = computeAndCacheFolderStats(folder, isCollection = true)
-                    preferencesGateway.setCachedFolderStatus(
-                        folder,
-                        resolveFolderStatus(items.map { it.status })
-                    )
-                    FolderContent.Chapters(items)
-                } else {
-                    val items = repository.listImages(folder).map { file ->
-                        ImageItem(file = file, translated = isImageTranslated(file, folder))
-                    }
-                    preferencesGateway.setCachedFolderStats(folder, items.size)
-                    preferencesGateway.setCachedFolderStatus(
-                        folder,
-                        resolveFolderStatus(items.map { item ->
-                            if (item.translated) FolderStatus.TRANSLATED else FolderStatus.UNTRANSLATED
-                        })
-                    )
-                    FolderContent.Images(items)
-                }
-            }
-            if (!isAdded || _binding == null || generation != folderContentLoadGeneration ||
-                currentFolder?.absolutePath != folder.absolutePath
-            ) return@launch
+        pageViewModel.loadImages(folder)
+    }
+
+    private fun renderFolderContent(folder: File, content: FolderContent, generation: Long) {
             when (content) {
                 is FolderContent.Chapters -> {
                     chapterAdapter.submit(content.items) {
@@ -1153,7 +1136,6 @@ class LibraryFragment : Fragment() {
                     binding.folderImagesEmpty.text = getString(R.string.folder_chapters_empty)
                     binding.folderImagesEmpty.visibility =
                         if (content.items.isEmpty()) View.VISIBLE else View.GONE
-                    uiCallbacks.clearFolderStatus()
                 }
                 is FolderContent.Images -> {
                     imageAdapter.submit(content.items) {
@@ -1168,11 +1150,9 @@ class LibraryFragment : Fragment() {
                     if (selectionController.isSelectionMode) {
                         selectionController.updateSelectionActions()
                     } else {
-                        uiCallbacks.clearFolderStatus()
-                    }
+                        }
                 }
             }
-        }
     }
 
     private fun persistCurrentFolderDetailScroll() {
@@ -1186,7 +1166,7 @@ class LibraryFragment : Fragment() {
     }
 
     private fun restoreFolderScroll(folder: File, generation: Long, list: RecyclerView) {
-        if (_binding == null || generation != folderContentLoadGeneration ||
+        if (_binding == null || generation != pageViewModel.state.value.contentRevision ||
             currentFolder?.absolutePath != folder.absolutePath ||
             pendingFolderScrollRestore != folder.absolutePath
         ) return
@@ -1196,7 +1176,7 @@ class LibraryFragment : Fragment() {
         if (state != null) manager.onRestoreInstanceState(state)
         else manager.scrollToPositionWithOffset(0, 0)
         list.doOnNextLayout {
-            if (_binding == null || generation != folderContentLoadGeneration ||
+            if (_binding == null || generation != pageViewModel.state.value.contentRevision ||
                 currentFolder?.absolutePath != folder.absolutePath
             ) return@doOnNextLayout
             val scrollY = folderDetailScrollPositions[folder.absolutePath] ?: 0
@@ -1238,7 +1218,7 @@ class LibraryFragment : Fragment() {
         // For Chinese users, ask which mirror to use
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.tutorial_open_title)
-            .setMessage(R.string.tutorial_open_message)
+            .setScrollableMessage(R.string.tutorial_open_message)
             .setPositiveButton(R.string.tutorial_open_mirror) { _, _ ->
                 openUrlOrToast(giteeUrl)
             }
@@ -1650,9 +1630,28 @@ class LibraryFragment : Fragment() {
         binding.folderVlDirectTranslateInfo.alpha = if (enabled) 1f else 0.5f
     }
 
+    private fun updateOnlyTranslateBubblesSwitchState(folder: File) {
+        val ocrSettings = settingsStore.loadOcrApiSettings()
+        val enabled = !preferencesGateway.isVlDirectTranslateEnabled(folder) &&
+            ocrSettings.useLocalOcr
+        binding.folderOnlyTranslateBubblesSwitch.isEnabled = enabled
+        binding.folderOnlyTranslateBubblesLabel.isEnabled = enabled
+        binding.folderOnlyTranslateBubblesInfo.alpha = if (enabled) 1f else 0.5f
+    }
+
+    private fun updateVlFullVisualSwitchState(folder: File) {
+        val enabled = !preferencesGateway.isFullTranslateEnabled(folder) &&
+            preferencesGateway.isVlDirectTranslateEnabled(folder)
+        binding.folderVlFullVisualSwitch.isEnabled = enabled
+        binding.folderVlFullVisualLabel.isEnabled = enabled
+        binding.folderVlFullVisualInfo.alpha = if (enabled) 1f else 0.5f
+    }
+
     private fun updateFolderTranslationSwitchStates(folder: File) {
         updateGlossaryProcessingSwitchState(folder)
         updateVlDirectTranslateSwitchState(folder)
+        updateVlFullVisualSwitchState(folder)
+        updateOnlyTranslateBubblesSwitchState(folder)
     }
 
     private fun exportFolder() {
@@ -1877,47 +1876,6 @@ class LibraryFragment : Fragment() {
         }
     }
 
-    private fun buildFolderItem(folder: File): FolderItem {
-        val isCollection = repository.isCollectionFolder(folder)
-        val chapters = if (isCollection) repository.listChildFolders(folder) else emptyList()
-        val images = if (isCollection) {
-            chapters.flatMap { repository.listImages(it) }
-        } else {
-            repository.listImages(folder)
-        }
-        val (imageCount, chapterCount) = computeAndCacheFolderStats(folder, isCollection)
-        return FolderItem(
-            folder = folder,
-            imageCount = imageCount,
-            chapterCount = chapterCount,
-            isCollection = isCollection,
-            status = resolveFolderStatus(folder, images),
-            customTags = preferencesGateway.getFolderTags(folder)
-                .sortedWith(String.CASE_INSENSITIVE_ORDER)
-        )
-    }
-
-    private fun resolveFolderStatus(folder: File, images: List<File>): FolderStatus {
-        if (images.isEmpty()) return FolderStatus.UNTRANSLATED
-        val allTranslated = images.all { image -> isImageTranslated(image, folder) }
-        return if (allTranslated) FolderStatus.TRANSLATED else FolderStatus.UNTRANSLATED
-    }
-
-    private fun resolveFolderStatus(statuses: List<FolderStatus>): FolderStatus {
-        return if (statuses.isNotEmpty() && statuses.all { it == FolderStatus.TRANSLATED }) {
-            FolderStatus.TRANSLATED
-        } else {
-            FolderStatus.UNTRANSLATED
-        }
-    }
-
-    private fun isImageTranslated(image: File, folder: File): Boolean {
-        // Align list/folder badges with engine skip rules: only SUCCESS or manual counts.
-        val result = translationStore.load(image) ?: return false
-        if (result.metadata.isManual()) return true
-        return result.metadata.status == PageTranslationStatus.SUCCESS
-    }
-
     private fun buildFolderTitle(folder: File): String {
         return if (repository.isCollectionFolder(folder)) {
             folder.name + getString(R.string.folder_collection_title_suffix)
@@ -2088,11 +2046,6 @@ class LibraryFragment : Fragment() {
             loadImages(folder)
             loadFolders()
         }
-    }
-
-    private sealed interface FolderFilter {
-        data class Status(val status: FolderStatus) : FolderFilter
-        data class CustomTag(val tag: String) : FolderFilter
     }
 
 }

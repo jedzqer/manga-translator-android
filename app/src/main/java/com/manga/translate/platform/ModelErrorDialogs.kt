@@ -18,7 +18,7 @@ internal fun showModelErrorDialog(
     var dismissHandled = false
     val dialog = createAlertDialogBuilder(context)
         .setTitle(R.string.model_response_failed_title)
-        .setMessage(ErrorDialogFormatter.formatModelErrorMessage(context, responseContent))
+        .setScrollableMessage(ErrorDialogFormatter.formatModelErrorMessage(context, responseContent))
         .setNegativeButton(negativeButtonResId) { _, _ ->
             resolved = true
             onSkip?.invoke()

@@ -55,6 +55,36 @@ internal object BubbleTextScaling {
         }
     }
 
+    /** Prefer fewer columns while retaining at least 80% of the largest fitting size. */
+    fun findAutoVerticalTextSize(
+        maxWidth: Int,
+        maxHeight: Int,
+        buildLayout: (Float) -> VerticalTextLayout
+    ): Float {
+        val largest = findLargestFittingTextSize(maxWidth, maxHeight) { size ->
+            buildLayout(size).fits
+        }
+        val largestLayout = buildLayout(largest)
+        if (!largestLayout.fits || largestLayout.columns == 1) return largest
+        val minimumSize = (largest * 0.8f).coerceAtLeast(MIN_TEXT_SIZE_PX)
+        val preferredLayout = buildLayout(minimumSize)
+        if (!preferredLayout.fits || preferredLayout.columns >= largestLayout.columns) return largest
+
+        // Start at the readability floor so search precision cannot shrink below it.
+        var low = minimumSize
+        var high = largest
+        while (high - low > TEXT_SIZE_PRECISION_PX) {
+            val mid = (low + high) / 2f
+            val layout = buildLayout(mid)
+            if (layout.fits && layout.columns <= preferredLayout.columns) {
+                low = mid
+            } else {
+                high = mid
+            }
+        }
+        return low
+    }
+
     fun findLargestFittingTextSize(
         maxWidth: Int,
         maxHeight: Int,

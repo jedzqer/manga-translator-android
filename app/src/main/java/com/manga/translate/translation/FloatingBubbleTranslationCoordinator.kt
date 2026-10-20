@@ -150,12 +150,12 @@ internal class FloatingBubbleTranslationCoordinator(
         language: TranslationLanguage,
         promptAsset: String
     ): FloatingCacheScope {
-        return FloatingCacheScope(
+        return floatingTranslationCacheStore.withCurrentPrompt(FloatingCacheScope(
             language = language,
             providerId = apiSettings.providerId,
             modelName = apiSettings.modelName,
             promptAsset = promptAsset
-        )
+        ))
     }
 
 }

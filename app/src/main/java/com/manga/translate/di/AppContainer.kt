@@ -28,11 +28,13 @@ import com.manga.translate.translation.FolderTranslationCoordinator
 import com.manga.translate.translation.PendingBubbleRetranslator
 import com.manga.translate.translation.TextBubbleTranslationCoordinator
 import com.manga.translate.translation.TranslationPipeline
+import com.manga.translate.translation.TranslationStrategyResolver
 import java.lang.ref.WeakReference
 import java.util.concurrent.CopyOnWriteArrayList
 
 internal class AppContainer(private val appContext: Context) {
     private val translationPipelines = CopyOnWriteArrayList<WeakReference<TranslationPipeline>>()
+    val customPromptStore = com.manga.translate.settings.CustomPromptStore(appContext)
     val settingsStore = SettingsStore(appContext)
     val crashStateStore = CrashStateStore(appContext)
     val updateIgnoreStore = UpdateIgnoreStore(appContext)
@@ -56,9 +58,12 @@ internal class AppContainer(private val appContext: Context) {
     val floatingTranslationCacheStore = FloatingTranslationCacheStore(appContext)
     val vlPageTranslationCoordinator = com.manga.translate.translation.VlPageTranslationCoordinator(llmClient, floatingTranslationCacheStore)
     val textBubbleTranslationCoordinator = TextBubbleTranslationCoordinator(llmClient = llmClient)
-    val libraryPrefs = appContext.getSharedPreferences(LIBRARY_PREFS_NAME, Context.MODE_PRIVATE)
+    private val libraryPrefs = appContext.getSharedPreferences(LIBRARY_PREFS_NAME, Context.MODE_PRIVATE)
 
     val libraryPreferencesGateway = LibraryPreferencesGateway(appContext, libraryPrefs, libraryRepository)
+    val translationStrategyResolver = TranslationStrategyResolver { folder, globalStyle ->
+        libraryPreferencesGateway.resolveTranslationStyle(folder, globalStyle)
+    }
 
     fun createTranslationPipeline(): TranslationPipeline {
         return TranslationPipeline(
@@ -70,7 +75,8 @@ internal class AppContainer(private val appContext: Context) {
             ocrEngineRegistry = ocrEngineRegistry,
             bubbleTextRecognizer = bubbleTextRecognizer,
             textBubbleTranslationCoordinator = textBubbleTranslationCoordinator,
-            vlPageTranslationCoordinator = vlPageTranslationCoordinator
+            vlPageTranslationCoordinator = vlPageTranslationCoordinator,
+            strategyResolver = translationStrategyResolver
         ).also { pipeline ->
             translationPipelines.add(WeakReference(pipeline))
         }
@@ -90,7 +96,8 @@ internal class AppContainer(private val appContext: Context) {
 
     fun createFolderTranslationCoordinator(
         translationPipeline: TranslationPipeline,
-        ui: LibraryUiCallbacks
+        ui: LibraryUiCallbacks,
+        taskProgress: com.manga.translate.platform.TaskProgressWriter
     ): FolderTranslationCoordinator {
         return FolderTranslationCoordinator(
             context = appContext,
@@ -100,16 +107,13 @@ internal class AppContainer(private val appContext: Context) {
             translationStore = translationStore,
             ocrStore = ocrStore,
             settingsStore = settingsStore,
-            preferencesGateway = LibraryPreferencesGateway(
-                context = appContext,
-                prefs = libraryPrefs,
-                repository = libraryRepository
-            ),
+            preferencesGateway = libraryPreferencesGateway,
             repository = libraryRepository,
             llmClient = llmClient,
             ui = ui,
             progressStore = translationProgressStore,
-            pendingBubbleRetranslator = createPendingBubbleRetranslator()
+            pendingBubbleRetranslator = createPendingBubbleRetranslator(),
+            taskProgress = taskProgress
         )
     }
 
@@ -128,11 +132,13 @@ internal class AppContainer(private val appContext: Context) {
             translationStore = translationStore,
             glossaryStore = glossaryStore,
             repository = libraryRepository,
-            libraryPrefs = libraryPrefs,
+            preferencesGateway = libraryPreferencesGateway,
             settingsStore = settingsStore,
             bubbleTextRecognizer = bubbleTextRecognizer,
             textBubbleTranslationCoordinator = textBubbleTranslationCoordinator,
-            localModelMemoryManager = localModelMemoryManager
+            localModelMemoryManager = localModelMemoryManager,
+            translationStrategyResolver = translationStrategyResolver,
+            translationPipelineFactory = ::createTranslationPipeline
         )
     }
 

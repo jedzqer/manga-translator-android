@@ -13,6 +13,11 @@ import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.BubbleTranslation
 import com.manga.translate.model.TranslationResult
 import com.manga.translate.reader.ReadingFragment
+import com.manga.translate.library.LibraryStateHostActivity
+import com.manga.translate.storage.TranslationStore
+import kotlinx.coroutines.sync.Mutex
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import java.io.File
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
@@ -37,6 +42,92 @@ import org.robolectric.annotation.LooperMode
 @LooperMode(LooperMode.Mode.PAUSED)
 class ReadingFragmentTranslationTest {
     @get:Rule val temporaryFolder = TemporaryFolder()
+
+    @Test
+    fun `exit edit waits for blocked save before pending bubbles can be merged`() {
+        withEditingFragment { fragment, store, image ->
+            val pending = manualResult(image).copy(bubbles = listOf(
+                BubbleTranslation.pending(1, RectF(10f, 10f, 80f, 80f), "hello", BubbleSource.MANUAL)
+            ))
+            setField(fragment, "currentTranslation", pending)
+            val lock = Mutex(locked = true)
+            @Suppress("UNCHECKED_CAST")
+            val locks = TranslationStore::class.java.getDeclaredField("writeLocks").apply {
+                isAccessible = true
+            }.get(store) as java.util.concurrent.ConcurrentHashMap<String, Mutex>
+            locks[store.translationFileFor(image).absolutePath] = lock
+            try {
+                invoke(fragment, "toggleEditMode")
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(getField(fragment, "isEditMode") as Boolean)
+                assertNull(getField(fragment, "emptyBubbleJob"))
+                assertNull(store.load(image))
+                // A second edit while the first snapshot is blocked must also be saved.
+                setField(fragment, "currentTranslation", pending.copy(bubbles = pending.bubbles +
+                    BubbleTranslation.pending(2, RectF(1f, 1f, 5f, 5f), "new", BubbleSource.MANUAL)))
+                invoke(fragment, "toggleEditMode")
+            } finally {
+                lock.unlock()
+            }
+            awaitMain { !(getField(fragment, "isEditMode") as Boolean) }
+            assertEquals(listOf(1, 2), store.load(image)!!.bubbles.map { it.id })
+            val translated = pending.bubbles.single().withTranslationResult("补译")
+            store.mergePending(image, mapOf(1 to translated))
+            awaitMain { (getField(fragment, "finishEditJob") as? kotlinx.coroutines.Job)?.isActive != true }
+            assertEquals("补译", TranslationStore().load(image)!!.bubbles.first().translatedText)
+        }
+    }
+
+    @Test
+    fun `failed edit save retains edit session and does not start retry`() {
+        withEditingFragment { fragment, store, image ->
+            val result = manualResult(image).copy(bubbles = listOf(
+                BubbleTranslation.pending(1, RectF(10f, 10f, 80f, 80f), "hello", BubbleSource.MANUAL)
+            ))
+            setField(fragment, "currentTranslation", result)
+            val destination = store.translationFileFor(image)
+            destination.mkdirs()
+            File(destination, "blocker").writeText("force write failure")
+            invoke(fragment, "toggleEditMode")
+            awaitMain { (getField(fragment, "finishEditJob") as? kotlinx.coroutines.Job)?.isActive != true }
+            assertTrue(getField(fragment, "isEditMode") as Boolean)
+            assertEquals(result.bubbles, (getField(fragment, "currentTranslation") as TranslationResult).bubbles)
+            assertNull(getField(fragment, "emptyBubbleJob"))
+        }
+    }
+
+    private fun withEditingFragment(block: (ReadingFragment, TranslationStore, File) -> Unit) {
+        val app = ApplicationProvider.getApplicationContext<MangaTranslateApp>()
+        val controller = Robolectric.buildActivity(LibraryStateHostActivity::class.java).setup()
+        val fragment = ReadingFragment()
+        try {
+            controller.get().supportFragmentManager.beginTransaction()
+                .add(android.R.id.content, fragment).commitNow()
+            shadowOf(Looper.getMainLooper()).idle()
+            val image = temporaryFolder.newFile("edit.jpg")
+            setField(fragment, "currentImageFile", image)
+            setField(fragment, "currentTranslation", manualResult(image))
+            invoke(fragment, "toggleEditMode")
+            assertTrue(getField(fragment, "isEditMode") as Boolean)
+            block(fragment, app.appContainer.translationStore, image)
+        } finally {
+            controller.pause().stop().destroy()
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+    }
+
+    private fun invoke(fragment: ReadingFragment, method: String) {
+        ReadingFragment::class.java.getDeclaredMethod(method).apply { isAccessible = true }.invoke(fragment)
+    }
+
+    private fun awaitMain(condition: () -> Boolean) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (!condition() && System.nanoTime() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(5)
+        }
+        assertTrue("Timed out waiting for reader save", condition())
+    }
 
     @Test
     fun `parallel reader loads retain saved manual translation without fragment view or folder`() {

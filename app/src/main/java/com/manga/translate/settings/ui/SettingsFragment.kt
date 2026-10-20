@@ -351,6 +351,9 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
             showOcrSettingsDialog()
         }
 
+        binding.customPromptButton.setOnClickListener {
+            com.manga.translate.settings.ui.dialogs.CustomPromptDialog().show(childFragmentManager, "custom_prompts")
+        }
         binding.translationStyleButton.setOnClickListener {
             showTranslationStyleDialog()
         }

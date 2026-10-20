@@ -35,7 +35,8 @@ internal class FolderTranslationTaskFactory(
 ) {
 
     fun buildFolderTask(folder: File, images: List<File>, force: Boolean): FolderTranslationTask {
-        val useLocalOcr = settingsStore.loadOcrApiSettings().useLocalOcr
+        val ocrSettings = settingsStore.loadOcrApiSettings()
+        val useLocalOcr = ocrSettings.useLocalOcr
         val language = TranslationLanguage.resolveForOcr(
             preferencesGateway.getTranslationLanguage(folder),
             useLocalOcr
@@ -47,6 +48,9 @@ internal class FolderTranslationTaskFactory(
             fullTranslate = preferencesGateway.isFullTranslateEnabled(folder),
             glossaryProcessingEnabled = preferencesGateway.isGlossaryProcessingEnabled(folder),
             useVlDirectTranslate = preferencesGateway.isVlDirectTranslateEnabled(folder),
+            onlyTranslateBubbles = !preferencesGateway.isVlDirectTranslateEnabled(folder) &&
+                ocrSettings.useLocalOcr &&
+                preferencesGateway.isOnlyTranslateBubblesEnabled(folder),
             language = language
         )
     }

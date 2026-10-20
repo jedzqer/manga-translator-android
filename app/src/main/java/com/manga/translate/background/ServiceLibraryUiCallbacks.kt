@@ -4,33 +4,33 @@ import com.manga.translate.library.LibraryUiBridge
 import com.manga.translate.library.LibraryUiCallbacks
 import java.io.File
 
-internal object ServiceLibraryUiCallbacks : LibraryUiCallbacks {
+internal class ServiceLibraryUiCallbacks(private val taskId: String) : LibraryUiCallbacks {
     override fun setFolderStatus(left: String, right: String) {
-        LibraryUiBridge.setFolderStatus(left, right)
+        com.manga.translate.platform.TaskProgressWriter(taskId).status(left, right)
     }
 
     override fun clearFolderStatus() {
-        LibraryUiBridge.clearFolderStatus()
+        com.manga.translate.platform.TaskProgressWriter(taskId).status("")
     }
 
     override fun setTranslationActionsEnabled(enabled: Boolean) {
-        LibraryUiBridge.setTranslationActionsEnabled(enabled)
+        // Enabled state is derived from the task snapshot.
     }
 
     override fun setFolderExportEnabled(folder: File, enabled: Boolean) {
-        LibraryUiBridge.setFolderExportEnabled(folder, enabled)
+        LibraryUiBridge.dispatch(taskId) { LibraryUiBridge.setFolderExportEnabled(folder, enabled) }
     }
 
     override fun showToast(resId: Int) {
-        LibraryUiBridge.showToast(resId)
+        LibraryUiBridge.dispatch(taskId) { LibraryUiBridge.showToast(resId) }
     }
 
     override fun showToastMessage(message: String) {
-        LibraryUiBridge.showToastMessage(message)
+        LibraryUiBridge.dispatch(taskId) { LibraryUiBridge.showToastMessage(message) }
     }
 
     override fun showApiError(code: String, detail: String?) {
-        LibraryUiBridge.showApiError(code, detail)
+        LibraryUiBridge.showApiError(taskId, code, detail)
     }
 
     override fun showModelError(
@@ -39,20 +39,22 @@ internal object ServiceLibraryUiCallbacks : LibraryUiCallbacks {
         onRetry: (() -> Unit)?,
         onSkip: (() -> Unit)?
     ) {
-        LibraryUiBridge.showModelError(content, useSystemOverlay, onRetry, onSkip)
+        LibraryUiBridge.showModelError(taskId, content, useSystemOverlay, onRetry, onSkip)
     }
 
     override fun refreshFolders() {
-        LibraryUiBridge.refreshFolders()
+        LibraryUiBridge.dispatch(taskId) { LibraryUiBridge.refreshFolders() }
     }
 
     override fun refreshImages(folder: File) {
-        LibraryUiBridge.refreshImages(folder)
+        LibraryUiBridge.dispatch(taskId) { LibraryUiBridge.refreshImages(folder) }
     }
 
     override fun showExportSuccess(path: String) {
-        LibraryUiBridge.showExportSuccess(path)
+        LibraryUiBridge.dispatch(taskId) { LibraryUiBridge.showExportSuccess(path) }
     }
+
+    override fun clearModelErrors() = LibraryUiBridge.clearModelErrors(taskId)
 
     override fun isUiAttached(): Boolean = LibraryUiBridge.hasAttachedUi()
 

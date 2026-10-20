@@ -23,12 +23,11 @@ internal class LibrarySelectionController(
     private val contextProvider: () -> Context?,
     private val onRetranslateRequested: (File, List<File>, Boolean) -> Unit
 ) {
-    var isSelectionMode: Boolean = false
-        private set
+    val isSelectionMode: Boolean get() = imageAdapter.selectionMode
 
     fun enterSelectionMode(target: File) {
         if (!isSelectionMode) {
-            isSelectionMode = true
+
             imageAdapter.setSelectionMode(true)
             bindingProvider()?.folderSelectionActions?.visibility = View.VISIBLE
             bindingProvider()?.folderRetranslateSelected?.apply {
@@ -42,7 +41,7 @@ internal class LibrarySelectionController(
 
     fun exitSelectionMode() {
         if (!isSelectionMode) return
-        isSelectionMode = false
+
         imageAdapter.setSelectionMode(false)
         bindingProvider()?.folderSelectionActions?.visibility = View.GONE
         ui.clearFolderStatus()

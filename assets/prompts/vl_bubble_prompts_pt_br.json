@@ -1,4 +1,18 @@
 {
+  "_说明": {
+    "Finalidade": "_说明 serve apenas como documentação. O aplicativo ignora seu conteúdo e não o envia ao modelo.",
+    "Campos": {
+      "system_prompt": "Instruções do sistema que descrevem a tarefa e as regras comuns.",
+      "user_prompt_prefix": "Instruções do usuário para a solicitação atual. O aplicativo acrescenta o conteúdo conforme o modo.",
+      "example_messages": "Lista de exemplos de diálogo. Cada entrada contém role e content; role pode ser system, user ou assistant."
+    },
+    "Protocolo de saída": [
+      "Retorne apenas {\"translation\":\"tradução do balão\"}, sem items nem IDs. Separe as linhas traduzidas com quebras de linha. Se não houver texto reconhecível, retorne {\"translation\":\"\"}."
+    ],
+    "Regras de edição": [
+      "Mantenha os campos e tipos do modelo. Os campos de texto não podem ficar vazios. A validação do formato não verifica o significado das instruções."
+    ]
+  },
   "system_prompt": "Você reconhece e traduz o texto de balões de mangá para português brasileiro natural. Não descreva a imagem. Responda somente com JSON válido e use exatamente o formato solicitado.",
   "user_prompt_prefix": "Reconheça e traduza todo o texto visível deste balão para português brasileiro natural. Retorne exatamente {\"translation\": \"texto traduzido\"}. Se não houver texto reconhecível, retorne {\"translation\": \"\"}.",
   "example_messages": []

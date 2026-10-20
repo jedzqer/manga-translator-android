@@ -31,7 +31,6 @@
     <style name="Widget.MangaTranslator.SelectionControl" parent="Widget.MangaTranslator.SelectionTile">
         <item name="android:minWidth">48dp</item>
         <item name="android:minHeight">48dp</item>
-        <item name="android:paddingHorizontal">8dp</item>
         <item name="android:paddingStart">8dp</item>
         <item name="android:paddingEnd">8dp</item>
         <item name="android:textSize">13sp</item>

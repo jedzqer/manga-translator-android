@@ -10,6 +10,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 import okhttp3.Request
+import okhttp3.Dns
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -109,6 +111,41 @@ class RequestTimeoutIntegrationTest {
             }
         }
         assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `request budget expires without waiting for blocked DNS`() = runBlocking {
+        val resolving = CountDownLatch(1)
+        val releaseDns = CountDownLatch(1)
+        val completed = CountDownLatch(1)
+        val httpClient = OkHttpClient.Builder().dns {
+            resolving.countDown()
+            check(releaseDns.await(5, TimeUnit.SECONDS))
+            Dns.SYSTEM.lookup("localhost")
+        }.build()
+        val request = Request.Builder().url("http://blocked-dns.test/").build()
+        val job = async(Dispatchers.IO) {
+            try {
+                RequestTimeoutBudget(500).run {
+                    HttpTransport(httpClient).executeRequest(request, 30_000) { it.body.string() }
+                }
+                error("Expected request budget expiration")
+            } catch (error: LlmRequestException) {
+                assertEquals(LlmErrorCode.Timeout, error.errorCode)
+            } finally {
+                completed.countDown()
+            }
+        }
+        try {
+            assertTrue("DNS lookup must start", resolving.await(2, TimeUnit.SECONDS))
+            assertTrue("Budget must expire while DNS is still blocked", completed.await(2, TimeUnit.SECONDS))
+            job.await()
+        } finally {
+            releaseDns.countDown()
+            job.cancelAndJoin()
+            httpClient.dispatcher.executorService.shutdown()
+            httpClient.connectionPool.evictAll()
+        }
     }
 
     @Test

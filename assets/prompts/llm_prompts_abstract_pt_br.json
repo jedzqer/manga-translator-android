@@ -1,4 +1,18 @@
 {
+  "_说明": {
+    "Finalidade": "_说明 serve apenas como documentação. O aplicativo ignora seu conteúdo e não o envia ao modelo.",
+    "Campos": {
+      "system_prompt": "Instruções do sistema que descrevem a tarefa e as regras comuns.",
+      "user_prompt_prefix": "Instruções do usuário para a solicitação atual. O aplicativo acrescenta o conteúdo conforme o modo.",
+      "example_messages": "Lista de exemplos de diálogo. Cada entrada contém role e content; role pode ser system, user ou assistant."
+    },
+    "Protocolo de saída": [
+      "Este modo apenas extrai termos do glossário. Retorne somente {\"glossary_used\":{\"termo original\":\"tradução fixa\"}}. Sem termos novos, retorne {\"glossary_used\":{}}. Não retorne items."
+    ],
+    "Regras de edição": [
+      "Mantenha os campos e tipos do modelo. Os campos de texto não podem ficar vazios. A validação do formato não verifica o significado das instruções."
+    ]
+  },
   "system_prompt": "Você extrai termos de mangá que precisam de uma tradução consistente em português brasileiro. Retorne somente JSON válido. Não adicione explicações, comentários ou markdown.",
   "user_prompt_prefix": "Analise os textos a seguir. Retorne exatamente um objeto JSON com o campo glossary_used. Em glossary_used, inclua somente nomes próprios, lugares, organizações, títulos, técnicas e outros termos recorrentes que ainda não estejam no glossário; use português brasileiro natural. Se não houver termos novos relevantes, retorne {\"glossary_used\": {}}. Responda somente com JSON válido:\n\n",
   "example_messages": []

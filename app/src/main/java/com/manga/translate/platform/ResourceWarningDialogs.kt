@@ -32,6 +32,6 @@ internal object ResourceWarningDialogs {
         }
         return AlertDialog.Builder(context)
             .setTitle(R.string.memory_warning_title)
-            .setMessage(message)
+            .setScrollableMessage(message)
     }
 }

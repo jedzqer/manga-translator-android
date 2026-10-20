@@ -1,5 +1,6 @@
 package com.manga.translate.app
 
+import com.manga.translate.platform.setScrollableMessage
 import android.app.DownloadManager
 import android.content.Intent
 import android.net.Uri
@@ -23,6 +24,8 @@ import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.tabs.TabLayoutMediator
 import com.manga.translate.R
@@ -53,11 +56,16 @@ class MainActivity : AppCompatActivity() {
     private var progressHideJob: Job? = null
     private val hideGlobalProgressRunnable = Runnable {
         if (!::binding.isInitialized) return@Runnable
+        val snapshot = GlobalTaskProgressStore.state.value
+        if (snapshot.visible && !snapshot.terminal) return@Runnable
         binding.globalProgressCard.animate()
             .alpha(0f)
             .setDuration(180L)
             .withEndAction {
-                binding.globalProgressCard.visibility = android.view.View.GONE
+                val current = GlobalTaskProgressStore.state.value
+                if (current.taskId == snapshot.taskId && (!current.visible || current.terminal)) {
+                    binding.globalProgressCard.visibility = android.view.View.GONE
+                }
             }
             .start()
     }
@@ -155,7 +163,9 @@ class MainActivity : AppCompatActivity() {
         if (hasCheckedUpdate) return
         hasCheckedUpdate = true
         lifecycleScope.launch {
-            val updateInfo = UpdateChecker.fetchUpdateInfo(
+            val updateInfo = UpdateChecker.fetchAutomaticUpdateInfo(
+                settingsStore = settingsStore,
+                isNewerVersion = ::isNewerVersion,
                 includePreview = updateIgnoreStore.loadAcceptPreviewUpdates(),
                 languageKey = UpdateChecker.resolveChangelogLanguageKey(this@MainActivity)
             )
@@ -331,7 +341,7 @@ class MainActivity : AppCompatActivity() {
         crashStateStore.clearCrashFlag()
         AlertDialog.Builder(this)
             .setTitle(R.string.crash_dialog_title)
-            .setMessage(R.string.crash_dialog_message)
+            .setScrollableMessage(R.string.crash_dialog_message)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.crash_dialog_share) { _, _ ->
                 shareLatestLog()
@@ -457,7 +467,7 @@ class MainActivity : AppCompatActivity() {
         if (shouldShowRequestPermissionRationale(permission)) {
             AlertDialog.Builder(this)
                 .setTitle(R.string.notification_permission_title)
-                .setMessage(R.string.notification_permission_message)
+                .setScrollableMessage(R.string.notification_permission_message)
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(android.R.string.ok) { _, _ ->
                     notificationPermissionLauncher.launch(permission)
@@ -471,14 +481,20 @@ class MainActivity : AppCompatActivity() {
     private fun observeGlobalProgress() {
         progressHideJob?.cancel()
         progressHideJob = lifecycleScope.launch {
-            GlobalTaskProgressStore.state.collect { state ->
-                renderGlobalProgress(state)
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                try {
+                    GlobalTaskProgressStore.state.collect(::renderGlobalProgress)
+                } finally {
+                    mainHandler.removeCallbacks(hideGlobalProgressRunnable)
+                    binding.globalProgressCard.animate().cancel()
+                }
             }
         }
     }
 
     private fun renderGlobalProgress(state: GlobalTaskProgressState) {
         mainHandler.removeCallbacks(hideGlobalProgressRunnable)
+        binding.globalProgressCard.animate().cancel()
         if (!state.visible) {
             hideGlobalProgressRunnable.run()
             return

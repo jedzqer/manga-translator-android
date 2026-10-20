@@ -1,6 +1,7 @@
 package com.manga.translate.network
 
 import android.content.Context
+import com.manga.translate.di.appContainer
 import android.graphics.Bitmap
 import com.manga.translate.model.ApiFormat
 import com.manga.translate.platform.ImageEncodingUtils
@@ -37,7 +38,9 @@ internal class PayloadBuilder(
         glossaryProcessingEnabled: Boolean = true
     ): JSONObject {
         val baseConfig = getPromptConfig(promptAsset, settings.translationStyle)
-        val config = if (glossaryProcessingEnabled) baseConfig else baseConfig.copy(
+        val config = if (glossaryProcessingEnabled) baseConfig.copy(
+            userPromptPrefix = baseConfig.userPromptPrefix + AUTHORITATIVE_GLOSSARY_INSTRUCTION
+        ) else baseConfig.copy(
             systemPrompt = baseConfig.systemPrompt + "\nGlossary extraction is disabled for this request. " +
                 "Use the supplied glossary only as translation context. Do not extract new terms. " +
                 "Return glossary_used as an empty JSON object ({}), overriding any glossary extraction instructions or examples.",
@@ -470,7 +473,10 @@ internal class PayloadBuilder(
     ): String = buildString {
         append(config.userPromptPrefix.ifBlank { DEFAULT_IMAGE_TRANSLATION_USER_PROMPT })
         if (glossary.isNotEmpty() || glossaryProcessingEnabled) {
-            append("\n\nUse the supplied glossary for matching source terms. Glossary: ")
+            append("\n\nUse the supplied glossary as an authoritative translation memory. " +
+                "When the source text matches a glossary key, use exactly its supplied translation. " +
+                "Do not re-translate, re-transliterate, simplify, paraphrase, or replace an existing glossary entry. " +
+                "Glossary: ")
             append(buildGlossaryJson(glossary))
         }
         if (requestedIds != null) {
@@ -478,12 +484,15 @@ internal class PayloadBuilder(
             append(JSONArray(requestedIds).toString())
             append(". Include every ID once, use an empty translation for unreadable/meaningless regions. Labels are not source text. Images are ordered pages or page sections; IDs are unique across all images. Translate all images in order using their shared context.")
             if (glossaryProcessingEnabled) {
-                append(" Also return glossary_used mapping visible original proper names and specialized terms to translations, including new terms. Preserve supplied names. Exclude ordinary words or invented terms.")
+                append(" Also return glossary_used mapping only for genuinely new visible proper names and specialized terms. " +
+                    "Do not return existing glossary keys with a different value. Preserve supplied names exactly. " +
+                    "Exclude ordinary words or invented terms.")
             } else append(" Do not extract or return glossary entries.")
         } else if (glossaryProcessingEnabled) {
             append("\nReturn a JSON object with translation and glossary_used. ")
             append("glossary_used must map original names and specialized terms visible in this image to their translations, ")
-            append("including new terms. Preserve supplied translations. Exclude ordinary words and invented terms. ")
+            append("including new terms. Existing glossary entries are authoritative and must be preserved exactly; " +
+                "do not return a different value for an existing key. Exclude ordinary words and invented terms. ")
             append("Use an empty object when there are no terms. For an image with no text return ")
             append("{\"translation\":\"\",\"glossary_used\":{}}.")
         } else {
@@ -624,12 +633,14 @@ internal class PayloadBuilder(
     private fun getPromptConfig(name: String, styleOverride: String? = null): LlmPromptConfig {
         val resolvedName = PromptAssetResolver.resolve(appContext, name)
         val style = styleOverride ?: settingsStore.loadTranslationStyle()
-        val cacheKey = "$resolvedName\u0000$style"
-        return promptCache.getOrPut(cacheKey) { loadPromptConfig(resolvedName, style) }
+        val source = appContext.appContainer.customPromptStore.read(appContext, name)
+        val cacheKey = "$resolvedName\u0000$style\u0000$source"
+        if (promptCache.size > 32) promptCache.clear()
+        return promptCache.getOrPut(cacheKey) { loadPromptConfig(source, style) }
     }
 
-    private fun loadPromptConfig(name: String, styleHint: String): LlmPromptConfig {
-        val json = JSONObject(readAsset(name))
+    private fun loadPromptConfig(source: String, styleHint: String): LlmPromptConfig {
+        val json = JSONObject(source)
         val systemPrompt = json.optString("system_prompt")
         val userPromptPrefix = json.optString("user_prompt_prefix")
         val examplesJson = json.optJSONArray("example_messages") ?: JSONArray()
@@ -645,10 +656,6 @@ internal class PayloadBuilder(
         }
         return LlmPromptConfig(systemPrompt, userPromptPrefix, examples,
             json.optString("batch_prompt"))
-    }
-
-    private fun readAsset(name: String): String {
-        return appContext.assets.open(name).bufferedReader().use { it.readText() }
     }
 
     private fun buildGlossaryJson(glossary: Map<String, String>): JSONObject {
@@ -699,6 +706,8 @@ internal class PayloadBuilder(
     }
 
     companion object {
+        private const val AUTHORITATIVE_GLOSSARY_INSTRUCTION =
+            "\nGlossary rule: the supplied glossary is authoritative. When the source matches an existing glossary key, use exactly its supplied translation; do not re-translate, re-transliterate, paraphrase, simplify, or replace it. Do not return an existing key in glossary_used with a different value.\n"
         const val PROMPT_CONFIG_ASSET = "prompts/llm_prompts.json"
         const val OCR_PROMPT_CONFIG_ASSET = "prompts/ocr_prompts.json"
         const val DEFAULT_OCR_USER_PROMPT =

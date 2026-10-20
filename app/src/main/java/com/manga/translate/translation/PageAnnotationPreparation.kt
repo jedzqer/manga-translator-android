@@ -15,12 +15,13 @@ internal suspend fun <T> withPageAnnotation(
     layout: VlPageLayout,
     chunk: VlPageChunk,
     decodeFailure: () -> Exception,
+    fullVisual: Boolean = false,
     consume: suspend (Bitmap) -> T
 ): T {
     coroutineContext.ensureActive()
     val crop = source.decodeRegion(chunk.rect) ?: throw decodeFailure()
     val annotated = try {
-        VlPageAnnotationRenderer.render(crop, layout, chunk)
+        VlPageAnnotationRenderer.render(crop, layout, chunk, fullVisual)
     } finally {
         crop.recycleSafely()
     }
@@ -35,9 +36,11 @@ internal suspend fun <T> withPageAnnotation(
 internal suspend fun encodePageAnnotation(
     source: BitmapCropSource,
     layout: VlPageLayout,
-    chunk: VlPageChunk
+    chunk: VlPageChunk,
+    fullVisual: Boolean = false
 ): String = withPageAnnotation(source, layout, chunk,
-    decodeFailure = { LlmResponseException(LlmErrorCode.ImageEncodeFailed, "Cannot decode VL page") }
+    decodeFailure = { LlmResponseException(LlmErrorCode.ImageEncodeFailed, "Cannot decode VL page") },
+    fullVisual = fullVisual
 ) { annotated ->
     ImageEncodingUtils.encodeBitmapToBase64(annotated)
         ?: throw LlmResponseException(LlmErrorCode.ImageEncodeFailed, "Cannot encode VL page")

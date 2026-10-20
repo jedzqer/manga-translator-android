@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.manga.translate.library.LibraryPreferencesGateway
 import com.manga.translate.library.LibraryRepository
+import com.manga.translate.translation.FolderTranslationTaskFactory
 import com.manga.translate.model.OcrApiFormat
 import com.manga.translate.model.FolderStatus
 import com.manga.translate.model.ThemeMode
@@ -343,6 +344,64 @@ class SettingsStoreTest {
 
             assertEquals(TranslationLanguage.JA_TO_ZH, gateway.getTranslationLanguage(folder))
             assertTrue(gateway.isFullTranslateEnabled(folder))
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `only-bubbles preference defaults off and follows folder rename and deletion`() {
+        val repository = LibraryRepository(context)
+        val prefs = context.getSharedPreferences("library_prefs_test", Context.MODE_PRIVATE)
+        val gateway = LibraryPreferencesGateway(context, prefs, repository)
+        val folder = repository.createFolder("bubble_only_${System.nanoTime()}")!!
+        var renamed: java.io.File? = null
+
+        try {
+            assertFalse(gateway.isOnlyTranslateBubblesEnabled(folder))
+            gateway.setOnlyTranslateBubblesEnabled(folder, true)
+            assertTrue(LibraryPreferencesGateway(context, prefs, repository).isOnlyTranslateBubblesEnabled(folder))
+
+            renamed = repository.renameFolder(folder, "bubble_only_renamed_${System.nanoTime()}")!!
+            gateway.migrateFolderSettings(folder, renamed)
+            assertFalse(gateway.isOnlyTranslateBubblesEnabled(folder))
+            assertTrue(gateway.isOnlyTranslateBubblesEnabled(renamed))
+
+            gateway.clearFolderSettings(renamed)
+            assertFalse(gateway.isOnlyTranslateBubblesEnabled(renamed))
+        } finally {
+            (renamed ?: folder).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `folder task uses bubble-only mode only with local OCR and VL disabled`() {
+        val repository = LibraryRepository(context)
+        val prefs = context.getSharedPreferences("library_prefs_test", Context.MODE_PRIVATE)
+        val gateway = LibraryPreferencesGateway(context, prefs, repository)
+        val settings = SettingsStore(context)
+        val folder = repository.createFolder("bubble_only_task_${System.nanoTime()}")!!
+        val factory = FolderTranslationTaskFactory(repository, gateway, settings)
+
+        try {
+            gateway.setOnlyTranslateBubblesEnabled(folder, true)
+            val localOcr = settings.loadOcrApiSettings().copy(
+                apiUrl = "https://example.test/v1",
+                apiKey = "test-key",
+                modelName = "test-model",
+                apiSupplementEnabled = true,
+                manualBubblesUseApi = true
+            )
+            settings.saveOcrApiSettings(localOcr)
+            assertTrue(factory.buildFolderTask(folder, emptyList(), false).onlyTranslateBubbles)
+
+            gateway.setVlDirectTranslateEnabled(folder, true)
+            assertFalse(factory.buildFolderTask(folder, emptyList(), false).onlyTranslateBubbles)
+
+            gateway.setVlDirectTranslateEnabled(folder, false)
+            settings.saveOcrApiSettings(localOcr.copy(useLocalOcr = false))
+            assertFalse(factory.buildFolderTask(folder, emptyList(), false).onlyTranslateBubbles)
+            assertTrue(gateway.isOnlyTranslateBubblesEnabled(folder))
         } finally {
             folder.deleteRecursively()
         }

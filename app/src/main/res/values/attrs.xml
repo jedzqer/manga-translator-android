@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <declare-styleable name="NotebookPaperLayout">
+        <attr name="android:colorBackground" />
+        <attr name="outlineColor" />
+    </declare-styleable>
     <attr name="surfaceColor" format="color" />
     <attr name="surfaceAltColor" format="color" />
     <attr name="buttonFillColor" format="color" />

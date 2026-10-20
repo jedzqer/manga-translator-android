@@ -17,11 +17,15 @@ class NotebookPaperLayout @JvmOverloads constructor(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val palette = ThemePaletteRuntime.customPalette
     private val colors = context.obtainStyledAttributes(
-        intArrayOf(android.R.attr.colorBackground, R.attr.outlineColor)
+        R.styleable.NotebookPaperLayout
     ).let { values ->
         val resolved = intArrayOf(
-            palette?.background ?: values.getColor(0, 0xFFF4EEDC.toInt()),
-            palette?.outline ?: values.getColor(1, 0xFFB6AA90.toInt())
+            palette?.background ?: values.getColor(
+                R.styleable.NotebookPaperLayout_android_colorBackground, 0xFFF4EEDC.toInt()
+            ),
+            palette?.outline ?: values.getColor(
+                R.styleable.NotebookPaperLayout_outlineColor, 0xFFB6AA90.toInt()
+            )
         )
         values.recycle()
         resolved

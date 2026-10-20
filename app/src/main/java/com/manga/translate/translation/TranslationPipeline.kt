@@ -1,7 +1,7 @@
 package com.manga.translate.translation
 
-import com.manga.translate.di.appContainer
 import android.content.Context
+import com.manga.translate.di.appContainer
 import android.graphics.Bitmap
 import android.graphics.RectF
 import com.manga.translate.R
@@ -66,6 +66,8 @@ internal class TranslationPipeline(
         TextBubbleTranslationCoordinator(llmClient = llmClient),
     private val vlPageTranslationCoordinator: VlPageTranslationCoordinator =
         VlPageTranslationCoordinator(llmClient, FloatingTranslationCacheStore(context.applicationContext)),
+    private val strategyResolver: TranslationStrategyResolver =
+        TranslationStrategyResolver { _, globalStyle -> globalStyle },
     private val pageRegionDetector: PageRegionDetector =
         PageRegionDetector(context.applicationContext, settingsStore)
 ) {
@@ -74,7 +76,7 @@ internal class TranslationPipeline(
     private val ocrRegionLimiter = DynamicConcurrencyLimiter()
 
     private fun translationSettings(imageFile: File) = settingsStore.load().copy(
-        translationStyle = appContext.appContainer.libraryPreferencesGateway.resolveTranslationStyle(
+        translationStyle = strategyResolver.resolveTranslationStyle(
             requireNotNull(imageFile.absoluteFile.parentFile), settingsStore.loadTranslationStyle()
         )
     )
@@ -84,6 +86,7 @@ internal class TranslationPipeline(
         glossary: MutableMap<String, String>,
         forceOcr: Boolean,
         language: TranslationLanguage = TranslationLanguage.JA_TO_ZH,
+        glossaryProcessingEnabled: Boolean = true,
         onProgress: (String) -> Unit
     ): TranslationResult? = withContext(Dispatchers.Default) {
         val resolvedApiSettings = translationSettings(imageFile)
@@ -96,13 +99,14 @@ internal class TranslationPipeline(
             imageFile,
             forceOcr,
             language,
-            onProgress
+            onProgress = onProgress
         ) ?: return@withContext null
         translateStandardPage(
             page = page,
             imageFile = imageFile,
             glossary = glossary,
             language = language,
+            glossaryProcessingEnabled = glossaryProcessingEnabled,
             onProgress = onProgress
         )
     }
@@ -112,6 +116,7 @@ internal class TranslationPipeline(
         imageFile: File,
         glossary: MutableMap<String, String>,
         language: TranslationLanguage = TranslationLanguage.JA_TO_ZH,
+        glossaryProcessingEnabled: Boolean = true,
         onProgress: (String) -> Unit
     ): TranslationResult? {
         val translated = translateStandardPageWithGlossary(
@@ -119,9 +124,10 @@ internal class TranslationPipeline(
             imageFile = imageFile,
             glossary = glossary,
             language = language,
+            glossaryProcessingEnabled = glossaryProcessingEnabled,
             onProgress = onProgress
         ) ?: return null
-        if (translated.glossaryUsed.isNotEmpty()) {
+        if (glossaryProcessingEnabled && translated.glossaryUsed.isNotEmpty()) {
             glossary.putAll(translated.glossaryUsed)
         }
         return translated.result
@@ -158,6 +164,7 @@ internal class TranslationPipeline(
         imageFile: File,
         forceOcr: Boolean,
         language: TranslationLanguage = TranslationLanguage.JA_TO_ZH,
+        onlyTranslateBubbles: Boolean = false,
         onProgress: (String) -> Unit
     ): PageOcrResult? = withContext(Dispatchers.Default) {
         val trace = PerformanceTrace(
@@ -169,10 +176,12 @@ internal class TranslationPipeline(
         val ocrSettings = settingsStore.loadResolvedOcrApiSettings()
         val resolvedLanguage = TranslationLanguage.resolveForOcr(language, ocrSettings.useLocalOcr)
         val effectiveUseLocalOcr = ocrSettings.useLocalOcr && resolvedLanguage.supportsLocalOcr()
+        val useBubbleOnly = onlyTranslateBubbles && effectiveUseLocalOcr
         val cacheMode = buildOcrCacheMode(
             imageFile,
             effectiveUseLocalOcr,
-            resolvedLanguage
+            resolvedLanguage,
+            onlyTranslateBubbles = useBubbleOnly
         )
         val expectedMetadata = buildOcrMetadata(imageFile, language, ocrSettings, cacheMode)
         if (!forceOcr) {
@@ -202,7 +211,6 @@ internal class TranslationPipeline(
             trace.attribute("size", "${cropSource.width}x${cropSource.height}")
             trace.attribute("longImage", shouldUseLongImageTiling(cropSource.width, cropSource.height))
             trace.attribute("ocrMode", if (useLocalOcr) "local" else "api")
-            trace.attribute("detection", "bubbles_and_text")
             onProgress(appContext.getString(R.string.detecting_bubbles))
             val pageRegions = trace.measure("detection") {
                 pageRegionDetector.detect(
@@ -212,7 +220,13 @@ internal class TranslationPipeline(
                     logTag = "Pipeline"
                 )
             } ?: return@withContext null
-            val regions = pageRegions.regions
+            val detectionForOcr = selectPageRegionsForOcr(pageRegions, useBubbleOnly)
+            trace.attribute("detection", if (detectionForOcr === pageRegions) {
+                "bubbles_and_text"
+            } else {
+                "bubbles_only"
+            })
+            val regions = detectionForOcr.regions
             trace.attribute("regions", regions.size)
             AppLogger.log("Pipeline", "Detected ${regions.size} regions in ${imageFile.name}")
             if (regions.isEmpty()) {
@@ -237,7 +251,7 @@ internal class TranslationPipeline(
             val bubbles = trace.measure("ocr") {
                 recognizeBubblesIndividually(
                     cropSource = cropSource,
-                    detection = pageRegions,
+                    detection = detectionForOcr,
                     language = resolvedLanguage,
                     useLocalOcr = useLocalOcr
                 )
@@ -449,7 +463,8 @@ internal class TranslationPipeline(
         language: TranslationLanguage,
         glossary: Map<String, String> = emptyMap(),
         glossaryProcessingEnabled: Boolean = false,
-        baseTranslation: TranslationResult? = null
+        baseTranslation: TranslationResult? = null,
+        fullVisual: Boolean = false
     ): FolderVlTranslateOutcome = withContext(Dispatchers.Default) {
         if (baseTranslation != null && (baseTranslation.bubbles.none { it.needsTranslationRetry() } || baseTranslation.hasCrossPageBubbleGeometry())) {
             return@withContext FolderVlTranslateOutcome(result = baseTranslation)
@@ -464,7 +479,8 @@ internal class TranslationPipeline(
             val layout = if (baseTranslation == null) detection.vlLayout() else VlPageLayout(source.width, source.height,
                 baseTranslation.bubbles.filter { it.needsTranslationRetry() }, tiles = detection.tiles)
             val outcome = vlPageTranslationCoordinator.translate(source, layout, settings, language,
-                settingsStore.loadApiTimeoutMs(), settingsStore.loadApiRetryCount(), glossary, glossaryProcessingEnabled)
+                settingsStore.loadApiTimeoutMs(), settingsStore.loadApiRetryCount(), glossary, glossaryProcessingEnabled,
+                fullVisual = fullVisual)
             if (outcome.timedOut || outcome.requiresVlModel) return@withContext FolderVlTranslateOutcome(
                 timedOut = outcome.timedOut, requiresVlModel = outcome.requiresVlModel)
             val metadata = buildTranslationMetadata(imageFile, language,
@@ -482,14 +498,15 @@ internal class TranslationPipeline(
         images: List<File>,
         language: TranslationLanguage,
         glossary: Map<String, String>,
-        glossaryProcessingEnabled: Boolean
+        glossaryProcessingEnabled: Boolean,
+        fullVisual: Boolean = false
     ): List<FolderVlTranslateOutcome>? = withContext(Dispatchers.Default) {
         if (images.isEmpty()) return@withContext emptyList()
         val settings = translationSettings(images.first())
         if (!llmClient.isConfigured(settings)) return@withContext null
         // Keep folder-specific style instructions isolated.
         if (images.any { translationSettings(it).translationStyle != settings.translationStyle }) {
-            return@withContext images.map { translateImageWithVl(it, language, glossary, glossaryProcessingEnabled) }
+            return@withContext images.map { translateImageWithVl(it, language, glossary, glossaryProcessingEnabled, fullVisual = fullVisual) }
         }
         val prepared = mutableListOf<VlPageTranslationCoordinator.PreparedPage>()
         var nextId = 0
@@ -499,7 +516,7 @@ internal class TranslationPipeline(
                 val detection = pageRegionDetector.detect(source, source.width, source.height)
                     ?: return@withContext null
                 if (!detection.detectionComplete) return@withContext null
-                val page = vlPageTranslationCoordinator.preparePage(source, detection.vlLayout(), nextId)
+                val page = vlPageTranslationCoordinator.preparePage(source, detection.vlLayout(), nextId, fullVisual)
                 nextId += page.localIds.size
                 prepared.add(page)
             }
@@ -783,14 +800,18 @@ internal class TranslationPipeline(
             sourceFileSize = imageFile.length(),
             cacheMode = cacheMode,
             language = language.name,
-            engineModel = engineModel
+            engineModel = engineModel + if (!effectiveUseLocalOcr || ocrSettings.apiSupplementEnabled) {
+                appContext.appContainer.customPromptStore.fingerprint(appContext, "prompts/ocr_prompts.json")
+                    .takeIf { it.isNotEmpty() }?.let { "|prompt:$it" }.orEmpty()
+            } else ""
         )
     }
 
     private fun buildOcrCacheMode(
         imageFile: File,
         useLocalOcr: Boolean,
-        language: TranslationLanguage
+        language: TranslationLanguage,
+        onlyTranslateBubbles: Boolean = false
     ): String {
         // Detection and local recognition identify the reusable OCR cache here.
         // Supplemental API settings are tracked separately in engineModel.
@@ -815,7 +836,7 @@ internal class TranslationPipeline(
         val strategyTag = PipelineBitmapDecoder.readImageSize(imageFile)?.let { size ->
             buildDetectionStrategyTag(size.width, size.height)
         } ?: "det_full_yolo26nseg1472_paddle_blocks_v3"
-        return "$baseMode|$strategyTag|bubbles_and_text"
+        return "$baseMode|$strategyTag|${ocrRegionCacheMode(onlyTranslateBubbles, useLocalOcr)}"
     }
 
     private fun LlmResponseException.withPageName(pageName: String): LlmResponseException {
@@ -829,6 +850,19 @@ internal class TranslationPipeline(
     }
 
 }
+
+internal fun selectPageRegionsForOcr(
+    detection: PageRegionDetectionResult,
+    bubbleOnlyEnabled: Boolean
+): PageRegionDetectionResult {
+    if (!bubbleOnlyEnabled) return detection
+    val bubbleRegions = detection.regions.filter { it.source == BubbleSource.BUBBLE_DETECTOR }
+    if (bubbleRegions.isEmpty()) return detection
+    return detection.copy(regions = bubbleRegions, textRects = emptyList())
+}
+
+internal fun ocrRegionCacheMode(onlyTranslateBubbles: Boolean, useLocalOcr: Boolean): String =
+    if (onlyTranslateBubbles && useLocalOcr) "bubbles_only" else "bubbles_and_text"
 
 internal fun buildDetectionStrategyTag(
     pageWidth: Int,

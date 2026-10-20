@@ -2,7 +2,6 @@ package com.manga.translate.library
 
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -45,13 +44,11 @@ internal class LibraryExporter(
     private val repository: LibraryRepository,
     private val translationStore: TranslationStore,
     private val settingsStore: SettingsStore,
-    prefs: SharedPreferences,
     private val preferencesGateway: LibraryPreferencesGateway,
     private val ui: LibraryUiCallbacks,
     private val exportTaskHost: ExportTaskHost
 ) {
     private val appContext = context.applicationContext
-    private val prefsRef = prefs
     private val storageBackend = ExportStorageBackend(context)
     private var pendingExportAfterPermission = false
     private var pendingExportAfterExportTreeSelection = false
@@ -142,10 +139,7 @@ internal class LibraryExporter(
         pendingExportIsCollection = false
         pendingExportThreads = normalizeExportThreads(exportThreads)
         pendingExportFormat = exportFormat
-        prefsRef.edit() {
-            putInt(KEY_EXPORT_THREADS, pendingExportThreads)
-            putString(KEY_EXPORT_FORMAT, pendingExportFormat.name)
-        }
+        preferencesGateway.setExportPreferences(pendingExportThreads, pendingExportFormat.name)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val treeUri = preferencesGateway.getExportTreeUri()
             if (treeUri == null || !preferencesGateway.hasExportPermission(treeUri)) {
@@ -208,10 +202,7 @@ internal class LibraryExporter(
         pendingExportIsCollection = true
         pendingExportThreads = normalizeExportThreads(exportThreads)
         pendingExportFormat = exportFormat
-        prefsRef.edit() {
-            putInt(KEY_EXPORT_THREADS, pendingExportThreads)
-            putString(KEY_EXPORT_FORMAT, pendingExportFormat.name)
-        }
+        preferencesGateway.setExportPreferences(pendingExportThreads, pendingExportFormat.name)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val treeUri = preferencesGateway.getExportTreeUri()
             if (treeUri == null || !preferencesGateway.hasExportPermission(treeUri)) {
@@ -269,7 +260,7 @@ internal class LibraryExporter(
     ) {
         val exportImages = images
         if (exportImages.isEmpty()) {
-            LibraryUiBridge.setFolderStatus(appContext.getString(R.string.folder_images_empty))
+            ui.setFolderStatus(appContext.getString(R.string.folder_images_empty))
             return
         }
         val exportTreeUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -305,10 +296,10 @@ internal class LibraryExporter(
                 }
                 if (!exportDirReady) {
                     failed = true
-                    LibraryUiBridge.setFolderStatus(appContext.getString(R.string.export_failed))
+
                     return@exportTask
                 }
-                LibraryUiBridge.setFolderStatus(appContext.getString(R.string.exporting_progress, 0, exportImages.size))
+
                 var successPathHint: String? = null
 
                 when (exportFormat) {
@@ -322,9 +313,7 @@ internal class LibraryExporter(
                             exportTreeUri = exportTreeUri
                         ) { count ->
                             withContext(Dispatchers.Main) {
-                                LibraryUiBridge.setFolderStatus(
-                                    appContext.getString(R.string.exporting_progress, count, exportImages.size)
-                                )
+
                                 TranslationKeepAliveService.updateExportProgress(
                                     appContext,
                                     exportTaskId,
@@ -347,9 +336,7 @@ internal class LibraryExporter(
                             exportTreeUri = exportTreeUri
                         ) { count ->
                             withContext(Dispatchers.Main) {
-                                LibraryUiBridge.setFolderStatus(
-                                    appContext.getString(R.string.exporting_progress, count, exportImages.size)
-                                )
+
                                 TranslationKeepAliveService.updateExportProgress(
                                     appContext,
                                     exportTaskId,
@@ -385,9 +372,7 @@ internal class LibraryExporter(
                                         }
                                         val count = exportedCount.incrementAndGet()
                                         withContext(Dispatchers.Main) {
-                                            LibraryUiBridge.setFolderStatus(
-                                                appContext.getString(R.string.exporting_progress, count, exportImages.size)
-                                            )
+
                                             TranslationKeepAliveService.updateExportProgress(
                                                 appContext,
                                                 exportTaskId,
@@ -405,9 +390,7 @@ internal class LibraryExporter(
                     }
                 }
 
-                LibraryUiBridge.setFolderStatus(
-                    if (failed) appContext.getString(R.string.export_failed) else appContext.getString(R.string.export_done)
-                )
+
                 if (!failed) {
                     val path = successPathHint ?: if (exportTreeUri != null) {
                         buildExportPathHint(exportTreeUri, folder.name)
@@ -426,7 +409,7 @@ internal class LibraryExporter(
             } catch (e: Exception) {
                 failed = true
                 AppLogger.log("Library", "Export failed: ${folder.name}", e)
-                LibraryUiBridge.setFolderStatus(appContext.getString(R.string.export_failed))
+
             } finally {
                 LibraryUiBridge.setFolderExportEnabled(folder, true)
                 TranslationKeepAliveService.finishExportTask(
@@ -439,7 +422,7 @@ internal class LibraryExporter(
                 )
             }
         }) {
-            LibraryUiBridge.setFolderStatus(appContext.getString(R.string.exporting_progress, 0, exportImages.size))
+
             return
         }
         onExitSelectionMode()
@@ -457,7 +440,7 @@ internal class LibraryExporter(
     ) {
         val allImages = chapterImages.flatMap { it.second }
         if (allImages.isEmpty()) {
-            LibraryUiBridge.setFolderStatus(appContext.getString(R.string.folder_chapters_empty))
+            ui.setFolderStatus(appContext.getString(R.string.folder_chapters_empty))
             return
         }
         val exportTreeUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -532,9 +515,7 @@ internal class LibraryExporter(
                     }
                 }
 
-                LibraryUiBridge.setFolderStatus(
-                    if (failed) appContext.getString(R.string.export_failed) else appContext.getString(R.string.export_done)
-                )
+
                 AppLogger.log(
                     "Library",
                     "Collection export ${if (failed) "completed with failures" else "completed"}: ${collectionFolder.name}"
@@ -545,7 +526,7 @@ internal class LibraryExporter(
             } catch (e: Exception) {
                 failed = true
                 AppLogger.log("Library", "Collection export failed: ${collectionFolder.name}", e)
-                LibraryUiBridge.setFolderStatus(appContext.getString(R.string.export_failed))
+
             } finally {
                 LibraryUiBridge.setFolderExportEnabled(collectionFolder, true)
                 TranslationKeepAliveService.finishExportTask(
@@ -558,7 +539,7 @@ internal class LibraryExporter(
                 )
             }
         }) {
-            LibraryUiBridge.setFolderStatus(appContext.getString(R.string.exporting_progress, 0, allImages.size))
+
             return
         }
         onExitSelectionMode()
@@ -643,9 +624,7 @@ internal class LibraryExporter(
                             }
                             val count = exportedCount.incrementAndGet()
                             withContext(Dispatchers.Main) {
-                                LibraryUiBridge.setFolderStatus(
-                                    appContext.getString(R.string.exporting_progress, count, totalImages)
-                                )
+
                                 TranslationKeepAliveService.updateExportProgress(
                                     appContext,
                                     exportTaskId,
@@ -865,9 +844,7 @@ internal class LibraryExporter(
                             }
                             val count = renderedCount.incrementAndGet()
                             withContext(Dispatchers.Main) {
-                                LibraryUiBridge.setFolderStatus(
-                                    appContext.getString(R.string.exporting_progress, count, totalImages)
-                                )
+
                                 TranslationKeepAliveService.updateExportProgress(
                                     appContext,
                                     exportTaskId,
@@ -1351,16 +1328,16 @@ internal class LibraryExporter(
     }
 
     private fun loadExportThreads(): Int {
-        val saved = prefsRef.getInt(KEY_EXPORT_THREADS, DEFAULT_EXPORT_THREADS)
+        val saved = preferencesGateway.getExportThreads(DEFAULT_EXPORT_THREADS)
         return normalizeExportThreads(saved)
     }
 
     private fun loadExportFormatDefault(): ExportFormat {
-        val saved = prefsRef.getString(KEY_EXPORT_FORMAT, null)
+        val saved = preferencesGateway.getExportFormat(null)
         if (!saved.isNullOrBlank()) {
             return runCatching { ExportFormat.valueOf(saved) }.getOrDefault(ExportFormat.IMAGE_DIR)
         }
-        return if (prefsRef.getBoolean(KEY_EXPORT_AS_CBZ, false)) {
+        return if (preferencesGateway.isLegacyCbzExportEnabled()) {
             ExportFormat.CBZ
         } else {
             ExportFormat.IMAGE_DIR
@@ -1372,9 +1349,6 @@ internal class LibraryExporter(
     }
 
     companion object {
-        private const val KEY_EXPORT_THREADS = "export_threads"
-        private const val KEY_EXPORT_AS_CBZ = "export_as_cbz"
-        private const val KEY_EXPORT_FORMAT = "export_format"
         private const val DEFAULT_EXPORT_THREADS = 2
         private const val DEFAULT_EXPORT_WORKER_BYTES = 48L * 1024L * 1024L
         private const val MIN_EXPORT_THREADS = 1

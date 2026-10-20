@@ -3,6 +3,7 @@ package com.manga.translate.network
 import com.manga.translate.model.ApiFormat
 import com.manga.translate.settings.ApiSettings
 import java.util.LinkedHashMap
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -11,6 +12,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -23,9 +26,16 @@ import org.json.JSONObject
  *
  * 响应消费完成后才恢复协程，确保取消覆盖响应体读取。
  */
-internal class HttpTransport {
+internal class HttpTransport(httpClient: OkHttpClient = OkHttpClient()) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
-    private val baseHttpClient = OkHttpClient()
+    // Business-level limiters own concurrency, as they did with synchronous calls.
+    // Do not silently introduce OkHttp's default five-request per-host queue.
+    private val baseHttpClient = httpClient.newBuilder()
+        .dispatcher(Dispatcher(httpClient.dispatcher.executorService).apply {
+            maxRequests = Int.MAX_VALUE
+            maxRequestsPerHost = Int.MAX_VALUE
+        })
+        .build()
     private val httpClientCache = object : LinkedHashMap<Pair<Int, Int>, OkHttpClient>(MAX_CACHED_HTTP_CLIENTS, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<Int, Int>, OkHttpClient>?): Boolean {
             return size > MAX_CACHED_HTTP_CLIENTS
@@ -87,12 +97,26 @@ internal class HttpTransport {
         suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { call.cancel() }
             try {
-                call.execute().use { response ->
-                    if (continuation.isActive) {
-                        val result = consume(response)
-                        if (continuation.isActive) continuation.resume(result)
+                // execute() would keep the suspending call on the stack during a
+                // blocked DNS lookup, preventing its timeout from returning.
+                call.enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        if (continuation.isActive) continuation.resumeWithException(e)
                     }
-                }
+
+                    override fun onResponse(call: Call, response: Response) {
+                        try {
+                            response.use {
+                                if (continuation.isActive) {
+                                    val result = consume(it)
+                                    if (continuation.isActive) continuation.resume(result)
+                                }
+                            }
+                        } catch (t: Throwable) {
+                            if (continuation.isActive) continuation.resumeWithException(t)
+                        }
+                    }
+                })
             } catch (t: Throwable) {
                 if (continuation.isActive) continuation.resumeWithException(t)
             }

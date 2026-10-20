@@ -1,5 +1,6 @@
 package com.manga.translate.floating
 
+import com.manga.translate.platform.setScrollableMessage
 import com.manga.translate.network.executeWithModelResponseRetries
 
 import android.annotation.SuppressLint
@@ -12,9 +13,7 @@ import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.RectF
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.StateListDrawable
 import android.hardware.display.DisplayManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -35,14 +34,13 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatButton
-import androidx.appcompat.widget.AppCompatTextView
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import androidx.core.view.isVisible
 import com.manga.translate.R
 import com.manga.translate.detection.PageRegion
 import com.manga.translate.detection.detectWithinInsets
-import com.manga.translate.detection.detectVlWithinInsets
 import com.manga.translate.detection.PageRegionDetector
 import com.manga.translate.detection.mapPageLineRectsToCrop
 import com.manga.translate.di.appContainer
@@ -60,6 +58,7 @@ import com.manga.translate.platform.ErrorDialogFormatter
 import com.manga.translate.platform.createAlertDialogBuilder
 import com.manga.translate.platform.createWithScrollableMessage
 import com.manga.translate.platform.showModelErrorDialog
+import com.manga.translate.translation.detectVlWithinInsets
 import kotlin.math.roundToInt
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
@@ -82,7 +81,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 class FloatingBallOverlayService : Service() {
-    private class FloatingBallView(context: android.content.Context) : AppCompatTextView(context) {
+    private class FloatingBallView(context: android.content.Context) : AppCompatImageView(context) {
         var onPerformClick: (() -> Unit)? = null
 
         override fun performClick(): Boolean {
@@ -108,9 +107,13 @@ class FloatingBallOverlayService : Service() {
     }
     private val llmClient by lazy(LazyThreadSafetyMode.NONE) { appContainer.llmClient }
     private val mainHandler = Handler(Looper.getMainLooper())
-    private lateinit var windowManager: WindowManager
+    private lateinit var windowManager: FloatingWindowController
+    private val captureTranslationSession = FloatingCaptureTranslationSession()
+    private var destroyed = false
     private var controllerRoot: LinearLayout? = null
     private var controllerLayoutParams: WindowManager.LayoutParams? = null
+    private var controllerPanelWindow: FloatingControllerPanel? = null
+    private val controllerThemeContext by lazy { createFloatingControllerContext(this, settingsStore) }
     private var controllerMenuPanel: LinearLayout? = null
     private var controllerBallView: View? = null
     private var detectionOverlayView: FloatingDetectionOverlayView? = null
@@ -118,7 +121,7 @@ class FloatingBallOverlayService : Service() {
     private val recognitionCaptureMutex = Mutex()
     private val screenCaptureSession by lazy {
         ProjectionCaptureSession(applicationContext) {
-            scope.launch(Dispatchers.Main) {
+            if (!destroyed) {
                 clearCurrentSession()
                 releaseProjection()
                 Toast.makeText(
@@ -146,17 +149,19 @@ class FloatingBallOverlayService : Service() {
     }
     @Volatile
     private var lastKnownDisplayMetrics: DisplayMetrics? = null
-    private var detectJob: Job? = null
-    @Volatile
-    private var detectionGeneration: Long = 0L
+    private var detectJob: Job?
+        get() = captureTranslationSession.job
+        set(value) { captureTranslationSession.job = value }
     private var editModeToggleButton: AppCompatButton? = null
     private var swipeTranslateButton: AppCompatButton? = null
     private var addBubbleButton: AppCompatButton? = null
     private var confirmEditButton: AppCompatButton? = null
     private var cancelEditButton: AppCompatButton? = null
     private var progressStatusView: TextView? = null
-    private var currentSession: TranslationResult? = null
-    private val bitmapController = FloatingBitmapController()
+    private var currentSession: TranslationResult?
+        get() = captureTranslationSession.result
+        set(value) { captureTranslationSession.result = value }
+    private val bitmapController get() = captureTranslationSession.bitmaps
     private val editConfirmCoordinator by lazy(LazyThreadSafetyMode.NONE) {
         EditConfirmCoordinator(
             emptyBubbleCoordinator = emptyBubbleCoordinator,
@@ -175,6 +180,7 @@ class FloatingBallOverlayService : Service() {
     private var activeTranslationLanguage: TranslationLanguage? = null
     private val hideProgressStatusRunnable = Runnable {
         progressStatusView?.visibility = View.GONE
+        updateControllerPanel()
     }
     private val autoCloseCheckRunnable = object : Runnable {
         override fun run() {
@@ -209,6 +215,11 @@ class FloatingBallOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        scope.launch {
+            settingsStore.settingsVersion.collect {
+                detectionOverlayView?.setFloatingBubbleRenderSettings(settingsStore.loadFloatingBubbleRenderSettings())
+            }
+        }
         displayManager.registerDisplayListener(displayListener, mainHandler)
         localModelReleaseCallback = appContainer.localModelMemoryManager.registerReleaseCallback {
             pageRegionDetector?.releaseLoadedDetectors()
@@ -264,6 +275,9 @@ class FloatingBallOverlayService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
+        captureTranslationSession.close()
+        if (this::windowManager.isInitialized) windowManager.close()
         translationRegionDialog?.dismiss()
         translationRegionDialog = null
         displayManager.unregisterDisplayListener(displayListener)
@@ -309,14 +323,12 @@ class FloatingBallOverlayService : Service() {
     }
 
     private fun advanceDetectionGeneration(): Long {
-        detectJob?.cancel()
         editConfirmCoordinator.acknowledgeConfirmEnded()
-        detectionGeneration += 1
-        return detectionGeneration
+        return captureTranslationSession.advance()
     }
 
     private fun isDetectionGenerationCurrent(generation: Long): Boolean {
-        return detectionGeneration == generation
+        return captureTranslationSession.isCurrent(generation)
     }
 
     private suspend fun runOnMainForDetectionGeneration(
@@ -366,12 +378,15 @@ class FloatingBallOverlayService : Service() {
         val density = resources.displayMetrics.density
         val ballSize = (56f * density).toInt()
         val margin = (8f * density).toInt()
-        val menuButtonWidth = (156f * density).toInt()
+        val menuButtonWidth = (132f * density).toInt()
         val screenWidth = resources.displayMetrics.widthPixels
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
+        }
+        val panelRoot = LinearLayout(controllerThemeContext).apply {
+            orientation = LinearLayout.VERTICAL
         }
         val progressView = TextView(this).apply {
             textSize = 12f
@@ -389,26 +404,24 @@ class FloatingBallOverlayService : Service() {
             }
             visibility = View.GONE
         }
-        val floatingBall = FloatingBallView(this).apply {
-            text = "译"
-            textSize = 26f
-            setTextColor(0xFFFFFFFF.toInt())
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            setShadowLayer(4f * density, 0f, 1f * density, 0x66000000)
-            background = createFloatingBallBackground(pressed = false)
-            elevation = 10f * density
+        val floatingBall = FloatingBallView(controllerThemeContext).apply {
+            isClickable = true
+            isFocusable = true
+            setImageResource(R.drawable.ic_selection_translate)
+            setBackgroundResource(R.drawable.bg_sticker_control)
+            com.manga.translate.theming.CustomThemeUiApplier.apply(this)
+            imageTintList = android.content.res.ColorStateList.valueOf(
+                floatingControllerButtonTextColor(context, settingsStore))
             setPadding(
-                (10f * density).toInt(),
-                (10f * density).toInt(),
-                (10f * density).toInt(),
-                (10f * density).toInt()
+                (14f * density).toInt(),
+                (14f * density).toInt(),
+                (16f * density).toInt(),
+                (16f * density).toInt()
             )
             contentDescription = getString(R.string.floating_service_message)
         }
 
-        root.addView(
+        panelRoot.addView(
             progressView,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -463,23 +476,23 @@ class FloatingBallOverlayService : Service() {
         updateEditButtons()
         menuPanel.addView(
             editButton,
-            createMenuButtonLayoutParams(menuButtonWidth)
+            createMenuButtonLayoutParams()
         )
         menuPanel.addView(
             swipeTranslateMenuButton,
-            createMenuButtonLayoutParams(menuButtonWidth, topMargin = 6f * density)
+            createMenuButtonLayoutParams(topMargin = 4f * density)
         )
         menuPanel.addView(
             addButton,
-            createMenuButtonLayoutParams(menuButtonWidth, topMargin = 6f * density)
+            createMenuButtonLayoutParams(topMargin = 4f * density)
         )
         menuPanel.addView(
             confirmButton,
-            createMenuButtonLayoutParams(menuButtonWidth, topMargin = 6f * density)
+            createMenuButtonLayoutParams(topMargin = 4f * density)
         )
         menuPanel.addView(
             cancelButton,
-            createMenuButtonLayoutParams(menuButtonWidth, topMargin = 6f * density)
+            createMenuButtonLayoutParams(topMargin = 4f * density)
         )
         menuPanel.addView(
             createMenuButton().apply {
@@ -489,11 +502,25 @@ class FloatingBallOverlayService : Service() {
                     showTranslationRegionDialog()
                 }
             },
-            createMenuButtonLayoutParams(menuButtonWidth, topMargin = 6f * density)
+            createMenuButtonLayoutParams(topMargin = 4f * density)
+        )
+        menuPanel.addView(
+            createMenuButton().apply {
+                fun refreshLabel() {
+                    text = getString(if (settingsStore.loadFloatingOnlyRecognizeBubbles())
+                        R.string.floating_only_bubbles_on else R.string.floating_only_bubbles_off)
+                }
+                refreshLabel()
+                setOnClickListener {
+                    settingsStore.saveFloatingOnlyRecognizeBubbles(!settingsStore.loadFloatingOnlyRecognizeBubbles())
+                    refreshLabel()
+                }
+            },
+            createMenuButtonLayoutParams(topMargin = 4f * density)
         )
         menuPanel.addView(
             exitButton,
-            createMenuButtonLayoutParams(menuButtonWidth, topMargin = 6f * density)
+            createMenuButtonLayoutParams(topMargin = 4f * density)
         )
 
         val menuScroll = object : android.widget.ScrollView(this) {
@@ -510,12 +537,14 @@ class FloatingBallOverlayService : Service() {
         }.apply {
             isVerticalScrollBarEnabled = false
             clipToPadding = false
-            addView(menuPanel)
+            addView(menuPanel, android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT))
         }
-        root.addView(
+        panelRoot.addView(
             menuScroll,
             LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 bottomMargin = (4f * density).toInt()
@@ -523,9 +552,7 @@ class FloatingBallOverlayService : Service() {
         )
         root.addView(
             floatingBall,
-            LinearLayout.LayoutParams(ballSize, ballSize).apply {
-                topMargin = margin
-            }
+            LinearLayout.LayoutParams(ballSize, ballSize)
         )
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -541,7 +568,7 @@ class FloatingBallOverlayService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
+            gravity = Gravity.TOP or Gravity.LEFT
             x = (screenWidth - ballSize - margin).coerceAtLeast(0)
             y = (180f * density).toInt()
         }
@@ -554,6 +581,16 @@ class FloatingBallOverlayService : Service() {
         controllerMenuPanel = menuPanel
         controllerBallView = floatingBall
         progressStatusView = progressView
+        controllerPanelWindow = FloatingControllerPanel(
+            windowManager, root, panelRoot, params, menuButtonWidth
+        )
+        root.viewTreeObserver.addOnGlobalLayoutListener { updateControllerPanel() }
+    }
+
+    private fun updateControllerPanel() {
+        controllerPanelWindow?.update(
+            controllerMenuPanel?.isVisible == true || progressStatusView?.isVisible == true
+        )
     }
 
     private fun showDetectionOverlay() {
@@ -611,7 +648,7 @@ class FloatingBallOverlayService : Service() {
 
     private fun ensureWindowManager() {
         if (!this::windowManager.isInitialized) {
-            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            windowManager = FloatingWindowController(getSystemService(WINDOW_SERVICE) as WindowManager)
         }
     }
 
@@ -634,6 +671,7 @@ class FloatingBallOverlayService : Service() {
         mainHandler.removeCallbacks(hideProgressStatusRunnable)
         statusView.text = message
         statusView.visibility = View.VISIBLE
+        updateControllerPanel()
         if (autoHide) {
             mainHandler.postDelayed(hideProgressStatusRunnable, FLOATING_PROGRESS_HIDE_DELAY_MS)
         }
@@ -644,14 +682,17 @@ class FloatingBallOverlayService : Service() {
         if (hidden) {
             controllerMenuPanel?.visibility = View.GONE
         }
+        updateControllerPanel()
     }
 
     private fun ensureControllerOnTop() {
         val root = controllerRoot ?: return
         val params = controllerLayoutParams ?: return
         try {
+            controllerPanelWindow?.detach()
             windowManager.removeView(root)
             windowManager.addView(root, params)
+            updateControllerPanel()
         } catch (e: Exception) {
             AppLogger.log("FloatingOCR", "ensureControllerOnTop failed", e)
         }
@@ -681,31 +722,7 @@ class FloatingBallOverlayService : Service() {
         } else {
             getString(R.string.overlay_add_bubble_button)
         }
-    }
-
-    private fun createFloatingBallBackground(pressed: Boolean): GradientDrawable {
-        val density = resources.displayMetrics.density
-        return GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            if (pressed) {
-                intArrayOf(
-                    0xFF1AA7FF.toInt(),
-                    0xFF6A5CFF.toInt()
-                )
-            } else {
-                intArrayOf(
-                    0xFF39C5FF.toInt(),
-                    0xFF4F7BFF.toInt()
-                )
-            }
-        ).apply {
-            shape = GradientDrawable.OVAL
-            gradientType = GradientDrawable.LINEAR_GRADIENT
-            setStroke(
-                (1.5f * density).toInt().coerceAtLeast(1),
-                if (pressed) 0x99FFFFFF.toInt() else 0x66FFFFFF
-            )
-        }
+        updateControllerPanel()
     }
 
     private fun updateFloatingBallPressedState(
@@ -713,52 +730,35 @@ class FloatingBallOverlayService : Service() {
         pressed: Boolean
     ) {
         target.isPressed = pressed
-        target.background = createFloatingBallBackground(pressed)
-        target.scaleX = if (pressed) 0.94f else 1f
-        target.scaleY = if (pressed) 0.94f else 1f
-        target.alpha = if (pressed) 0.96f else 1f
     }
 
     private fun createMenuButton(): AppCompatButton {
         val density = resources.displayMetrics.density
         return AppCompatButton(
-            ContextThemeWrapper(this, R.style.Widget_MangaTranslator_DialogActionButton)
+            ContextThemeWrapper(controllerThemeContext, R.style.Widget_MangaTranslator_DialogActionButton)
         ).apply {
             gravity = Gravity.CENTER
-            elevation = 6f * density
+            elevation = 0f
+            stateListAnimator = null
             minimumWidth = 0
             minWidth = 0
-            background = createMenuButtonBackground()
-            setTextColor(0xFF000000.toInt())
-        }
-    }
-
-    private fun createMenuButtonBackground(): StateListDrawable {
-        val density = resources.displayMetrics.density
-        val cornerRadius = 24f * density
-        val strokeWidth = (1f * density).toInt().coerceAtLeast(1)
-        val normal = GradientDrawable().apply {
-            this.cornerRadius = cornerRadius
-            setColor(0xFFFFFFFF.toInt())
-            setStroke(strokeWidth, 0xFFE0E0E0.toInt())
-        }
-        val pressed = GradientDrawable().apply {
-            this.cornerRadius = cornerRadius
-            setColor(0xFFE8E8E8.toInt())
-            setStroke(strokeWidth, 0xFFD6D6D6.toInt())
-        }
-        return StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_pressed), pressed)
-            addState(intArrayOf(), normal)
+            minimumHeight = (40f * density).toInt()
+            minHeight = minimumHeight
+            textSize = 12f
+            isAllCaps = false
+            setPadding((8f * density).toInt(), (6f * density).toInt(),
+                (8f * density).toInt(), (6f * density).toInt())
+            setBackgroundResource(R.drawable.bg_sticker_control)
+            com.manga.translate.theming.CustomThemeUiApplier.apply(this)
+            setTextColor(floatingControllerButtonTextColor(context, settingsStore))
         }
     }
 
     private fun createMenuButtonLayoutParams(
-        width: Int,
         topMargin: Float = 0f
     ): LinearLayout.LayoutParams {
         return LinearLayout.LayoutParams(
-            width,
+            LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = Gravity.CENTER_HORIZONTAL
@@ -797,14 +797,13 @@ class FloatingBallOverlayService : Service() {
     private suspend fun captureRecognitionScreen(): Bitmap? =
         recognitionCaptureMutex.withLock {
             withContext(Dispatchers.Main) {
-                val views = listOfNotNull(controllerRoot, detectionOverlayView)
-                val visibility = views.map { it.visibility }
+                var restoreVisibility: (() -> Unit)? = null
                 try {
                     val bitmap = screenCaptureSession.captureCurrentScreen(
                         timeoutMs = 1500L,
                         requireFreshFrame = true,
                         prepareFreshFrame = {
-                            views.forEach { it.visibility = View.INVISIBLE }
+                            restoreVisibility = windowManager.hideForCapture()
                             // Let the compositor replace the frame containing our overlays.
                             delay(150)
                         }
@@ -816,7 +815,7 @@ class FloatingBallOverlayService : Service() {
                     bitmap
                 } finally {
                     withContext(NonCancellable + Dispatchers.Main) {
-                        views.forEachIndexed { index, view -> view.visibility = visibility[index] }
+                        restoreVisibility?.invoke()
                     }
                 }
             }
@@ -1231,6 +1230,7 @@ class FloatingBallOverlayService : Service() {
         val manager = getSystemService(MediaProjectionManager::class.java) ?: return
         if (!screenCaptureSession.prepare(manager, resultCode, data, metrics, PixelFormat.RGBA_8888)) {
             AppLogger.log("FloatingOCR", "Projection preparation failed")
+            stopSelf()
         }
     }
 
@@ -1321,10 +1321,15 @@ class FloatingBallOverlayService : Service() {
                         val (leftInset, rightInset) = settingsStore.loadFloatingDetectionHorizontalInsets()
                         val floatingApiSettings = settingsStore.loadResolvedFloatingTranslateApiSettings()
                         val useVlDirectTranslate = floatingSettings.useVlDirectTranslate && llmClient.isConfigured(floatingApiSettings)
+                        val onlyBubbles = settingsStore.loadFloatingOnlyRecognizeBubbles()
                         val vlLayout = if (useVlDirectTranslate) detectVlWithinInsets(capturedBitmap,
                             floatingSettings.detectionTopInsetPercent, floatingSettings.detectionBottomInsetPercent,
-                            leftInset, rightInset, detector) else null
-                        val regions = if (useVlDirectTranslate) vlLayout?.targets?.map {
+                            leftInset, rightInset, detector)?.let { layout ->
+                                if (onlyBubbles) layout.copy(targets = layout.targets.filter {
+                                    it.source == BubbleSource.BUBBLE_DETECTOR
+                                }) else layout
+                            } else null
+                        val detectedRegions = if (useVlDirectTranslate) vlLayout?.targets?.map {
                             com.manga.translate.detection.PageRegion(it.id, it.rect, it.source, it.maskContour)
                         } else detectWithinInsets(
                             capturedBitmap,
@@ -1333,6 +1338,7 @@ class FloatingBallOverlayService : Service() {
                             leftInset, rightInset
                         ) { input -> detector.detect(input, logTag = "FloatingOCR")?.regions }
                         if (!isDetectionGenerationCurrent(generation)) return@launch
+                        val regions = detectedRegions?.filter { !onlyBubbles || it.source == BubbleSource.BUBBLE_DETECTOR }
                         if (regions == null) {
                             AppLogger.log("FloatingOCR", "Page region detection returned null")
                             runOnMainForDetectionGeneration(generation) {
@@ -1667,7 +1673,7 @@ class FloatingBallOverlayService : Service() {
         )
         val dialog = createAlertDialogBuilder(this)
             .setTitle(R.string.api_request_failed_title)
-            .setMessage(message)
+            .setScrollableMessage(message)
             .setPositiveButton(android.R.string.ok, null)
             .createWithScrollableMessage()
         dialog.setCanceledOnTouchOutside(false)
@@ -1771,6 +1777,7 @@ class FloatingBallOverlayService : Service() {
                     params.x = (downX + dx).toInt().coerceAtLeast(0)
                     params.y = (downY + dy).toInt().coerceAtLeast(0)
                     windowManager.updateViewLayout(controllerRoot, params)
+                    controllerRoot?.post { updateControllerPanel() }
                     true
                 }
 
@@ -1818,6 +1825,8 @@ class FloatingBallOverlayService : Service() {
 
     private fun removeOverlay() {
         stopAutoCloseDetection()
+        controllerPanelWindow?.detach()
+        controllerPanelWindow = null
         val root = controllerRoot
         if (root != null) {
             try {

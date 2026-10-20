@@ -137,11 +137,14 @@ class PaperThemeUiTest {
         scroll.addView(translationSettings)
         measure(main.root)
         val labels = listOf(library.folderFullTranslateLabel,
-            library.folderGlossaryProcessingLabel, library.folderVlDirectTranslateLabel)
+            library.folderGlossaryProcessingLabel, library.folderVlDirectTranslateLabel,
+            library.folderOnlyTranslateBubblesLabel)
         val helpButtons = listOf(library.folderFullTranslateInfo,
-            library.folderGlossaryProcessingInfo, library.folderVlDirectTranslateInfo)
+            library.folderGlossaryProcessingInfo, library.folderVlDirectTranslateInfo,
+            library.folderOnlyTranslateBubblesInfo)
         val switches = listOf(library.folderFullTranslateSwitch,
-            library.folderGlossaryProcessingSwitch, library.folderVlDirectTranslateSwitch)
+            library.folderGlossaryProcessingSwitch, library.folderVlDirectTranslateSwitch,
+            library.folderOnlyTranslateBubblesSwitch)
         labels.indices.forEach { index ->
             val label = labels[index]
             val help = helpButtons[index]

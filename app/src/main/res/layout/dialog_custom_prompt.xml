@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:clipToPadding="false">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="20dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/custom_prompt_warning" android:textColor="?attr/dialogTextColor" />
+        <Spinner android:id="@+id/prompt_mode" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:minHeight="48dp"
+            android:contentDescription="@string/custom_prompt_mode" android:layout_marginTop="12dp" />
+        <EditText android:id="@+id/prompt_editor" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:minLines="8" android:maxLines="16" android:gravity="top|start"
+            android:fontFamily="monospace" android:textSize="12sp" android:saveEnabled="false"
+            android:textColor="?attr/dialogTextColor" android:contentDescription="@string/custom_prompt_title" />
+        <Button android:id="@+id/prompt_import" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/custom_prompt_import" />
+        <Button android:id="@+id/prompt_export" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/custom_prompt_export" />
+        <Button android:id="@+id/prompt_reset" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/custom_prompt_reset" />
+    </LinearLayout>
+</ScrollView>

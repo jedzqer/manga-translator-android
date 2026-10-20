@@ -678,9 +678,8 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         maxWidth: Int,
         maxHeight: Int
     ): Float {
-        return BubbleTextScaling.findLargestFittingTextSize(maxWidth, maxHeight) { textSize ->
-            val layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
-            layout.columnWidth > 0f && layout.lineHeight > 0f && layout.fits
+        return BubbleTextScaling.findAutoVerticalTextSize(maxWidth, maxHeight) { textSize ->
+            buildVerticalLayout(text, maxWidth, maxHeight, textSize)
         }
     }
 

@@ -21,7 +21,7 @@ import com.manga.translate.di.appContainer
 import com.manga.translate.library.LibraryUiBridge
 import com.manga.translate.platform.AppLogger
 import com.manga.translate.platform.GlobalTaskProgressStore
-import com.manga.translate.platform.GlobalTaskProgressStage
+import com.manga.translate.platform.TaskProgressWriter
 import com.manga.translate.platform.TranslationCancellationRegistry
 import com.manga.translate.storage.TranslationTaskDescriptor
 import com.manga.translate.storage.TranslationTaskPersistence
@@ -54,12 +54,26 @@ class TranslationKeepAliveService : Service() {
     private val taskRegistry = KeepAliveTaskRegistry()
     private var localModelLease: LocalModelMemoryManager.LocalModelLease? = null
     private var currentTaskLabel: String = ""
+    private var taskProgress: TaskProgressWriter? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        serviceScope.launch {
+            GlobalTaskProgressStore.state.collect { state ->
+                if (state.taskId != taskProgress?.taskId || !state.visible || state.terminal) return@collect
+                notifyProgress(this@TranslationKeepAliveService, state.title,
+                    getString(R.string.translation_keepalive_message), state.detail, state.progress, state.total)
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_CANCEL_TRANSLATION) {
-            handleCancelTranslation()
+            if (taskProgress != null && intent.getStringExtra(EXTRA_TASK_ID) == taskProgress?.taskId) {
+                handleCancelTranslation()
+            }
             return START_NOT_STICKY
         }
         ensureForegroundNotificationChannel()
@@ -72,6 +86,7 @@ class TranslationKeepAliveService : Service() {
         when (intent?.action) {
             ACTION_START_TRANSLATION_TASK -> {
                 val descriptor = takePendingTranslationTask(intent)
+                if (taskRegistry.translationActive) return START_NOT_STICKY
                 descriptor?.let {
                     currentTaskLabel = describeTaskLabel(this, descriptor)
                 }
@@ -81,12 +96,11 @@ class TranslationKeepAliveService : Service() {
                 )
                 if (descriptor == null) {
                     finishIdleTask(
-                        clearPersistedTask = true,
-                        reEnableTranslationActions = true
+                        clearPersistedTask = true
                     )
                     return START_NOT_STICKY
                 }
-                startTranslationTask(descriptor)
+                startTranslationTask(descriptor, requireNotNull(intent.getStringExtra(EXTRA_TASK_ID)))
                 // Do not ask the system to restart this translation after process death.
                 return START_NOT_STICKY
             }
@@ -136,14 +150,12 @@ class TranslationKeepAliveService : Service() {
                     // System may still restart a previous sticky instance — never auto-resume.
                     AppLogger.log("Library", "Service restart with null intent — discarding pending translation")
                     finishIdleTask(
-                        clearPersistedTask = true,
-                        reEnableTranslationActions = true
+                        clearPersistedTask = true
                     )
                     return START_NOT_STICKY
                 }
                 finishIdleTask(
-                    clearPersistedTask = false,
-                    reEnableTranslationActions = false
+                    clearPersistedTask = false
                 )
                 return START_NOT_STICKY
             }
@@ -158,8 +170,14 @@ class TranslationKeepAliveService : Service() {
         if (activeJob?.isActive == true) {
             // Service teardown is not a user cancel; still free UI and drop this process's job.
             activeJob.cancel()
-            LibraryUiBridge.setTranslationActionsEnabled(true)
         }
+        // A canceled Job may still be cleaning up and has not published its terminal snapshot yet.
+        taskProgress?.cancel(getString(R.string.translation_keepalive_title), getString(R.string.translation_canceled))
+        taskProgress?.let {
+            GlobalTaskProgressStore.release(it.taskId)
+            LibraryUiBridge.clearModelErrors(it.taskId)
+        }
+        taskPersistence.clear()
         releaseLocalModelLease()
         serviceScope.cancel()
         releaseWakeLock()
@@ -169,7 +187,7 @@ class TranslationKeepAliveService : Service() {
     private fun handleCancelTranslation() {
         if (TranslationCancellationRegistry.requestCancel()) {
             cancelActionEnabled = false
-            updateStatus(this, getString(R.string.translation_canceling))
+            taskProgress?.status(getString(R.string.translation_canceling))
         } else {
             // A cancel request arrived with nothing to cancel (e.g. a stale
             // intent); stop the service only when no other task keeps it alive.
@@ -201,17 +219,14 @@ class TranslationKeepAliveService : Service() {
     }
 
     private fun finishIdleTask(
-        clearPersistedTask: Boolean,
-        reEnableTranslationActions: Boolean
+        clearPersistedTask: Boolean
     ) {
         // Never tear down while a translation job is still running.
         if (taskRegistry.translationActive) return
         if (clearPersistedTask) {
             taskPersistence.clear()
         }
-        if (reEnableTranslationActions) {
-            LibraryUiBridge.setTranslationActionsEnabled(true)
-        }
+        taskProgress?.let { GlobalTaskProgressStore.release(it.taskId) }
         releaseLocalModelLease()
         releaseWakeLock()
         val exportTask = taskRegistry.foregroundExportTask
@@ -219,33 +234,36 @@ class TranslationKeepAliveService : Service() {
             showExportProgress(exportTask)
         } else {
             cancelActionEnabled = false
-            GlobalTaskProgressStore.hide()
+            if (!GlobalTaskProgressStore.state.value.terminal) GlobalTaskProgressStore.reset()
             stopSelf()
         }
     }
 
-    private fun startTranslationTask(descriptor: TranslationTaskDescriptor) {
+    private fun startTranslationTask(descriptor: TranslationTaskDescriptor, taskId: String) {
         if (translationJob?.isActive == true) return
+        // Install identity before begin emits, so the first notification carries the new cancel token.
+        taskProgress = TaskProgressWriter(taskId)
+        cancelActionEnabled = true
+        val progress = GlobalTaskProgressStore.begin(taskId,
+            getString(R.string.translation_keepalive_title), getString(R.string.translation_preparing))
+        taskProgress = progress
         taskPersistence.save(descriptor)
         acquireWakeLock()
         localModelLease = applicationContext.appContainer.localModelMemoryManager.acquire("TranslationKeepAlive")
-        val translationActionsCallback: (Boolean) -> Unit = { enabled ->
-            LibraryUiBridge.setTranslationActionsEnabled(enabled)
-        }
-        translationActionsCallback(false)
+        val translationActionsCallback: (Boolean) -> Unit = { }
         val coordinator = applicationContext.appContainer.createFolderTranslationCoordinator(
             translationPipeline = applicationContext.appContainer.createTranslationPipeline(),
-            ui = ServiceLibraryUiCallbacks
+            ui = ServiceLibraryUiCallbacks(taskId),
+            taskProgress = progress
         )
         val tasks = descriptor.toFolderTasks()
         if (tasks.isEmpty()) {
-            GlobalTaskProgressStore.fail(
+            progress.fail(
                 getString(R.string.translation_keepalive_title),
                 getString(R.string.translation_failed)
             )
             finishIdleTask(
-                clearPersistedTask = true,
-                reEnableTranslationActions = true
+                clearPersistedTask = true
             )
             return
         }
@@ -253,13 +271,12 @@ class TranslationKeepAliveService : Service() {
             TranslationTaskPersistence.MODE_COLLECTION -> {
                 val collectionFolder = descriptor.collectionFolderPath?.let(::File)
                 if (collectionFolder == null || !collectionFolder.exists()) {
-                    GlobalTaskProgressStore.fail(
+                    progress.fail(
                         getString(R.string.translation_keepalive_title),
                         getString(R.string.translation_failed)
                     )
                     finishIdleTask(
-                        clearPersistedTask = true,
-                        reEnableTranslationActions = true
+                        clearPersistedTask = true
                     )
                     return
                 }
@@ -287,28 +304,35 @@ class TranslationKeepAliveService : Service() {
                     fullTranslate = first.fullTranslate,
                     glossaryProcessingEnabled = first.glossaryProcessingEnabled,
                     useVlDirectTranslate = first.useVlDirectTranslate,
+                    onlyTranslateBubbles = first.onlyTranslateBubbles,
                     language = first.language,
                     onTranslateEnabled = translationActionsCallback
                 )
             }
         }
         if (translationJob == null) {
+            progress.fail(getString(R.string.translation_keepalive_title), GlobalTaskProgressStore.state.value.detail)
             // The coordinator may return null when everything is already done,
             // inputs are empty, or startup validation fails before launching a job.
             finishIdleTask(
-                clearPersistedTask = true,
-                reEnableTranslationActions = true
+                clearPersistedTask = true
             )
             return
         }
         val startedJob = translationJob ?: return
         taskRegistry.startTranslation()
-        startedJob.invokeOnCompletion {
+        startedJob.invokeOnCompletion { failure ->
             serviceScope.launch {
                 if (translationJob !== startedJob) return@launch
+                if (failure is CancellationException) {
+                    progress.cancel(getString(R.string.translation_keepalive_title), getString(R.string.translation_canceled))
+                } else if (failure != null) {
+                    progress.fail(getString(R.string.translation_keepalive_title), getString(R.string.translation_failed))
+                }
                 translationJob = null
                 taskRegistry.finishTranslation()
-                translationActionsCallback(true)
+                GlobalTaskProgressStore.release(progress.taskId)
+                LibraryUiBridge.clearModelErrors(progress.taskId)
                 maybeNotifyTranslationFinished()
                 taskPersistence.clear()
                 releaseLocalModelLease()
@@ -323,7 +347,9 @@ class TranslationKeepAliveService : Service() {
 
     private fun showExportProgress(task: ExportKeepAliveTask) {
         cancelActionEnabled = false
-        GlobalTaskProgressStore.show(
+        val writer = if (GlobalTaskProgressStore.state.value.taskId == task.id) TaskProgressWriter(task.id)
+            else GlobalTaskProgressStore.begin(task.id, task.title, task.content, translationTask = false)
+        writer.show(
             title = task.title,
             detail = task.content,
             progress = task.progress,
@@ -337,9 +363,9 @@ class TranslationKeepAliveService : Service() {
 
     private fun finishExportTask(task: ExportKeepAliveTask, failed: Boolean) {
         if (failed) {
-            GlobalTaskProgressStore.fail(task.title, task.content)
+            TaskProgressWriter(task.id).fail(task.title, task.content)
         } else {
-            GlobalTaskProgressStore.complete(task.title, task.content)
+            TaskProgressWriter(task.id).complete(task.title, task.content)
         }
         taskRegistry.foregroundExportTask?.let(::showExportProgress) ?: run {
             cancelActionEnabled = false
@@ -359,7 +385,9 @@ class TranslationKeepAliveService : Service() {
     }
 
     private fun maybeNotifyTranslationFinished() {
-        val terminalState = GlobalTaskProgressStore.state.value.takeIf { it.terminal } ?: return
+        val terminalState = GlobalTaskProgressStore.state.value.takeIf {
+            it.terminal && it.taskId == taskProgress?.taskId
+        } ?: return
         showResultNotification(
             context = this,
             resultTitle = terminalState.detail.ifBlank {
@@ -369,7 +397,7 @@ class TranslationKeepAliveService : Service() {
                 getString(R.string.translation_result_task_fallback_label)
             },
             isError = terminalState.error,
-            isCanceled = terminalState.detail == getString(R.string.translation_canceled)
+            isCanceled = terminalState.canceled
         )
     }
 
@@ -414,6 +442,7 @@ class TranslationKeepAliveService : Service() {
                 context.startService(
                     Intent(context, TranslationKeepAliveService::class.java).apply {
                         action = ACTION_CANCEL_TRANSLATION
+                        putExtra(EXTRA_TASK_ID, GlobalTaskProgressStore.state.value.taskId)
                     }
                 )
             }.onFailure {
@@ -530,26 +559,6 @@ class TranslationKeepAliveService : Service() {
             )
         }
 
-        internal fun updateStatus(
-            context: Context,
-            status: String,
-            stage: GlobalTaskProgressStage? = null
-        ) {
-            GlobalTaskProgressStore.show(
-                title = context.getString(R.string.translation_keepalive_title),
-                detail = status,
-                stage = stage
-            )
-            notifyProgress(
-                context,
-                context.getString(R.string.translation_keepalive_title),
-                context.getString(R.string.translation_keepalive_message),
-                status,
-                null,
-                null
-            )
-        }
-
         fun notifyModelErrorNeedsAttention(context: Context) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             ensureAlertChannel(context, manager)
@@ -587,8 +596,6 @@ class TranslationKeepAliveService : Service() {
             message: String = context.getString(R.string.translation_keepalive_message),
             content: String = context.getString(R.string.translation_preparing)
         ) {
-            cancelActionEnabled = true
-            GlobalTaskProgressStore.show(title = title, detail = content)
             val taskId = pendingTranslationTasks.put(descriptor)
             val intent = Intent(context, TranslationKeepAliveService::class.java).apply {
                 action = ACTION_START_TRANSLATION_TASK
@@ -605,59 +612,18 @@ class TranslationKeepAliveService : Service() {
                 }
             } catch (failure: Exception) {
                 pendingTranslationTasks.take(taskId)
-                cancelActionEnabled = false
                 AppLogger.log("TranslationKeepAlive", "Failed to start translation service", failure)
-                GlobalTaskProgressStore.fail(title, context.getString(R.string.translation_failed))
-                LibraryUiBridge.setTranslationActionsEnabled(true)
-                LibraryUiBridge.setFolderStatus(context.getString(R.string.translation_failed))
+                val current = GlobalTaskProgressStore.state.value
+                if (!current.running) {
+                    GlobalTaskProgressStore.begin(taskId, title, content)
+                        .fail(title, context.getString(R.string.translation_failed))
+                    GlobalTaskProgressStore.release(taskId)
+                }
             }
         }
 
         internal fun takePendingTranslationTask(intent: Intent): TranslationTaskDescriptor? =
             pendingTranslationTasks.take(intent.getStringExtra(EXTRA_TASK_ID))
-
-        fun updateStatus(context: Context, status: String, title: String, message: String) {
-            GlobalTaskProgressStore.show(title = title, detail = status)
-            notifyProgress(context, title, message, status, null, null)
-        }
-
-        fun updateProgress(context: Context, progress: Int, total: Int) {
-            GlobalTaskProgressStore.show(
-                title = context.getString(R.string.translation_keepalive_title),
-                detail = "$progress/$total",
-                progress = progress,
-                total = total
-            )
-            notifyProgress(
-                context,
-                context.getString(R.string.translation_keepalive_title),
-                context.getString(R.string.translation_keepalive_message),
-                "$progress/$total",
-                progress,
-                total
-            )
-        }
-
-        internal fun updateProgress(
-            context: Context,
-            progress: Int,
-            total: Int,
-            content: String,
-            title: String,
-            message: String,
-            failedCount: Int? = null,
-            stage: GlobalTaskProgressStage? = null
-        ) {
-            GlobalTaskProgressStore.show(
-                title = title,
-                detail = content,
-                progress = progress,
-                total = total,
-                failedCount = failedCount,
-                stage = stage
-            )
-            notifyProgress(context, title, message, content, progress, total)
-        }
 
         private fun notifyProgress(
             context: Context,
@@ -699,6 +665,9 @@ class TranslationKeepAliveService : Service() {
             if (cancelActionEnabled) {
                 val cancelIntent = Intent(context, TranslationKeepAliveService::class.java).apply {
                     action = ACTION_CANCEL_TRANSLATION
+                    val taskId = GlobalTaskProgressStore.state.value.taskId
+                    putExtra(EXTRA_TASK_ID, taskId)
+                    data = android.net.Uri.fromParts("manga-translate-cancel", taskId.orEmpty(), null)
                 }
                 val cancelPendingIntent = PendingIntent.getService(
                     context,

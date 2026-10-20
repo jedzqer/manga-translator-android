@@ -13,6 +13,7 @@ import com.manga.translate.platform.AppLogger
 import java.io.File
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.asSharedFlow
 import org.json.JSONArray
 import org.json.JSONObject
@@ -29,6 +30,7 @@ class TranslationStore {
         extraBufferCapacity = 64
     )
     private val loadCache = object : LruCache<String, CacheEntry>(computeLoadCacheSize()) {}
+    private val writeLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
 
     val updates: SharedFlow<String> = updatesFlow.asSharedFlow()
 
@@ -141,6 +143,11 @@ class TranslationStore {
 
     fun save(imageFile: File, result: TranslationResult): File {
         val jsonFile = translationFileFor(imageFile)
+        val lock = writeLocks.computeIfAbsent(jsonFile.absoluteFile.path) { kotlinx.coroutines.sync.Mutex() }
+        return kotlinx.coroutines.runBlocking { lock.withLock { saveLocked(imageFile, result, jsonFile) } }
+    }
+
+    private fun saveLocked(imageFile: File, result: TranslationResult, jsonFile: File): File {
         val metadata = normalizeMetadata(imageFile, result.metadata)
         val persistedStatus = if (metadata.status == PageTranslationStatus.UNKNOWN) {
             result.deriveStatus()
@@ -200,6 +207,30 @@ class TranslationStore {
         }
         updatesFlow.tryEmit(imageFile.absolutePath)
         return jsonFile
+    }
+
+    /** Merges only still-pending bubbles into the latest on-disk result. */
+    fun mergePending(
+        imageFile: File,
+        additions: Map<Int, BubbleTranslation>,
+        removedBubbleIds: Set<Int> = emptySet()
+    ): TranslationResult? {
+        if (additions.isEmpty() && removedBubbleIds.isEmpty()) return load(imageFile)
+        val jsonFile = translationFileFor(imageFile)
+        val lock = writeLocks.computeIfAbsent(jsonFile.absoluteFile.path) { kotlinx.coroutines.sync.Mutex() }
+        return kotlinx.coroutines.runBlocking {
+            lock.withLock {
+                val latest = load(imageFile) ?: return@withLock null
+                val merged = latest.bubbles.mapNotNull { bubble ->
+                    if (!bubble.needsTranslationRetry()) return@mapNotNull bubble
+                    if (bubble.id in removedBubbleIds) return@mapNotNull null
+                    val addition = additions[bubble.id]
+                    if (addition != null) bubble.withContentFrom(addition) else bubble
+                }
+                saveLocked(imageFile, latest.copy(bubbles = merged), jsonFile)
+                load(imageFile)
+            }
+        }
     }
 
     fun translationFileFor(imageFile: File): File {

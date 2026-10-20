@@ -1,4 +1,9 @@
 <resources>
+    <string name="folder_vl_full_visual">VL: полное изображение</string>
+    <string name="folder_vl_full_visual_info_title">Режим изображения VL</string>
+    <string name="folder_vl_full_visual_info_desc">Режим изображения VL</string>
+    <string name="folder_vl_full_visual_note">Включено: сохраняет весь рисунок с метками ID для визуального контекста. Выключено: сохраняет только пузыри и области текста на белом фоне. Длинные изображения по-прежнему отправляются блоками детекции.</string>
+
     <string name="translation_request_settings_button">Настройки запросов ИИ</string>
     <string name="translation_request_settings_button_format">Запросы ИИ: одновременно %1$d, страниц на запрос: %2$d</string>
     <string name="translation_request_settings_title">Настройки запросов ИИ</string>
@@ -36,7 +41,7 @@
     <string name="api_timeout_policy_description">Фактический предел времени запроса зависит от числа объединённых страниц и повторных попыток.</string>
     <string name="api_retry_count_hint">API Максимальное количество повторов (1–50)</string>
     <string name="floating_api_timeout_hint">Тайм-аут трансляции API при наведении (секунды, 30–1200)</string>
-    <string name="max_concurrency_hint">AI API Количество одновременных вызовов (1–200)</string>
+    <string name="max_concurrency_hint">AI API Количество одновременных вызовов (1–100)</string>
     <string name="api_settings_note_openai">Укажите базовый адрес API поставщика, например https://api.siliconflow.cn/v1; /chat/completions добавляется автоматически.</string>
     <string name="api_settings_note_openai_responses">Например, https://api.openai.com/v1; /responses добавляется автоматически.</string>
     <string name="api_settings_note_gemini">Пример URL: https://generativelanguage.googleapis.com/v1beta</string>
@@ -406,6 +411,10 @@
     <string name="folder_glossary_processing_info_title">Об обработке глоссария</string>
     <string name="folder_glossary_processing_info_desc">Об обработке глоссария</string>
     <string name="folder_glossary_processing_note">Обеспечивает единый перевод имён и названий мест. При отключении использует прежние термины, но не добавляет новые. При быстром переводе полного текста функция всегда включена.</string>
+    <string name="folder_only_translate_bubbles">Переводить только пузыри</string>
+    <string name="folder_only_translate_bubbles_info_title">О переводе только пузырей</string>
+    <string name="folder_only_translate_bubbles_info_desc">О переводе только пузырей</string>
+    <string name="folder_only_translate_bubbles_note">При включении встроенный OCR распознаёт только области пузырей. Если пузыри не найдены, распознаётся текст страницы. Параметр недоступен при полном переводе VL или OCR через API.</string>
     <string name="translation_preparing">Подготовка</string>
     <string name="folder_preprocess_progress">%1$s（%2$d/%3$d）</string>
     <string name="folder_preprocess_stage_ocr">Предобработка OCR</string>
@@ -619,4 +628,27 @@
     <string name="ocr_supplement_low_description">Повторно распознавать всю область через API, только если уверенность ниже порога принятия локального OCR или текст не распознан.</string>
     <string name="ocr_supplement_medium_description">Также проверять области с несколько сниженной уверенностью для улучшения качества; запросов к API станет больше.</string>
     <string name="ocr_supplement_high_description">Более активно проверять области с сомнительным качеством; число запросов к API и время обработки могут значительно возрасти.</string>
+    <string name="local_ocr_concurrency_hint">Число параллельных задач локального OCR (0=авто, 1–8)</string>
+    <string name="reading_save_failed">Не удалось сохранить изменения чтения</string>
+    <string name="custom_prompt_title">Свои промпты</string>
+    <string name="custom_prompt_mode">Режим промпта</string>
+    <string name="custom_prompt_warning">Расширенная функция: не изменяйте промпты, если не понимаете протокол. Изменения касаются только текущего языка интерфейса. При смене режима черновики сохраняются. Импорт открывает черновик; для применения нажмите «Сохранить текущий режим». Существующие переводы не заменяются автоматически.</string>
+    <string name="custom_prompt_import">Импорт JSON</string>
+    <string name="custom_prompt_export">Экспорт JSON</string>
+    <string name="custom_prompt_reset">Восстановить встроенный промпт режима</string>
+    <string name="custom_prompt_reset_confirm">Восстановить встроенный промпт этого режима? Сохранённые изменения будут удалены.</string>
+    <string name="custom_prompt_save">Сохранить текущий режим</string>
+    <string name="custom_prompt_saved">Промпт текущего режима сохранён</string>
+    <string name="custom_prompt_error">Ошибка операции. Проверьте доступ к файлу и JSON: не более 256 КиБ; поля и типы должны соответствовать шаблону, без повторных ключей, лишних полей и комментариев JSON. Примеры должны содержать role и непустое content; role — system, user или assistant. Сохраните {{STYLE_HINT}}.</string>
+    <string-array name="custom_prompt_modes">
+        <item>Обычный перевод</item>
+        <item>Перевод всего текста</item>
+        <item>Извлечение терминов</item>
+        <item>Плавающий перевод</item>
+        <item>VL: полное изображение</item>
+        <item>VL: маски облачков</item>
+        <item>Распознавание OCR</item>
+    </string-array>
+    <string name="floating_only_bubbles_on">Только облачка: вкл.</string>
+    <string name="floating_only_bubbles_off">Только облачка: выкл.</string>
 </resources>

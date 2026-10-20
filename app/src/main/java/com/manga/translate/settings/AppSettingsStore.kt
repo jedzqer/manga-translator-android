@@ -10,6 +10,27 @@ import com.manga.translate.platform.PromptAssetResolver
 internal class AppSettingsStore(
     private val storage: SettingsStoreStorage
 ) {
+    fun loadAutoUpdateCheckState(): AutoUpdateCheckState = AutoUpdateCheckState(
+        lastSuccessAt = storage.prefs.getLong("auto_update_last_success_at", 0L),
+        noUpdateCount = storage.prefs.getInt("auto_update_no_update_count", 0)
+    )
+
+    fun saveAutoUpdateCheckState(state: AutoUpdateCheckState) {
+        storage.prefs.edit()
+            .putLong("auto_update_last_success_at", state.lastSuccessAt)
+            .putInt("auto_update_no_update_count", state.noUpdateCount)
+            .apply()
+    }
+
+    fun loadFloatingOnlyRecognizeBubbles(): Boolean =
+        storage.prefs.getBoolean(SettingsStore.KEY_FLOATING_ONLY_RECOGNIZE_BUBBLES, false)
+
+    fun saveFloatingOnlyRecognizeBubbles(enabled: Boolean) {
+        storage.editSettings(setOf(SettingsStore.KEY_FLOATING_ONLY_RECOGNIZE_BUBBLES)) {
+            putBoolean(SettingsStore.KEY_FLOATING_ONLY_RECOGNIZE_BUBBLES, enabled)
+        }
+    }
+
     fun loadThemeMode(): ThemeMode {
         val saved = storage.prefs.getString(
             SettingsStore.KEY_THEME_MODE,

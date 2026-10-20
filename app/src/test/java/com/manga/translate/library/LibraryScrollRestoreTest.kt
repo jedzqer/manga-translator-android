@@ -9,6 +9,8 @@ import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
+import com.manga.translate.di.appContainer
+import androidx.lifecycle.SavedStateHandle
 import com.manga.translate.R
 import com.manga.translate.databinding.FragmentLibraryBinding
 import java.io.File
@@ -36,8 +38,12 @@ class LibraryScrollRestoreTest {
             LibraryFragment::class.java.getDeclaredField(name).apply { isAccessible = true }.set(fragment, value)
         }
         field("_binding", binding)
+        val container = context.appContainer
+        val vm = LibraryViewModel(SavedStateHandle(), container.libraryRepository,
+            container.libraryPreferencesGateway, container.translationStore)
+        field("pageViewModel\$delegate", lazyOf(vm))
         val folder = File("/collection")
-        field("currentFolder", folder)
+        vm.navigate(folder)
         binding.folderChapterList.visibility = View.VISIBLE
         val list = binding.folderChapterList
         val manager = LinearLayoutManager(context)
@@ -69,7 +75,7 @@ class LibraryScrollRestoreTest {
         count = 100
         adapter.notifyDataSetChanged()
         fun restore(target: File) {
-            field("currentFolder", target)
+            vm.navigate(target)
             field("pendingFolderScrollRestore", target.absolutePath)
             LibraryFragment::class.java.getDeclaredMethod("restoreFolderScroll", File::class.java,
                 Long::class.javaPrimitiveType, RecyclerView::class.java)

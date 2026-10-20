@@ -16,7 +16,9 @@ import android.util.DisplayMetrics
 import androidx.core.graphics.createBitmap
 import com.manga.translate.platform.AppLogger
 import com.manga.translate.platform.recycleSafely
-import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -33,14 +35,15 @@ internal class ProjectionCaptureSession(
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var pixelFormat: Int = PixelFormat.RGBA_8888
-    private val projectionCallback = object : MediaProjection.Callback() {
-        override fun onStop() {
-            onProjectionStopped()
-        }
-    }
+    private var projectionCallback: MediaProjection.Callback? = null
+    private var pendingCapture: CancellableContinuation<Bitmap?>? = null
+    internal enum class State { CLOSED, PREPARING, READY, CAPTURING, RESIZING }
+    var state: State = State.CLOSED
+        private set
+    private var generation = 0L
 
     fun isReady(): Boolean {
-        return mediaProjection != null && imageReader != null
+        return state == State.READY || state == State.CAPTURING
     }
 
     fun prepare(
@@ -51,14 +54,36 @@ internal class ProjectionCaptureSession(
         pixelFormat: Int
     ): Boolean {
         release()
-        val projection = manager.getMediaProjection(resultCode, data) ?: return false
+        state = State.PREPARING
+        val token = generation
+        val projection = try {
+            manager.getMediaProjection(resultCode, data)
+        } catch (error: Exception) {
+            AppLogger.log("FloatingOCR", "Projection authorization failed", error)
+            null
+        }
+        if (projection == null) {
+            release()
+            return false
+        }
+        mediaProjection = projection
         val width = metrics.widthPixels.coerceAtLeast(1)
         val height = metrics.heightPixels.coerceAtLeast(1)
         val densityDpi = metrics.densityDpi.coerceAtLeast(1)
         this.pixelFormat = pixelFormat
-        val reader = ImageReader.newInstance(width, height, pixelFormat, 2)
-        projection.registerCallback(projectionCallback, mainHandler)
-        val display = try {
+        val callback = object : MediaProjection.Callback() {
+            override fun onStop() {
+                if (generation != token || mediaProjection !== projection) return
+                release()
+                onProjectionStopped()
+            }
+        }
+        projectionCallback = callback
+        try {
+            projection.registerCallback(callback, mainHandler)
+            val reader = ImageReader.newInstance(width, height, pixelFormat, 2)
+            imageReader = reader
+            virtualDisplay =
             projection.createVirtualDisplay(
                 "floating-ocr-capture",
                 width,
@@ -69,38 +94,27 @@ internal class ProjectionCaptureSession(
                 null,
                 null
             )
+            checkNotNull(virtualDisplay)
         } catch (error: Exception) {
-            try {
-                projection.unregisterCallback(projectionCallback)
-            } catch (_: Exception) {
-            }
-            try {
-                reader.close()
-            } catch (_: Exception) {
-            }
-            try {
-                projection.stop()
-            } catch (_: Exception) {
-            }
+            release()
             AppLogger.log("FloatingOCR", "Projection virtual display creation failed", error)
             return false
         }
-        mediaProjection = projection
-        imageReader = reader
-        virtualDisplay = display
+        state = State.READY
         AppLogger.log("FloatingOCR", "Projection ready ${width}x${height}@${densityDpi}dpi")
         return true
     }
 
     /**
-     * Rebuilds the [VirtualDisplay] / [ImageReader] pair with the given metrics while
+     * Resizes the existing [VirtualDisplay] and replaces its [ImageReader] while
      * keeping the current [MediaProjection] authorization alive. Used after the display
      * size or orientation changed (rotation, split screen, foldables) so captures keep
      * matching the real screen instead of the stale aspect ratio. Serialized with
      * [captureCurrentScreen] through [captureMutex].
      */
-    suspend fun reconfigure(metrics: DisplayMetrics): Boolean = captureMutex.withLock {
-        val projection = mediaProjection ?: return@withLock false
+    suspend fun reconfigure(metrics: DisplayMetrics): Boolean = withContext(Dispatchers.Main.immediate) {
+      captureMutex.withLock {
+        val display = virtualDisplay ?: return@withLock false
         val reader = imageReader
         if (reader != null &&
             reader.width == metrics.widthPixels &&
@@ -111,57 +125,36 @@ internal class ProjectionCaptureSession(
         val width = metrics.widthPixels.coerceAtLeast(1)
         val height = metrics.heightPixels.coerceAtLeast(1)
         val densityDpi = metrics.densityDpi.coerceAtLeast(1)
+        state = State.RESIZING
         try {
-            virtualDisplay?.release()
-        } catch (_: Exception) {
-        }
-        try {
-            imageReader?.let {
-                clearImageReaderListener(it)
-                it.close()
-            }
-        } catch (_: Exception) {
-        }
-        virtualDisplay = null
-        imageReader = null
-        val newReader = ImageReader.newInstance(width, height, pixelFormat, 2)
-        val newDisplay = try {
-            projection.createVirtualDisplay(
-                "floating-ocr-capture",
-                width,
-                height,
-                densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                newReader.surface,
-                null,
-                null
-            )
+            // Android 14+ permits only one createVirtualDisplay call per grant.
+            display.surface = null
+            reader?.let { clearImageReaderListener(it); it.close() }
+            imageReader = null
+            val newReader = ImageReader.newInstance(width, height, pixelFormat, 2)
+            imageReader = newReader
+            display.resize(width, height, densityDpi)
+            display.surface = newReader.surface
         } catch (error: Exception) {
-            try {
-                newReader.close()
-            } catch (_: Exception) {
-            }
-            // The old pipeline is already gone; stop the projection so the host
-            // falls back to the not-ready flow instead of capturing stale frames.
-            try {
-                projection.stop()
-            } catch (_: Exception) {
-            }
+            release()
             AppLogger.log("FloatingOCR", "Projection virtual display reconfigure failed", error)
             return@withLock false
         }
-        virtualDisplay = newDisplay
-        imageReader = newReader
+        state = State.READY
         AppLogger.log("FloatingOCR", "Projection reconfigured ${width}x${height}@${densityDpi}dpi")
         true
+      }
     }
 
     suspend fun captureCurrentScreen(
         timeoutMs: Long = DEFAULT_CAPTURE_TIMEOUT_MS,
         requireFreshFrame: Boolean = false,
         prepareFreshFrame: (suspend () -> Unit)? = null
-    ): Bitmap? = captureMutex.withLock {
+    ): Bitmap? = withContext(Dispatchers.Main.immediate) { captureMutex.withLock {
         val reader = imageReader ?: return@withLock null
+        val token = generation
+        state = State.CAPTURING
+        try {
         if (!requireFreshFrame) {
             acquireLatestBitmap(reader)?.let { bitmap ->
                 AppLogger.log("FloatingOCR", "Captured frame ${bitmap.width}x${bitmap.height} immediately")
@@ -173,19 +166,19 @@ internal class ProjectionCaptureSession(
             // when a static screen produces no further updates.
             if (prepareFreshFrame != null) {
                 prepareFreshFrame()
+                if (token != generation) return@withLock null
                 acquireLatestBitmap(reader)?.let { return@withLock it }
             }
         }
         val bitmap = withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine<Bitmap?> { continuation ->
+                pendingCapture = continuation
                 val listener = ImageReader.OnImageAvailableListener { availableReader ->
+                    if (token != generation || !continuation.isActive) return@OnImageAvailableListener
                     val captured = acquireLatestBitmap(availableReader) ?: return@OnImageAvailableListener
                     clearImageReaderListener(availableReader)
-                    if (continuation.isActive) {
-                        continuation.resume(captured)
-                    } else {
-                        captured.recycleSafely()
-                    }
+                    pendingCapture = null
+                    continuation.resume(captured) { _, value, _ -> value?.recycleSafely() }
                 }
                 reader.setOnImageAvailableListener(listener, mainHandler)
                 continuation.invokeOnCancellation {
@@ -200,7 +193,14 @@ internal class ProjectionCaptureSession(
             AppLogger.log("FloatingOCR", "Captured frame ${bitmap.width}x${bitmap.height} after wait")
         }
         return@withLock bitmap
-    }
+        } finally {
+            clearImageReaderListener(reader)
+            if (token == generation) {
+                pendingCapture = null
+                state = State.READY
+            }
+        }
+    } }
 
     private fun discardPendingImages(reader: ImageReader) {
         while (true) {
@@ -225,31 +225,38 @@ internal class ProjectionCaptureSession(
     }
 
     fun release() {
+        // Invalidate callbacks and detach ownership before invoking platform cleanup.
+        generation++
+        state = State.CLOSED
         val projection = mediaProjection
-        if (projection != null) {
+        val callback = projectionCallback
+        val display = virtualDisplay
+        val reader = imageReader
+        mediaProjection = null
+        projectionCallback = null
+        virtualDisplay = null
+        imageReader = null
+        pendingCapture?.cancel()
+        pendingCapture = null
+        reader?.let(::clearImageReaderListener)
+        if (projection != null && callback != null) {
             try {
-                projection.unregisterCallback(projectionCallback)
+                projection.unregisterCallback(callback)
             } catch (_: Exception) {
             }
         }
         try {
-            virtualDisplay?.release()
+            display?.release()
         } catch (_: Exception) {
         }
         try {
-            imageReader?.let {
-                clearImageReaderListener(it)
-                it.close()
-            }
+            reader?.close()
         } catch (_: Exception) {
         }
         try {
             projection?.stop()
         } catch (_: Exception) {
         }
-        virtualDisplay = null
-        imageReader = null
-        mediaProjection = null
     }
 
     private fun acquireLatestBitmap(reader: ImageReader): Bitmap? {
@@ -270,9 +277,15 @@ internal class ProjectionCaptureSession(
         val rowPadding = rowStride - pixelStride * width
         val fullWidth = width + rowPadding / pixelStride
         val fullBitmap = createBitmap(fullWidth, height, Bitmap.Config.ARGB_8888)
-        fullBitmap.copyPixelsFromBuffer(plane.buffer)
-        return Bitmap.createBitmap(fullBitmap, 0, 0, width, height).also {
+        try {
+            fullBitmap.copyPixelsFromBuffer(plane.buffer)
+            if (fullWidth == width) return fullBitmap
+            return Bitmap.createBitmap(fullBitmap, 0, 0, width, height).also {
+                fullBitmap.recycleSafely()
+            }
+        } catch (error: Throwable) {
             fullBitmap.recycleSafely()
+            throw error
         }
     }
 

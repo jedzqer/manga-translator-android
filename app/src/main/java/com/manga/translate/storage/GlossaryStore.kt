@@ -3,8 +3,10 @@ package com.manga.translate.storage
 import com.manga.translate.platform.AppLogger
 import java.io.File
 import org.json.JSONObject
+import kotlinx.coroutines.sync.withLock
 
 class GlossaryStore {
+    private val writeLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
     fun load(folder: File, targetKey: String = DEFAULT_TARGET_KEY): MutableMap<String, String> {
         val file = glossaryFileFor(folder, targetKey)
         if (!file.exists()) return mutableMapOf()
@@ -30,7 +32,8 @@ class GlossaryStore {
             json.put(key, value)
         }
         val file = glossaryFileFor(folder, targetKey)
-        writeFileAtomically(file, json.toString())
+        val lock = writeLocks.computeIfAbsent(file.absoluteFile.path) { kotlinx.coroutines.sync.Mutex() }
+        kotlinx.coroutines.runBlocking { lock.withLock { writeFileAtomically(file, json.toString()) } }
     }
 
     fun glossaryFileFor(folder: File, targetKey: String = DEFAULT_TARGET_KEY): File {

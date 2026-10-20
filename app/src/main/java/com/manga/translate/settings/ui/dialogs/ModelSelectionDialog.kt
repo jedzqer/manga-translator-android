@@ -1,5 +1,6 @@
 package com.manga.translate.settings.ui.dialogs
 
+import com.manga.translate.platform.setScrollableMessage
 import androidx.appcompat.app.AlertDialog
 import com.manga.translate.R
 import com.manga.translate.network.LlmErrorCode
@@ -41,7 +42,7 @@ internal class ModelSelectionDialog(
     fun showFetchError(code: String, detail: String? = null) {
         AlertDialog.Builder(fragment.requireContext())
             .setTitle(R.string.fetch_models_failed_title)
-            .setMessage(
+            .setScrollableMessage(
                 fragment.getString(
                     R.string.fetch_models_failed_message,
                     ErrorDialogFormatter.formatApiErrorMessage(fragment.requireContext(), code, detail)

@@ -11,6 +11,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import com.manga.translate.settings.SettingsStore
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class UpdateInfo(
     val versionCode: Int,
@@ -37,6 +40,25 @@ enum class ReleaseChannel {
 }
 
 object UpdateChecker {
+    private val automaticCheckMutex = Mutex()
+
+    internal suspend fun fetchAutomaticUpdateInfo(
+        settingsStore: SettingsStore,
+        includePreview: Boolean,
+        languageKey: String,
+        isNewerVersion: (UpdateInfo) -> Boolean,
+        clock: () -> Long = System::currentTimeMillis,
+        fetch: suspend () -> UpdateInfo? = {
+            fetchUpdateInfo(includePreview = includePreview, languageKey = languageKey)
+        }
+    ): UpdateInfo? = automaticCheckMutex.withLock {
+        val state = settingsStore.loadAutoUpdateCheckState()
+        if (!state.isDue(clock())) return@withLock null
+        val info = fetch() ?: return@withLock null
+        settingsStore.saveAutoUpdateCheckState(state.afterSuccess(clock(), isNewerVersion(info)))
+        info
+    }
+
     private const val UPDATE_URL_GITHUB =
         "https://raw.githubusercontent.com/jedzqer/manga-translator-android/main/update.json"
     private const val UPDATE_URL_GITEE =

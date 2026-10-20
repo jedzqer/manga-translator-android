@@ -23,7 +23,8 @@ internal data class FolderTranslationTaskDescriptor(
     val fullTranslate: Boolean,
     val glossaryProcessingEnabled: Boolean,
     val useVlDirectTranslate: Boolean,
-    val language: TranslationLanguage
+    val language: TranslationLanguage,
+    val onlyTranslateBubbles: Boolean = false
 )
 
 internal class TranslationTaskPersistence(context: Context) {
@@ -68,6 +69,7 @@ internal class TranslationTaskPersistence(context: Context) {
             .put("fullTranslate", fullTranslate)
             .put("glossaryProcessingEnabled", glossaryProcessingEnabled)
             .put("useVlDirectTranslate", useVlDirectTranslate)
+            .put("onlyTranslateBubbles", onlyTranslateBubbles)
             .put("language", language.prefValue)
     }
 
@@ -105,6 +107,7 @@ internal class TranslationTaskPersistence(context: Context) {
                 fullTranslate = fullTranslate,
                 glossaryProcessingEnabled = glossaryProcessingEnabled,
                 useVlDirectTranslate = useVlDirectTranslate,
+                onlyTranslateBubbles = onlyTranslateBubbles,
                 language = language
             )
         }
@@ -146,6 +149,7 @@ private fun parseFolderTranslationTaskDescriptor(json: JSONObject): FolderTransl
         fullTranslate = json.optBoolean("fullTranslate"),
         glossaryProcessingEnabled = json.optBoolean("glossaryProcessingEnabled", true),
         useVlDirectTranslate = json.optBoolean("useVlDirectTranslate"),
+        onlyTranslateBubbles = json.optBoolean("onlyTranslateBubbles", false),
         language = TranslationLanguage.fromPref(
             json.optString("language", TranslationLanguage.JA_TO_ZH.prefValue)
         )
@@ -165,6 +169,7 @@ internal fun TranslationTaskDescriptor.toJsonString(): String {
                 .put("fullTranslate", task.fullTranslate)
                 .put("glossaryProcessingEnabled", task.glossaryProcessingEnabled)
                 .put("useVlDirectTranslate", task.useVlDirectTranslate)
+                .put("onlyTranslateBubbles", task.onlyTranslateBubbles)
                 .put("language", task.language.prefValue)
         )
     }
@@ -191,6 +196,7 @@ internal fun TranslationTaskDescriptor.toFolderTasks(): List<FolderTranslationTa
                 fullTranslate = descriptor.fullTranslate,
                 glossaryProcessingEnabled = descriptor.glossaryProcessingEnabled,
                 useVlDirectTranslate = descriptor.useVlDirectTranslate,
+                onlyTranslateBubbles = descriptor.onlyTranslateBubbles,
                 language = descriptor.language
             )
         }

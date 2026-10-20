@@ -375,6 +375,10 @@ class SettingsStore(context: Context) {
         apiSettingsStore.saveApiTimeoutSeconds(value)
     }
 
+    fun loadFloatingOnlyRecognizeBubbles(): Boolean = appSettingsStore.loadFloatingOnlyRecognizeBubbles()
+
+    fun saveFloatingOnlyRecognizeBubbles(enabled: Boolean) = appSettingsStore.saveFloatingOnlyRecognizeBubbles(enabled)
+
     fun loadThemeMode(): ThemeMode = appSettingsStore.loadThemeMode()
 
     fun loadCustomThemeColors(): CustomThemeColors = appSettingsStore.loadCustomThemeColors()
@@ -434,6 +438,10 @@ class SettingsStore(context: Context) {
     fun saveLinkSource(source: LinkSource) {
         appSettingsStore.saveLinkSource(source)
     }
+
+    fun loadAutoUpdateCheckState(): AutoUpdateCheckState = appSettingsStore.loadAutoUpdateCheckState()
+
+    fun saveAutoUpdateCheckState(state: AutoUpdateCheckState) = appSettingsStore.saveAutoUpdateCheckState(state)
 
     fun hasShownTutorialPrompt(): Boolean = appSettingsStore.hasShownTutorialPrompt()
 
@@ -506,6 +514,7 @@ class SettingsStore(context: Context) {
         internal const val KEY_FLOATING_DOUBLE_TAP_ACTION = "floating_double_tap_action"
         internal const val KEY_FLOATING_LONG_PRESS_ACTION = "floating_long_press_action"
         internal const val KEY_FLOATING_TRIPLE_TAP_ACTION = "floating_triple_tap_action"
+        internal const val KEY_FLOATING_ONLY_RECOGNIZE_BUBBLES = "floating_only_recognize_bubbles"
         internal const val KEY_FLOATING_DETECTION_TOP_INSET_PERCENT =
             "floating_detection_top_inset_percent"
         internal const val KEY_FLOATING_DETECTION_BOTTOM_INSET_PERCENT =
@@ -627,7 +636,7 @@ class SettingsStore(context: Context) {
         internal const val DEFAULT_NORMAL_BUBBLE_AUTO_ADAPT_COLOR = false
         internal const val DEFAULT_MAX_CONCURRENCY = 8
         internal const val MIN_MAX_CONCURRENCY = 1
-        internal const val MAX_MAX_CONCURRENCY = 200
+        internal const val MAX_MAX_CONCURRENCY = 100
         internal const val DEFAULT_API_RETRY_COUNT = 3
         internal const val MIN_API_RETRY_COUNT = 1
         internal const val MAX_API_RETRY_COUNT = 50

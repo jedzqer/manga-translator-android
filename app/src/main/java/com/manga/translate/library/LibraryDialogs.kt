@@ -1,5 +1,6 @@
 package com.manga.translate.library
 
+import com.manga.translate.platform.setScrollableMessage
 import android.content.Context
 import android.content.res.ColorStateList
 import android.text.InputFilter
@@ -51,7 +52,7 @@ internal class LibraryDialogs {
     ) {
         AlertDialog.Builder(context)
             .setTitle(titleRes)
-            .setMessage(message)
+            .setScrollableMessage(message)
             .setPositiveButton(positiveRes) { _, _ -> onPositive?.invoke() }
             .showWithScrollableMessage()
     }
@@ -248,7 +249,7 @@ internal class LibraryDialogs {
     fun confirmDeleteFolder(context: Context, folderName: String, onConfirm: () -> Unit) {
         AlertDialog.Builder(context)
             .setTitle(R.string.folder_delete)
-            .setMessage(context.getString(R.string.folder_delete_confirm, folderName))
+            .setScrollableMessage(context.getString(R.string.folder_delete_confirm, folderName))
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.folder_delete) { _, _ -> onConfirm() }
             .showWithScrollableMessage()
@@ -387,6 +388,22 @@ internal class LibraryDialogs {
             context,
             R.string.folder_use_vl_direct_translate_info_title,
             context.getString(R.string.folder_use_vl_direct_translate_note)
+        )
+    }
+
+    fun showVlFullVisualInfo(context: Context) {
+        showMessageDialog(
+            context,
+            R.string.folder_vl_full_visual_info_title,
+            context.getString(R.string.folder_vl_full_visual_note)
+        )
+    }
+
+    fun showOnlyTranslateBubblesInfo(context: Context) {
+        showMessageDialog(
+            context,
+            R.string.folder_only_translate_bubbles_info_title,
+            context.getString(R.string.folder_only_translate_bubbles_note)
         )
     }
 
@@ -622,7 +639,7 @@ internal class LibraryDialogs {
     ) {
         AlertDialog.Builder(context)
             .setTitle(R.string.delete_selected)
-            .setMessage(context.getString(R.string.delete_images_confirm, selectedCount))
+            .setScrollableMessage(context.getString(R.string.delete_images_confirm, selectedCount))
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.delete_selected) { _, _ -> onConfirm() }
             .showWithScrollableMessage()
@@ -635,7 +652,7 @@ internal class LibraryDialogs {
     ) {
         AlertDialog.Builder(context)
             .setTitle(R.string.delete_selected)
-            .setMessage(context.getString(R.string.delete_chapters_confirm, selectedCount))
+            .setScrollableMessage(context.getString(R.string.delete_chapters_confirm, selectedCount))
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.delete_selected) { _, _ -> onConfirm() }
             .showWithScrollableMessage()
@@ -648,7 +665,7 @@ internal class LibraryDialogs {
     ) {
         AlertDialog.Builder(context)
             .setTitle(R.string.delete_selected)
-            .setMessage(context.getString(R.string.delete_folders_confirm, selectedCount))
+            .setScrollableMessage(context.getString(R.string.delete_folders_confirm, selectedCount))
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.delete_selected) { _, _ -> onConfirm() }
             .showWithScrollableMessage()

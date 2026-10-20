@@ -21,8 +21,8 @@ android {
         applicationId = "com.manga.translate.v3"
         minSdk = 24
         targetSdk = 36
-        versionCode = 114
-        versionName = "3.6.6"
+        versionCode = 119
+        versionName = "3.7.0"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -43,8 +43,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             if (releaseSigning != null) {
                 signingConfig = releaseSigning
             } else {

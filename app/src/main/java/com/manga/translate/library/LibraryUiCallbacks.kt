@@ -12,6 +12,7 @@ internal interface LibraryUiCallbacks {
     fun showImportProgress(messageRes: Int) = Unit
     fun hideImportProgress() = Unit
     fun showApiError(code: String, detail: String? = null)
+    fun clearModelErrors() = Unit
     fun showModelError(
         content: String,
         useSystemOverlay: Boolean,

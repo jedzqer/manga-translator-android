@@ -14,23 +14,21 @@ import java.io.File
 class FolderImageAdapter(
     private val onSelectionChanged: () -> Unit,
     private val onItemLongPress: (ImageItem) -> Unit,
-    private val onItemClick: (ImageItem) -> Unit
+    private val onItemClick: (ImageItem) -> Unit,
+    val selection: LibrarySelectionState = LibrarySelectionState()
 ) : ListAdapter<ImageItem, FolderImageAdapter.ImageViewHolder>(DiffCallback) {
-    private val selectedPaths = LinkedHashSet<String>()
-    private var selectionMode = false
+    private val selectedPaths get() = selection.state.value.paths
+    val selectionMode get() = selection.state.value.enabled
 
     fun submit(list: List<ImageItem>, onCommitted: (() -> Unit)? = null) {
-        if (selectionMode) {
-            val validPaths = list.map { it.file.absolutePath }.toHashSet()
-            selectedPaths.retainAll(validPaths)
-        }
+
         submitList(list) { onCommitted?.invoke() }
     }
 
     fun setSelectionMode(enabled: Boolean) {
-        selectionMode = enabled
+        selection.setEnabled(enabled)
         if (!selectionMode) {
-            selectedPaths.clear()
+            selection.clear()
         }
         if (currentList.isNotEmpty()) {
             notifyItemRangeChanged(0, currentList.size)
@@ -39,9 +37,7 @@ class FolderImageAdapter(
 
     fun toggleSelection(file: File) {
         val path = file.absolutePath
-        if (!selectedPaths.add(path)) {
-            selectedPaths.remove(path)
-        }
+        selection.toggle(path)
     }
 
     fun toggleSelectionAndNotify(file: File) {
@@ -53,17 +49,14 @@ class FolderImageAdapter(
     }
 
     fun selectAll() {
-        selectedPaths.clear()
-        for (item in currentList) {
-            selectedPaths.add(item.file.absolutePath)
-        }
+        selection.select(currentList.map { it.file.absolutePath }.toSet())
         if (currentList.isNotEmpty()) {
             notifyItemRangeChanged(0, currentList.size)
         }
     }
 
     fun clearSelection() {
-        selectedPaths.clear()
+        selection.clear()
         if (currentList.isNotEmpty()) {
             notifyItemRangeChanged(0, currentList.size)
         }

@@ -170,6 +170,17 @@ class VlPageTranslationTest {
         } finally { result.recycle(); source.recycle() }
     }
 
+    @Test fun `full visual keeps artwork and annotated targets`() {
+        val source = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val layout = VlPageLayout(300, 300, listOf(bubble(7, RectF(50f, 80f, 120f, 180f))))
+        val result = VlPageAnnotationRenderer.render(source, layout, layout.chunks().single(), fullVisual = true)
+        try {
+            assertEquals(Color.RED, result.getPixel(280, 280))
+            assertNotEquals(Color.RED, result.getPixel(80, 120))
+            assertEquals(Color.RED, source.getPixel(80, 120))
+        } finally { result.recycle(); source.recycle() }
+    }
+
     @Test fun `refill keeps completed entries and geometry while removing explicit empty targets`() {
         val completed = bubble(1, RectF(0f, 0f, 20f, 20f)).withTranslationResult("keep")
         val target = bubble(2, RectF(25f, 20f, 60f, 50f))

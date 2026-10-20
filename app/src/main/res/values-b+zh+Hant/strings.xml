@@ -1,4 +1,9 @@
 <resources>
+    <string name="folder_vl_full_visual">VL 完整畫面</string>
+    <string name="folder_vl_full_visual_info_title">VL 畫面模式說明</string>
+    <string name="folder_vl_full_visual_info_desc">VL 畫面模式說明</string>
+    <string name="folder_vl_full_visual_note">開啟：保留完整畫面並標註 ID，讓 AI 結合漫畫畫面翻譯。關閉：僅保留氣泡和文字區域，其餘填白。長圖仍按偵測分塊傳送。</string>
+
     <string name="translation_request_settings_button">AI 請求設定</string>
     <string name="translation_request_settings_button_format">AI 請求設定：並行 %1$d，合併 %2$d 頁</string>
     <string name="translation_request_settings_title">AI 請求設定</string>
@@ -41,7 +46,7 @@
     <string name="api_timeout_policy_description">實際請求時長上限會受合併頁數和重試次數影響。</string>
     <string name="api_retry_count_hint">API 最大重試次數 (1–50)</string>
     <string name="floating_api_timeout_hint">懸浮翻譯 API 逾時 (秒, 30–1200)</string>
-    <string name="max_concurrency_hint">AI API 呼叫並行數 (1–200)</string>
+    <string name="max_concurrency_hint">AI API 呼叫並行數 (1–100)</string>
     <string name="api_settings_note_openai">填寫服務商提供的 API 基礎地址，例如 https://api.siliconflow.cn/v1；自動補全 /chat/completions。</string>
     <string name="api_settings_note_openai_responses">例如 https://api.openai.com/v1；自動補全 /responses。</string>
     <string name="api_settings_note_gemini">範例 URL：https://generativelanguage.googleapis.com/v1beta</string>
@@ -361,7 +366,7 @@
     <string name="folder_import_chapters">匯入子章節</string>
     <string name="folder_export_collection">匯出集合</string>
     <string name="folder_export">匯出漫畫</string>
-    <string name="folder_translate">翻譯</string>
+    <string name="folder_translate">一鍵翻譯</string>
     <string name="folder_read">開始閱讀</string>
     <string name="folder_back">返回</string>
     <string name="folder_image_count">%1$d 張圖片</string>
@@ -426,6 +431,10 @@
     <string name="folder_glossary_processing_info_title">譯名處理說明</string>
     <string name="folder_glossary_processing_info_desc">譯名處理說明</string>
     <string name="folder_glossary_processing_note">統一人名、地名等譯名。關閉後仍使用現有譯名，但不新增；全文速譯始終開啟此功能。</string>
+    <string name="folder_only_translate_bubbles">僅翻譯氣泡</string>
+    <string name="folder_only_translate_bubbles_info_title">僅翻譯氣泡說明</string>
+    <string name="folder_only_translate_bubbles_info_desc">僅翻譯氣泡說明</string>
+    <string name="folder_only_translate_bubbles_note">開啟後，內建 OCR 只辨識氣泡區域；未偵測到氣泡時仍會辨識頁面文字。VL 整頁直譯或 API OCR 啟用時，此選項無法使用。</string>
 
     <!-- Library / Progress -->
     <string name="translation_preparing">預處理中</string>
@@ -656,4 +665,27 @@
     <string name="ocr_supplement_low_description">僅在信心度未達本機合格門檻或辨識為空時，使用 API 重新辨識整塊區域。</string>
     <string name="ocr_supplement_medium_description">同時複核信心度偏低的區域，提升辨識品質；API 請求會增加。</string>
     <string name="ocr_supplement_high_description">更積極地複核品質不佳的區域；API 請求和耗時可能明顯增加。</string>
+    <string name="local_ocr_concurrency_hint">本機 OCR 並行數 (0=自動, 1–8)</string>
+    <string name="reading_save_failed">閱讀頁儲存失敗</string>
+    <string name="custom_prompt_title">自訂提示詞</string>
+    <string name="custom_prompt_mode">提示詞模式</string>
+    <string name="custom_prompt_warning">進階功能：不了解提示詞協定時，請勿任意修改。僅修改目前介面語言。切換模式會保留草稿；匯入僅供預覽，點選「儲存目前模式」後生效。既有譯文不會自動重譯。</string>
+    <string name="custom_prompt_import">匯入 JSON</string>
+    <string name="custom_prompt_export">匯出 JSON</string>
+    <string name="custom_prompt_reset">還原目前模式內建提示詞</string>
+    <string name="custom_prompt_reset_confirm">確定還原目前模式的內建提示詞？已儲存的自訂內容將被移除。</string>
+    <string name="custom_prompt_save">儲存目前模式</string>
+    <string name="custom_prompt_saved">已儲存目前模式提示詞</string>
+    <string name="custom_prompt_error">操作失敗。請檢查檔案權限及 JSON：最大 256 KiB；欄位和型別須與內建範本一致，不得有重複鍵、額外欄位或非標準 JSON 註解；範例須包含 role 和非空 content，role 僅限 system、user、assistant；保留 {{STYLE_HINT}}。</string>
+    <string-array name="custom_prompt_modes">
+        <item>一般翻譯</item>
+        <item>全文速譯</item>
+        <item>譯名擷取</item>
+        <item>懸浮翻譯</item>
+        <item>VL 完整畫面</item>
+        <item>VL 氣泡遮罩</item>
+        <item>OCR 辨識</item>
+    </string-array>
+    <string name="floating_only_bubbles_on">僅識別氣泡：開</string>
+    <string name="floating_only_bubbles_off">僅識別氣泡：關</string>
 </resources>

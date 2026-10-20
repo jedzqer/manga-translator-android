@@ -27,17 +27,15 @@ class LibraryFolderAdapter(
     private val onStatusClick: ((FolderStatus) -> Unit)? = null,
     private val showOverflowMenu: Boolean = false,
     private val onSelectionChanged: (() -> Unit)? = null,
-    private val onItemLongPress: ((FolderItem) -> Unit)? = null
+    private val onItemLongPress: ((FolderItem) -> Unit)? = null,
+    val selection: LibrarySelectionState = LibrarySelectionState()
 ) : ListAdapter<FolderItem, LibraryFolderAdapter.FolderViewHolder>(DiffCallback) {
     private var actionPosition: Int? = null
-    private val selectedPaths = LinkedHashSet<String>()
-    private var selectionMode = false
+    private val selectedPaths get() = selection.state.value.paths
+    val selectionMode get() = selection.state.value.enabled
 
     fun submit(list: List<FolderItem>, onCommitted: (() -> Unit)? = null) {
-        if (selectionMode) {
-            val validPaths = list.map { it.folder.absolutePath }.toHashSet()
-            selectedPaths.retainAll(validPaths)
-        }
+
         submitList(list) { onCommitted?.invoke() }
         val current = actionPosition
         if (current != null && current >= list.size) {
@@ -70,11 +68,11 @@ class LibraryFolderAdapter(
     }
 
     fun setSelectionMode(enabled: Boolean) {
-        selectionMode = enabled
+        selection.setEnabled(enabled)
         if (enabled) {
             clearActionSelection()
         } else {
-            selectedPaths.clear()
+            selection.clear()
         }
         if (currentList.isNotEmpty()) {
             notifyItemRangeChanged(0, currentList.size)
@@ -83,9 +81,7 @@ class LibraryFolderAdapter(
 
     fun toggleSelectionAndNotify(folder: File) {
         val path = folder.absolutePath
-        if (!selectedPaths.add(path)) {
-            selectedPaths.remove(path)
-        }
+        selection.toggle(path)
         val index = currentList.indexOfFirst { it.folder.absolutePath == path }
         if (index >= 0) {
             notifyItemChanged(index)
@@ -94,8 +90,7 @@ class LibraryFolderAdapter(
     }
 
     fun selectAll() {
-        selectedPaths.clear()
-        currentList.forEach { selectedPaths.add(it.folder.absolutePath) }
+        selection.select(currentList.map { it.folder.absolutePath }.toSet())
         if (currentList.isNotEmpty()) {
             notifyItemRangeChanged(0, currentList.size)
         }
@@ -103,7 +98,7 @@ class LibraryFolderAdapter(
     }
 
     fun clearSelection() {
-        selectedPaths.clear()
+        selection.clear()
         if (currentList.isNotEmpty()) {
             notifyItemRangeChanged(0, currentList.size)
         }

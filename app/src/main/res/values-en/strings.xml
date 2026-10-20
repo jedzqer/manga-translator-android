@@ -1,4 +1,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="PluralsCandidate">
+    <string name="folder_vl_full_visual">VL full artwork</string>
+    <string name="folder_vl_full_visual_info_title">VL image mode</string>
+    <string name="folder_vl_full_visual_info_desc">VL image mode</string>
+    <string name="folder_vl_full_visual_note">On: keep the full artwork with ID annotations for visual context. Off: keep only bubbles and text regions on a white background. Long images are still sent in detection tiles.</string>
     <string name="translation_request_settings_button">AI request settings</string>
     <string name="translation_request_settings_button_format">AI request settings: %1$d concurrent, %2$d pages/request</string>
     <string name="translation_request_settings_title">AI request settings</string>
@@ -36,7 +40,7 @@
     <string name="api_timeout_policy_description">The actual request time limit depends on the number of combined pages and retries.</string>
     <string name="api_retry_count_hint">API Maximum number of retries (1–50)</string>
     <string name="floating_api_timeout_hint">Floating translation API timeout (seconds, 30–1200)</string>
-    <string name="max_concurrency_hint">AI API Number of concurrent calls (1–200)</string>
+    <string name="max_concurrency_hint">AI API Number of concurrent calls (1–100)</string>
     <string name="api_settings_note_openai">Enter the API base URL from your provider, e.g. https://api.siliconflow.cn/v1; /chat/completions is added automatically.</string>
     <string name="api_settings_note_openai_responses">E.g. https://api.openai.com/v1; /responses is added automatically.</string>
     <string name="api_settings_note_gemini">Example URL: https://generativelanguage.googleapis.com/v1beta</string>
@@ -406,6 +410,10 @@
     <string name="folder_glossary_processing_info_title">About Glossary Processing</string>
     <string name="folder_glossary_processing_info_desc">About glossary processing</string>
     <string name="folder_glossary_processing_note">Keeps names and places consistent. When off, existing terms are used but no new terms are added. Full-text fast translation always enables this.</string>
+    <string name="folder_only_translate_bubbles">Translate bubbles only</string>
+    <string name="folder_only_translate_bubbles_info_title">About bubble-only translation</string>
+    <string name="folder_only_translate_bubbles_info_desc">About bubble-only translation</string>
+    <string name="folder_only_translate_bubbles_note">When enabled, built-in OCR recognizes bubble regions only. If no bubbles are detected, page text is still recognized. This option is unavailable with VL full-page translation or API OCR.</string>
     <string name="translation_preparing">Preparing</string>
     <string name="folder_preprocess_progress">%1$s（%2$d/%3$d）</string>
     <string name="folder_preprocess_stage_ocr">OCR Preprocessing</string>
@@ -619,4 +627,27 @@ Communication and feedback group: %2$s</string>
     <string name="ocr_supplement_low_description">Use the API to recognize the whole region only when local confidence is below the acceptance threshold or recognition is empty.</string>
     <string name="ocr_supplement_medium_description">Also review regions with somewhat low confidence to improve quality; more API requests are made.</string>
     <string name="ocr_supplement_high_description">Review uncertain regions more aggressively; API requests and processing time may increase substantially.</string>
+    <string name="local_ocr_concurrency_hint">Local OCR concurrency (0=automatic, 1–8)</string>
+    <string name="reading_save_failed">Failed to save reading changes</string>
+    <string name="custom_prompt_title">Custom prompts</string>
+    <string name="custom_prompt_mode">Prompt mode</string>
+    <string name="custom_prompt_warning">Advanced feature: do not modify prompts unless you understand the protocol. Only the current interface language is affected. Switching modes retains drafts. Import previews a draft; use Save current mode to apply it. Existing translations are not automatically replaced.</string>
+    <string name="custom_prompt_import">Import JSON</string>
+    <string name="custom_prompt_export">Export JSON</string>
+    <string name="custom_prompt_reset">Restore built-in prompt for this mode</string>
+    <string name="custom_prompt_reset_confirm">Restore the built-in prompt for this mode? The saved customization will be removed.</string>
+    <string name="custom_prompt_save">Save current mode</string>
+    <string name="custom_prompt_saved">Prompt saved for this mode</string>
+    <string name="custom_prompt_error">Operation failed. Check file permissions and JSON: maximum 256 KiB; fields and types must match the built-in template, with no duplicate keys, extra fields or JSON comments. Examples require role and nonempty content; role must be system, user or assistant. Keep {{STYLE_HINT}}.</string>
+    <string-array name="custom_prompt_modes">
+        <item>Standard translation</item>
+        <item>Full-text translation</item>
+        <item>Glossary extraction</item>
+        <item>Floating translation</item>
+        <item>VL full image</item>
+        <item>VL bubble masks</item>
+        <item>OCR recognition</item>
+    </string-array>
+    <string name="floating_only_bubbles_on">Bubbles only: On</string>
+    <string name="floating_only_bubbles_off">Bubbles only: Off</string>
 </resources>

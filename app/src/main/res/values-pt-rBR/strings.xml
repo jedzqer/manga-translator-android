@@ -1,4 +1,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="PluralsCandidate">
+    <string name="folder_vl_full_visual">VL com imagem completa</string>
+    <string name="folder_vl_full_visual_info_title">Modo de imagem VL</string>
+    <string name="folder_vl_full_visual_info_desc">Modo de imagem VL</string>
+    <string name="folder_vl_full_visual_note">Ativado: mantém a arte completa com IDs para dar contexto visual à IA. Desativado: mantém apenas balões e regiões de texto sobre fundo branco. Imagens longas continuam sendo enviadas em blocos de detecção.</string>
     <string name="translation_request_settings_button">Configurações de solicitações de IA</string>
     <string name="translation_request_settings_button_format">Solicitações de IA: %1$d simultâneas, %2$d páginas/solicitação</string>
     <string name="translation_request_settings_title">Configurações de solicitações de IA</string>
@@ -36,7 +40,7 @@
     <string name="api_timeout_policy_description">O limite real de duração da solicitação depende do número de páginas combinadas e de novas tentativas.</string>
     <string name="api_retry_count_hint">Número máximo de tentativas da API (1–50)</string>
     <string name="floating_api_timeout_hint">Tempo limite da API de tradução flutuante (segundos, 30–1200)</string>
-    <string name="max_concurrency_hint">Número de chamadas simultâneas da API de IA (1–200)</string>
+    <string name="max_concurrency_hint">Número de chamadas simultâneas da API de IA (1–100)</string>
     <string name="api_settings_note_openai">Informe a URL base da API do provedor, como https://api.siliconflow.cn/v1; /chat/completions é acrescentado automaticamente.</string>
     <string name="api_settings_note_openai_responses">Ex.: https://api.openai.com/v1; /responses é acrescentado automaticamente.</string>
     <string name="api_settings_note_gemini">URL de exemplo: https://generativelanguage.googleapis.com/v1beta</string>
@@ -406,6 +410,10 @@
     <string name="folder_glossary_processing_info_title">Sobre o processamento de glossário</string>
     <string name="folder_glossary_processing_info_desc">Sobre o processamento de glossário</string>
     <string name="folder_glossary_processing_note">Mantém nomes de pessoas e lugares consistentes. Ao desativar, usa termos existentes, mas não adiciona novos. A tradução rápida de texto completo sempre ativa esta função.</string>
+    <string name="folder_only_translate_bubbles">Traduzir somente balões</string>
+    <string name="folder_only_translate_bubbles_info_title">Sobre traduzir somente balões</string>
+    <string name="folder_only_translate_bubbles_info_desc">Sobre traduzir somente balões</string>
+    <string name="folder_only_translate_bubbles_note">Quando ativado, o OCR integrado reconhece apenas as regiões dos balões. Se nenhum balão for detectado, o texto da página ainda será reconhecido. Esta opção fica indisponível com tradução VL da página inteira ou OCR por API.</string>
     <string name="translation_preparing">Preparando</string>
     <string name="folder_preprocess_progress">%1$s (%2$d/%3$d)</string>
     <string name="folder_preprocess_stage_ocr">Pré-processamento do OCR</string>
@@ -619,4 +627,27 @@ Grupo de comunicação e feedback: %2$s</string>
     <string name="ocr_supplement_low_description">Usar a API para reconhecer toda a região apenas quando a confiança local estiver abaixo do limite de aceitação ou o reconhecimento estiver vazio.</string>
     <string name="ocr_supplement_medium_description">Revisar também regiões com confiança um pouco baixa para melhorar a qualidade; haverá mais solicitações à API.</string>
     <string name="ocr_supplement_high_description">Revisar regiões incertas de forma mais intensa; as solicitações à API e o tempo de processamento podem aumentar bastante.</string>
+    <string name="local_ocr_concurrency_hint">Tarefas simultâneas de OCR local (0=automático, 1–8)</string>
+    <string name="reading_save_failed">Falha ao salvar as alterações da leitura</string>
+    <string name="custom_prompt_title">Prompts personalizados</string>
+    <string name="custom_prompt_mode">Modo do prompt</string>
+    <string name="custom_prompt_warning">Recurso avançado: não altere os prompts sem entender o protocolo. Afeta apenas o idioma atual da interface. Trocar de modo mantém os rascunhos. A importação mostra uma prévia; use Salvar modo atual para aplicar. As traduções existentes não serão substituídas automaticamente.</string>
+    <string name="custom_prompt_import">Importar JSON</string>
+    <string name="custom_prompt_export">Exportar JSON</string>
+    <string name="custom_prompt_reset">Restaurar prompt integrado deste modo</string>
+    <string name="custom_prompt_reset_confirm">Restaurar o prompt integrado deste modo? A personalização salva será removida.</string>
+    <string name="custom_prompt_save">Salvar modo atual</string>
+    <string name="custom_prompt_saved">Prompt salvo para este modo</string>
+    <string name="custom_prompt_error">Falha na operação. Verifique as permissões do arquivo e o JSON: máximo de 256 KiB; campos e tipos devem corresponder ao modelo integrado, sem chaves duplicadas, campos extras ou comentários JSON. Os exemplos exigem role e content não vazio; role deve ser system, user ou assistant. Mantenha {{STYLE_HINT}}.</string>
+    <string-array name="custom_prompt_modes">
+        <item>Tradução padrão</item>
+        <item>Tradução integral</item>
+        <item>Extração de termos</item>
+        <item>Tradução flutuante</item>
+        <item>VL imagem completa</item>
+        <item>VL máscaras de balões</item>
+        <item>Reconhecimento OCR</item>
+    </string-array>
+    <string name="floating_only_bubbles_on">Somente balões: ativado</string>
+    <string name="floating_only_bubbles_off">Somente balões: desativado</string>
 </resources>

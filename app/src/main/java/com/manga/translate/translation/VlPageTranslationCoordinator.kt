@@ -22,13 +22,14 @@ internal class VlPageTranslationCoordinator(
         retryCount: Int,
         glossary: Map<String, String> = emptyMap(),
         glossaryProcessingEnabled: Boolean = false,
-        useCache: Boolean = false
+        useCache: Boolean = false,
+        fullVisual: Boolean = false
     ): FloatingBubbleImageTranslateOutcome {
         val translated = linkedMapOf<Int, String>()
         val names = linkedMapOf<String, String>()
-        val scope = FloatingCacheScope(language, apiSettings.providerId, apiSettings.modelName, PROMPT_ASSET)
+        val scope = cache.withCurrentPrompt(FloatingCacheScope(language, apiSettings.providerId, apiSettings.modelName, PROMPT_ASSET))
         for (chunk in layout.chunks()) {
-            val encoded = encodePageAnnotation(source, layout, chunk)
+            val encoded = encodePageAnnotation(source, layout, chunk, fullVisual)
             val ids = chunk.targets.map { it.id }
             val key = if (useCache && glossary.isEmpty() && !glossaryProcessingEnabled) {
                 cache.createImageKey((encoded + "|" + ids.joinToString(",")).toByteArray(Charsets.UTF_8))
@@ -72,7 +73,7 @@ internal class VlPageTranslationCoordinator(
         val localIds: Map<Int, Int>
     )
 
-    suspend fun preparePage(source: BitmapCropSource, layout: VlPageLayout, firstId: Int): PreparedPage {
+    suspend fun preparePage(source: BitmapCropSource, layout: VlPageLayout, firstId: Int, fullVisual: Boolean = false): PreparedPage {
         val chunks = layout.chunks()
         val localIds = chunks.flatMap { it.targets }.mapIndexed { index, target ->
             firstId + index to target.id
@@ -84,7 +85,7 @@ internal class VlPageTranslationCoordinator(
         )
         val images = chunks.map { chunk ->
             val targets = chunk.targets.map { it.copy(id = requestIds.getValue(it.id)) }
-            encodePageAnnotation(source, requestLayout, chunk.copy(targets = targets))
+            encodePageAnnotation(source, requestLayout, chunk.copy(targets = targets), fullVisual)
         }
         return PreparedPage(layout, images, localIds)
     }

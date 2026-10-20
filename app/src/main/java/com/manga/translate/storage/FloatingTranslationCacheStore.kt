@@ -1,6 +1,7 @@
 package com.manga.translate.storage
 
 import android.content.Context
+import com.manga.translate.di.appContainer
 import android.graphics.Bitmap
 import com.manga.translate.model.TranslationLanguage
 import com.manga.translate.platform.AppLogger
@@ -31,7 +32,8 @@ data class FloatingCacheScope(
     val language: TranslationLanguage,
     val providerId: String = "",
     val modelName: String = "",
-    val promptAsset: String = ""
+    val promptAsset: String = "",
+    val promptFingerprint: String = ""
 )
 
 class FloatingTranslationCacheStore(context: Context) {
@@ -47,6 +49,10 @@ class FloatingTranslationCacheStore(context: Context) {
     init {
         loadFromDisk()
     }
+
+    fun withCurrentPrompt(scope: FloatingCacheScope): FloatingCacheScope = scope.copy(
+        promptFingerprint = appContext.appContainer.customPromptStore.fingerprint(appContext, scope.promptAsset)
+    )
 
     @Synchronized
     fun findTextTranslation(
@@ -266,6 +272,8 @@ class FloatingTranslationCacheStore(context: Context) {
             append('|')
             append(scope.promptAsset)
             append('|')
+            append(scope.promptFingerprint)
+            append('|')
         }
     }
 
@@ -330,8 +338,8 @@ class FloatingTranslationCacheStore(context: Context) {
         // v3 added provider/model/prompt to the key scope. v1/v2 keys carry only the
         // target language, so reusing them would defeat the new scoping; they are
         // dropped on load. This is a rebuildable cache in cacheDir, not user data.
-        private const val MIN_SUPPORTED_CACHE_VERSION = 3
-        private const val CACHE_SCHEMA_VERSION = 3
+        private const val MIN_SUPPORTED_CACHE_VERSION = 4
+        private const val CACHE_SCHEMA_VERSION = 4
         private const val SAVE_DEBOUNCE_MS = 300L
         private const val TEXT_CACHE_LIMIT = 300
         private const val IMAGE_CACHE_LIMIT = 128

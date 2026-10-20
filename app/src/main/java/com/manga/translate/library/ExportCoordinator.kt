@@ -1,7 +1,6 @@
 package com.manga.translate.library
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.net.Uri
 import com.manga.translate.platform.ResourceAssessment
 import com.manga.translate.settings.SettingsStore
@@ -21,14 +20,13 @@ internal class ExportCoordinator(
     repository: LibraryRepository,
     translationStore: TranslationStore,
     settingsStore: SettingsStore,
-    prefs: SharedPreferences,
     preferencesGateway: LibraryPreferencesGateway,
     ui: LibraryUiCallbacks,
     exportTaskHost: ExportTaskHost
 ) {
     private val exporter = LibraryExporter(
         context, repository, translationStore, settingsStore,
-        prefs, preferencesGateway, ui, exportTaskHost
+        preferencesGateway, ui, exportTaskHost
     )
 
     fun isPendingExportCollection(): Boolean = exporter.pendingExportIsCollection
