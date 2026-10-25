@@ -198,8 +198,6 @@ Passing format validation does not guarantee that your instructions are correct.
 
 If this app has made it easier to read manga you enjoy, you’re welcome to make a voluntary donation to support continued development and maintenance. Thank you for your support. Feedback and suggestions through the community links above are welcome too.
 
-![Donation QR code](./reward_qrcode.png)
-
 USDC (Base network):
 
 ![USDC donation QR code (Base network)](./reward_USDC.jpg)
