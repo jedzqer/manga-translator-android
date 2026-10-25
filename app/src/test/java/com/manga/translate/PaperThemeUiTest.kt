@@ -117,11 +117,14 @@ class PaperThemeUiTest {
         }
 
         val settings = FragmentSettingsBinding.inflate(inflater)
+        // Exercise the Android 17 permission entry with every locale on a narrow screen.
+        settings.localNetworkPermissionButton.visibility = View.VISIBLE
         page.removeAllViews()
         page.addView(settings.root)
         measure(main.root)
         assertTrue(settings.root.getChildAt(0).height > settings.root.height)
         assertTextFits(settings.themeButton)
+        assertTextFits(settings.localNetworkPermissionButton)
         val checked = settings.modelIoLoggingSwitch.isChecked
         settings.modelIoLoggingSwitch.performClick()
         assertEquals(!checked, settings.modelIoLoggingSwitch.isChecked)

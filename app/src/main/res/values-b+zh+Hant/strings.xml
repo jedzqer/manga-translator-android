@@ -688,4 +688,13 @@
     </string-array>
     <string name="floating_only_bubbles_on">僅識別氣泡：開</string>
     <string name="floating_only_bubbles_off">僅識別氣泡：關</string>
+    <string name="local_network_permission_button">授權存取區域網路 AI / OCR 服務</string>
+    <string name="local_network_permission_description">Android 17 需要區域網路權限才能連線至本機 AI 或 OCR 服務。你可以在應用程式設定中授予鄰近裝置權限。</string>
+    <string name="local_network_open_settings">開啟應用程式設定</string>
+    <string name="local_network_permission_granted">已授予區域網路存取權限</string>
+    <string name="normal_bubble_text_fill_percent_label" formatted="false">一般氣泡文字填充比例</string>
+    <string name="normal_bubble_free_text_fill_percent_label" formatted="false">游離氣泡文字填充比例</string>
+    <string name="floating_bubble_text_fill_percent_label" formatted="false">懸浮視窗氣泡文字填充比例</string>
+    <string name="bubble_text_fill_percent_range" formatted="false">20–100（%）</string>
+    <string name="bubble_text_fill_percent_note" formatted="false">100% 使用自動調整字級，降低比例可縮小文字；20% 為自動字級的五分之一。不會改變氣泡大小。</string>
 </resources>

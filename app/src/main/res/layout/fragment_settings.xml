@@ -50,6 +50,14 @@
                 android:text="@string/api_settings_note_openai"
                 android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
 
+            <Button
+                android:id="@+id/local_network_permission_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:visibility="gone"
+                android:text="@string/local_network_permission_button" />
+
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/api_url_layout"
                 style="@style/Widget.MangaTranslator.Input"

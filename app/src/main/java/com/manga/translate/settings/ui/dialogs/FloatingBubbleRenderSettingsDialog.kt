@@ -35,11 +35,15 @@ internal class FloatingBubbleRenderSettingsDialog(
         )
         dialogBinding.floatingBubbleVerticalTextSwitch.isChecked = !currentSettings.useHorizontalText
         dialogBinding.floatingBubbleAutoAdaptColorSwitch.isChecked = currentSettings.autoAdaptBubbleColor
+        dialogBinding.floatingBubbleTextFillPercentInput.setText(fragment.formatNumber(currentSettings.textFillPercent))
         AlertDialog.Builder(fragment.requireContext())
             .setTitle(R.string.floating_bubble_render_settings_title)
             .setView(dialogBinding.root)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val updated = FloatingBubbleRenderSettings(
+                    textFillPercent = fragment.parseIntInput(
+                        dialogBinding.floatingBubbleTextFillPercentInput.text?.toString()
+                    ) ?: currentSettings.textFillPercent,
                     sizeAdjustPercent = fragment.parseIntInput(
                         dialogBinding.floatingBubbleSizeAdjustPercentInput.text?.toString()
                     ) ?: currentSettings.sizeAdjustPercent,

@@ -20,6 +20,7 @@ import com.manga.translate.detection.mapPageLineRectsToCrop
 import com.manga.translate.detection.mergeBubblesSpannedByTextLines
 import com.manga.translate.detection.isDetectionAtInternalTileBottom
 import com.manga.translate.detection.isDetectionAtReplayTileTop
+import com.manga.translate.detection.isReplayDetectionCovered
 import com.manga.translate.detection.isTinyTextErrorRegion
 import com.manga.translate.detection.mergePageMaskContours
 import com.manga.translate.detection.planLongImageBubbleDetectionTiles
@@ -381,6 +382,49 @@ class PageRegionDetectorTest {
                 pageHeight = 7000
             )
         )
+    }
+
+    @Test
+    fun `bottom edge replay recovers shifted top candidate missing from retained results`() {
+        // Real-image geometry: the first crop underestimates the top of the caption.
+        val firstTile = DetectionTile(0, 0, 800, 2000)
+        val clipped = RectF(2.5f, 1181.2f, 742.4f, 1533.2f)
+        assertTrue(isDetectionAtInternalTileBottom(clipped, 1536, 2000, 4000))
+        val nextTop = adaptiveNextTileTop(firstTile, 4000, 1536, listOf(clipped))
+        assertEquals(1486, nextTop)
+        val recoveredLocal = RectF(8.8f, 14.3f, 742f, 530.4f)
+        assertTrue(isDetectionAtReplayTileTop(recoveredLocal, 1536))
+        assertTrue(shouldDiscardReplayTileTopFragments(true, nextTop + 2000, 4000))
+        val recovered = BubbleDetection(
+            RectF(9.2f, 1504.6f, 772.9f, 2176.6f), 0.6021f, 0
+        )
+        // The previous bottom candidate was withheld, not retained.
+        assertFalse(isReplayDetectionCovered(recovered, emptyList()))
+        // A text detection inside the caption must not suppress its recovered balloon.
+        val text = BubbleDetection(RectF(104f, 1636f, 706f, 1940f), 0.875f, 1)
+        assertFalse(isReplayDetectionCovered(recovered, listOf(text)))
+        // Top candidates still do not request another replay.
+        assertEquals(3486, adaptiveNextTileTop(
+            DetectionTile(0, nextTop, 800, 3486), 4000, 1536, emptyList()
+        ))
+    }
+
+    @Test
+    fun `replay only discards fragments fully covered by retained same class detections`() {
+        val retained = BubbleDetection(RectF(100f, 100f, 500f, 500f), 0.9f, 0)
+        val fragment = BubbleDetection(RectF(110f, 300f, 490f, 490f), 0.8f, 0)
+        assertTrue(isReplayDetectionCovered(fragment, listOf(retained)))
+        assertFalse(isReplayDetectionCovered(fragment.copy(classId = 1), listOf(retained)))
+        assertFalse(isReplayDetectionCovered(
+            fragment.copy(rect = RectF(110f, 300f, 490f, 600f)), listOf(retained)
+        ))
+        assertFalse(isReplayDetectionCovered(
+            fragment.copy(rect = RectF(600f, 300f, 900f, 490f)), listOf(retained)
+        ))
+        // Text fragments follow the same rule, independently of balloon candidates.
+        assertTrue(isReplayDetectionCovered(
+            fragment.copy(classId = 1), listOf(retained.copy(classId = 1))
+        ))
     }
 
     @Test

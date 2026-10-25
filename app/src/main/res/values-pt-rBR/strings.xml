@@ -650,4 +650,13 @@ Grupo de comunicação e feedback: %2$s</string>
     </string-array>
     <string name="floating_only_bubbles_on">Somente balões: ativado</string>
     <string name="floating_only_bubbles_off">Somente balões: desativado</string>
+    <string name="local_network_permission_button">Permitir acesso a serviços de IA / OCR na rede local</string>
+    <string name="local_network_permission_description">O Android 17 exige permissão de rede local para conectar a serviços locais de IA ou OCR. Você pode conceder a permissão de dispositivos próximos nas configurações do aplicativo.</string>
+    <string name="local_network_open_settings">Abrir configurações do aplicativo</string>
+    <string name="local_network_permission_granted">Acesso à rede local permitido</string>
+    <string name="normal_bubble_text_fill_percent_label" formatted="false">Preenchimento do texto dos balões normais</string>
+    <string name="normal_bubble_free_text_fill_percent_label" formatted="false">Preenchimento do texto dos balões de texto livre</string>
+    <string name="floating_bubble_text_fill_percent_label" formatted="false">Preenchimento do texto dos balões flutuantes</string>
+    <string name="bubble_text_fill_percent_range" formatted="false">20–100 (%)</string>
+    <string name="bubble_text_fill_percent_note" formatted="false">100% usa o tamanho de fonte ajustado automaticamente. Valores menores reduzem o texto; 20% usa um quinto desse tamanho. O tamanho do balão permanece igual.</string>
 </resources>

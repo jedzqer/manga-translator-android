@@ -1,7 +1,13 @@
 package com.manga.translate.settings.ui
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.DocumentsContract
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,8 +16,11 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.manga.translate.R
 import com.manga.translate.background.TranslationKeepAliveService
@@ -77,6 +86,25 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
     /** Runs the current locked backup export/import; canceled by the lock dialog. */
     private var backupOperationJob: Job? = null
     private var pendingBackupOptions = AppBackupManager.ExportOptions()
+
+    private val localNetworkPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted && isAdded) {
+            AlertDialog.Builder(requireContext())
+                .setMessage(R.string.local_network_permission_description)
+                .setPositiveButton(R.string.local_network_open_settings) { _, _ ->
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:${requireContext().packageName}")
+                        )
+                    )
+                }
+                .setNegativeButton(R.string.resource_cancel, null)
+                .show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -287,6 +315,26 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         reloadSettingsUiFromStore()
+        binding.apiUrlInput.doAfterTextChanged { updateLocalNetworkPermissionVisibility() }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                settingsStore.settingsVersion.collect { updateLocalNetworkPermissionVisibility() }
+            }
+        }
+        binding.localNetworkPermissionButton.setOnClickListener {
+            if (Build.VERSION.SDK_INT >= 37) {
+                val granted = ContextCompat.checkSelfPermission(
+                    requireContext(), Manifest.permission.ACCESS_LOCAL_NETWORK
+                ) == PackageManager.PERMISSION_GRANTED
+                if (granted) {
+                    Toast.makeText(
+                        requireContext(), R.string.local_network_permission_granted, Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    localNetworkPermission.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+                }
+            }
+        }
         binding.modelIoLoggingSwitch.setOnCheckedChangeListener { _, isChecked ->
             settingsStore.saveModelIoLogging(isChecked)
             AppLogger.log(
@@ -514,6 +562,14 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
         )
     }
 
+    private fun updateLocalNetworkPermissionVisibility() {
+        val usesHttp = binding.apiUrlInput.text.toString().trim().startsWith("http://", ignoreCase = true) ||
+            settingsStore.loadOcrApiSettings().apiUrl.trim().startsWith("http://", ignoreCase = true) ||
+            settingsStore.loadFloatingTranslateApiSettings().apiUrl.trim().startsWith("http://", ignoreCase = true)
+        binding.localNetworkPermissionButton.visibility =
+            if (Build.VERSION.SDK_INT >= 37 && usesHttp) View.VISIBLE else View.GONE
+    }
+
     internal fun reloadSettingsUiFromStore() {
         val settings = settingsStore.load()
         binding.apiUrlInput.setText(settings.apiUrl)
@@ -537,6 +593,7 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
         updateBubbleFontSettingsButton()
         updateNormalBubbleRenderSettingsButton()
         updateFloatingBubbleRenderSettingsButton()
+        updateLocalNetworkPermissionVisibility()
     }
 
     internal fun updateNormalBubbleRenderSettingsButton() {

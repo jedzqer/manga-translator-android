@@ -251,6 +251,15 @@ internal fun shouldDiscardReplayTileTopFragments(
     return overlapsPreviousTile && tileBottom < pageHeight
 }
 
+/** Both candidate and retained detections must use page coordinates. */
+internal fun isReplayDetectionCovered(
+    candidate: BubbleDetection,
+    retainedDetections: List<BubbleDetection>
+): Boolean = retainedDetections.any { retained ->
+    // Mere overlap is insufficient: the replay may have recovered missing geometry.
+    retained.classId == candidate.classId && rectContains(retained.rect, candidate.rect)
+}
+
 internal fun adaptiveNextTileTop(
     tile: DetectionTile,
     pageHeight: Int,
@@ -855,6 +864,20 @@ internal class PageRegionDetector(
                         } else {
                             emptyList<BubbleDetection>() to detections
                         }
+                        // A top-edge detection may be the very target discarded at the
+                        // preceding bottom edge. Only remove fragments actually covered
+                        // by a retained detection; leave uncertain matches to page dedup.
+                        // Keep top candidates out of replay triggers to preserve progress.
+                        val retainedDetections = bubbleDetections.map { it.detection }
+                        val recoveredTopCandidates = remapTileBubbleDetectionsToPage(
+                            detections = topEdgeFragments,
+                            tileBitmapWidth = detectionBitmap.width,
+                            tileBitmapHeight = detectionBitmap.height,
+                            tile = tile,
+                            tileIndex = tileIndex,
+                            pageWidth = pageWidth,
+                            pageHeight = pageHeight
+                        ).filterNot { isReplayDetectionCovered(it.detection, retainedDetections) }
                         val (bottomEdgeDetections, completeDetections) =
                             replayCandidates.partition { detection ->
                                 isBubbleDetectionAtInternalTileBottom(
@@ -877,13 +900,15 @@ internal class PageRegionDetector(
                                     "from y=$nextTileTop"
                             )
                         }
-                        if (topEdgeFragments.isNotEmpty()) {
+                        val discardedTopCount = topEdgeFragments.size - recoveredTopCandidates.size
+                        if (discardedTopCount > 0) {
                             AppLogger.log(
                                 tileTag,
-                                "Dropped ${topEdgeFragments.size} top-edge bubble fragment(s) " +
-                                    "already covered by the previous tile"
+                                "Dropped $discardedTopCount top-edge bubble fragment(s) " +
+                                    "already covered by retained detections"
                             )
                         }
+                        bubbleDetections.addAll(recoveredTopCandidates)
                         bubbleDetections.addAll(
                             remapTileBubbleDetectionsToPage(
                                 detections = completeDetections,
@@ -1637,13 +1662,29 @@ private fun shouldTreatVerticallySplitTileRectsAsSameBubble(a: RectF, b: RectF):
 
 /** Model text outputs are blocks, never reusable OCR line boxes. */
 internal fun dualTextBlocks(rects: List<RectF>, width: Int, height: Int): List<TextBlock> =
-    mergeOverlappingTextRects(rects).map { rect ->
+    mergeRelatedTextRects(rects, min(width, height).coerceAtLeast(0).toFloat()).map { rect ->
         TextBlock(RectF(rect), emptyList(), TextLineOrientation.AMBIGUOUS,
             normalizedRectContour(rect, width, height))
     }
 
 /** Merge connected original boxes, without using empty space in a union to join other text. */
-private fun mergeOverlappingTextRects(rects: List<RectF>): List<RectF> {
+private fun mergeRelatedTextRects(rects: List<RectF>, shortEdge: Float): List<RectF> {
+    // Measure neighbors on original boxes, before any union can change distances.
+    // A wide row must not skip a nearer continuation and also join another column.
+    val nearestAbove = FloatArray(rects.size) { Float.POSITIVE_INFINITY }
+    val nearestBelow = FloatArray(rects.size) { Float.POSITIVE_INFINITY }
+    for (first in rects.indices) {
+        for (second in first + 1 until rects.size) {
+            val gap = horizontalTextRowGap(rects[first], rects[second], shortEdge) ?: continue
+            val (upper, lower) = if (rects[first].top < rects[second].top) {
+                first to second
+            } else {
+                second to first
+            }
+            nearestBelow[upper] = min(nearestBelow[upper], gap)
+            nearestAbove[lower] = min(nearestAbove[lower], gap)
+        }
+    }
     val visited = BooleanArray(rects.size)
     val merged = ArrayList<RectF>(rects.size)
     for (start in rects.indices) {
@@ -1653,14 +1694,24 @@ private fun mergeOverlappingTextRects(rects: List<RectF>): List<RectF> {
         queue.add(start)
         visited[start] = true
         while (queue.isNotEmpty()) {
-            val current = rects[queue.removeFirst()]
+            val currentIndex = queue.removeFirst()
+            val current = rects[currentIndex]
             for (next in rects.indices) {
                 if (visited[next]) continue
                 val candidate = rects[next]
                 val minArea = min(rectAreaValue(current), rectAreaValue(candidate))
-                if (minArea <= 0f ||
-                    rectIntersectionArea(current, candidate) / minArea < TEXT_BLOCK_MERGE_OVERLAP_RATIO
-                ) continue
+                if (minArea <= 0f) continue
+                val overlaps = rectIntersectionArea(current, candidate) / minArea >=
+                    TEXT_BLOCK_MERGE_OVERLAP_RATIO
+                if (!overlaps) {
+                    val gap = horizontalTextRowGap(current, candidate, shortEdge) ?: continue
+                    val (upper, lower) = if (current.top < candidate.top) {
+                        currentIndex to next
+                    } else {
+                        next to currentIndex
+                    }
+                    if (gap > nearestBelow[upper] || gap > nearestAbove[lower]) continue
+                }
                 visited[next] = true
                 queue.add(next)
                 union.union(candidate)
@@ -1672,3 +1723,37 @@ private fun mergeOverlappingTextRects(rects: List<RectF>): List<RectF> {
 }
 
 private const val TEXT_BLOCK_MERGE_OVERLAP_RATIO = 0.3f
+
+/**
+ * Return the eligible edge gap in short-edge units. Both spacing and alignment use
+ * the smaller block height capped in those same units: a tall block may contain
+ * several lines, so its full height is not a reliable font-size estimate.
+ * The long canvas edge and the relative lengths of the two rows are irrelevant.
+ */
+private fun horizontalTextRowGap(a: RectF, b: RectF, shortEdge: Float): Float? {
+    if (shortEdge <= 0f) return null
+    val minHeight = min(a.height(), b.height())
+    val minWidth = min(a.width(), b.width())
+    if (minHeight <= 0f || minWidth <= 0f) return null
+    if (a.width() < a.height() * TEXT_ROW_MIN_ASPECT ||
+        b.width() < b.height() * TEXT_ROW_MIN_ASPECT
+    ) return null
+    if (minHeight / max(a.height(), b.height()) < TEXT_ROW_MIN_HEIGHT_RATIO) return null
+    val localScale = min(minHeight / shortEdge, TEXT_ROW_MAX_SHORT_EDGE_HEIGHT_RATIO)
+    val gap = (max(a.top, b.top) - min(a.bottom, b.bottom)) / shortEdge
+    // Overlapping blocks use the existing overlap rule, not paragraph heuristics.
+    if (gap < 0f || gap > localScale * TEXT_ROW_MAX_GAP_RATIO) return null
+    val overlapX = min(a.right, b.right) - max(a.left, b.left)
+    if (overlapX < minWidth * TEXT_ROW_MIN_OVERLAP_RATIO) return null
+    val alignment = minOf(abs(a.centerX() - b.centerX()), abs(a.left - b.left), abs(a.right - b.right)) / shortEdge
+    if (alignment > localScale * TEXT_ROW_ALIGNMENT_RATIO) return null
+    return gap
+}
+
+private const val TEXT_ROW_MIN_ASPECT = 1.8f
+private const val TEXT_ROW_MIN_HEIGHT_RATIO = 0.65f
+private const val TEXT_ROW_MAX_GAP_RATIO = 0.8f
+// Shared local-scale cap: gap <= 8% and alignment drift <= 5% of the short edge.
+private const val TEXT_ROW_MAX_SHORT_EDGE_HEIGHT_RATIO = 0.1f
+private const val TEXT_ROW_MIN_OVERLAP_RATIO = 0.8f
+private const val TEXT_ROW_ALIGNMENT_RATIO = 0.5f

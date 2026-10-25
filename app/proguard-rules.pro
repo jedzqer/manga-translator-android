@@ -15,6 +15,12 @@
 -keep class com.google.ai.edge.litert.TensorBufferRequirements { *; }
 -keep class com.google.ai.edge.litert.LiteRtException { *; }
 
+# WorkManager (pulled in by LiteRT -> Play asset-delivery) starts through
+# androidx.startup and Room creates WorkDatabase_Impl via its no-arg constructor
+# reflectively. Room 2.5's consumer rule keeps only the class, so R8 full mode
+# strips the constructor and the app crashes before Application.onCreate.
+-keep class * extends androidx.room.RoomDatabase { <init>(); }
+
 # PDFBox's optional JPEG2000 decoder is not bundled. JPXFilter checks for it
 # with Class.forName and throws MissingImageReaderException when absent;
 # unsupported PDF images use the existing PdfRenderer fallback.

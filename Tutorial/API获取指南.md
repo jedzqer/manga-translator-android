@@ -77,7 +77,7 @@ https://platform.deepseek.com/api_keys
 
 推荐模型：
 
-* `deepseek-v4-flash`
+* `deepseek-flash`
 
 大致流程如下：
 
@@ -85,9 +85,9 @@ https://platform.deepseek.com/api_keys
 2. 进入 API Key 页面创建新的 Key
 3. 复制生成好的 API Key
 4. 回到软件设置页，选择「OpenAI 兼容」，填写 API 地址、API Key 和模型名称
-5. 模型名称优先填写 `deepseek-v4-flash`
+5. 模型名称优先填写 `deepseek-flash`
 
 填写建议：
 
 * API 地址可填写 `https://api.deepseek.com/v1`
-* 模型名称推荐填写 `deepseek-v4-flash`
+* 模型名称推荐填写 `deepseek-flash`

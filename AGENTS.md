@@ -13,7 +13,7 @@
 - Android 应用按业务领域组织为 `library`、`reader`、`translation`、`detection`、`ocr`、`network`、`rendering`、`floating`、`background`、`settings`、`storage` 等源码模块，共享依赖由 `di/AppContainer.kt` 装配。
 - Gradle 构建模块以 `settings.gradle.kts` 的实际声明为准；当前注册的构建模块为 `:app`。业务源码模块与 Gradle 子项目须明确区分，不得用构建模块数量概括业务架构。
 - JDK 17；Java/Kotlin JVM target 17。
-- `compileSdk` / `targetSdk` 36，`minSdk` 24；仅打包 `arm64-v8a`。
+- `compileSdk` / `targetSdk` 37，`minSdk` 24；仅打包 `arm64-v8a`。
 - Kotlin、AGP 和依赖版本以 `build.gradle.kts`、`app/build.gradle.kts` 为唯一来源。
 - 依赖仓库统一配置在 `settings.gradle.kts`，不得在根或模块构建脚本重复声明。
 - Kotlin 源码根目录：`app/src/main/java/com/manga/translate/`，其下按业务领域分包；单元测试位于 `app/src/test/java/com/manga/translate/`。
@@ -135,6 +135,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - 普通页优先使用 `ARGB_8888`；长图或超高分辨率页面通过 `ReadingRegionImageView` 分块解码，并以源图分辨率作为布局坐标。
 - 普通气泡设置作用于阅读页、条漫页和导出；悬浮窗气泡设置只作用于 overlay。两套大小、透明度、形状和文字密度设置不得串用。
 - 全局字体由 `BubbleFontResolver` 管理，普通渲染与悬浮窗共用；上传字体持久化在应用私有 `custom_fonts` 目录。
+- 普通气泡、游离文字气泡和悬浮窗气泡的文字填充比例独立保存，范围为 20%–100%，默认 100%。比例缩放自动适配后的字号，不改变气泡几何；横排、竖排、阅读与导出共用该规则，手动框使用普通气泡比例。
 - `BubbleTextScaling` 和竖排布局是共享算法。修改排版、路径缩放或密度规则时，必须检查 `BubbleRenderer`、`FloatingTranslationView`、`FloatingDetectionOverlayView` 以及对应测试。
 - `BubbleSource.TEXT_DETECTOR` 才是普通模式中的游离文字框；用户手动框继续按普通气泡参数处理。
 
@@ -154,6 +155,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 - 文字、图片、OCR 和模型列表请求统一由 `LlmClient` 通过 OkHttp 执行；超时、取消、请求头和重试策略不得散落到 Coordinator。
 - 主 AI 请求的连接超时独立于页数；按含文字页数扩展的单次超时必须封顶，网络重试、模型响应重试及退避共享有上限的总预算。预算耗尽不得重新获取预算继续重试，取消必须覆盖响应体读取；OCR 保留独立超时设置。
+- Android 17（API 37）及以上连接局域网 AI / OCR 服务需要 `ACCESS_LOCAL_NETWORK` 运行时权限，通过设置页授权入口申请；HTTP 地址兼容性由 `res/xml/network_security_config.xml` 管理。
 - OpenAI 兼容地址：已以 `/chat/completions` 结尾则原样使用，否则直接追加该路径；不得自动插入 `/v1`。
 - OpenAI Responses 地址同理追加 `/responses`；两种 OpenAI 格式的模型列表地址追加 `/models`。
 - `OPENAI_RESPONSES` 用 `model`、`input` 和可选 `instructions`，响应优先读 `output_text`，再解析 `output[].content[].text`。

@@ -64,9 +64,9 @@
 
 ### 环境要求
 - JDK 17.0.17+
-- Kotlin 2.0.0+
-- Gradle 8.11.1+
-- Android SDK: platform 36, build-tools 36.0.0
+- Kotlin 2.3.0
+- Gradle 9.3.1 (Wrapper)
+- Android SDK: platform 37.0 (Android 17), build-tools 37.0.0
 
 ### 构建命令
 ```bash

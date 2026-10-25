@@ -15,6 +15,36 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BubbleTextScalingTest {
     @Test
+    fun fillPercentScalesHorizontalAndVerticalFontsWithoutOverflow() {
+        val paint = TextPaint()
+        val text = "春夏秋冬 Hello world\n\n第二段"
+        val horizontal = { content: String, width: Int, size: Float ->
+            paint.textSize = size
+            StaticLayout.Builder.obtain(content, 0, content.length, paint, width)
+                .setIncludePad(false).build()
+        }
+        val vertical = { size: Float ->
+            com.manga.translate.rendering.VerticalTextLayoutCalculator.build(paint, text, 160, 240, size)
+        }
+        val defaultHorizontal = BubbleTextScaling.findAutoHorizontalTextSize(
+            text, 160, 240, horizontal, BubbleTextScaling::layoutFits)
+        val defaultVertical = BubbleTextScaling.findAutoVerticalTextSize(160, 240, buildLayout = vertical)
+        for (percent in listOf(-10, 20, 50, 80, 100, 150)) {
+            val ratio = percent.coerceIn(20, 100) / 100f
+            val h = BubbleTextScaling.findAutoHorizontalTextSize(
+                text, 160, 240, horizontal, BubbleTextScaling::layoutFits, percent)
+            val v = BubbleTextScaling.findAutoVerticalTextSize(160, 240, percent, vertical)
+            assertEquals(defaultHorizontal * ratio, h, 0.01f)
+            assertEquals(defaultVertical * ratio, v, 0.01f)
+            val layout = horizontal(text, 160, h)
+            assertTrue(layout.height <= 240)
+            // Reflow can leave a trailing space beyond the line; visible glyphs must fit.
+            for (line in 0 until layout.lineCount) assertTrue(layout.getLineMax(line) <= 160.5f)
+            assertTrue(vertical(v).fits)
+        }
+    }
+
+    @Test
     fun sourceLineWrappingReflowsButParagraphsRemain() {
         assertEquals("你好世界\n\n第二段", BubbleTextScaling.prepareTextForLayout("你好\n世界\n\n第二段"))
         assertEquals("Hello world", BubbleTextScaling.prepareTextForLayout("Hello\r\nworld"))
@@ -37,6 +67,66 @@ class BubbleTextScalingTest {
         val after = size(reflowed)
         assertTrue("before=$before after=$after", after > before * 1.2f)
         assertTrue(BubbleTextScaling.layoutFits(build(reflowed, 160, after), 160, 80))
+    }
+
+    @Test
+    fun horizontalAutoSizePrefersFewerLinesWithoutShrinkingBelowEightyPercent() {
+        val paint = TextPaint()
+        val text = "MMMMMMMM"
+        val referenceSize = 30f
+        paint.textSize = referenceSize
+        val width = (paint.measureText(text) * 0.9f).toInt()
+        val height = (paint.fontMetrics.run { descent - ascent } * 2.1f).toInt()
+        val build = { content: String, availableWidth: Int, size: Float ->
+            paint.textSize = size
+            StaticLayout.Builder.obtain(content, 0, content.length, paint, availableWidth)
+                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .setIncludePad(false)
+                .setLineSpacing(0f, 1f)
+                .build()
+        }
+        val largest = BubbleTextScaling.findLargestFittingTextSize(width, height) { size ->
+            BubbleTextScaling.layoutFits(build(text, width, size), width, height)
+        }
+        val preferred = BubbleTextScaling.findAutoHorizontalTextSize(
+            text = text,
+            maxWidth = width,
+            maxHeight = height,
+            buildLayout = build,
+            layoutFits = BubbleTextScaling::layoutFits
+        )
+
+        assertTrue(build(text, width, largest).lineCount > build(text, width, preferred).lineCount)
+        assertTrue("largest=$largest preferred=$preferred", preferred >= largest * 0.8f)
+        assertTrue(BubbleTextScaling.layoutFits(build(text, width, preferred), width, height))
+    }
+
+    @Test
+    fun horizontalAutoSizePreservesParagraphBreaksWhenTheySetTheLineCount() {
+        val paint = TextPaint()
+        val text = BubbleTextScaling.prepareTextForLayout("AB\n\nCD")
+        val build = { content: String, width: Int, size: Float ->
+            paint.textSize = size
+            StaticLayout.Builder.obtain(content, 0, content.length, paint, width)
+                .setIncludePad(false)
+                .build()
+        }
+        val width = 240
+        val height = 240
+        val largest = BubbleTextScaling.findLargestFittingTextSize(width, height) { size ->
+            BubbleTextScaling.layoutFits(build(text, width, size), width, height)
+        }
+        val preferred = BubbleTextScaling.findAutoHorizontalTextSize(
+            text = text,
+            maxWidth = width,
+            maxHeight = height,
+            buildLayout = build,
+            layoutFits = BubbleTextScaling::layoutFits
+        )
+
+        assertEquals("AB\n\nCD", text)
+        assertEquals(3, build(text, width, largest).lineCount)
+        assertEquals(largest, preferred, 0f)
     }
 
     @Test

@@ -651,4 +651,13 @@
     </string-array>
     <string name="floating_only_bubbles_on">Только облачка: вкл.</string>
     <string name="floating_only_bubbles_off">Только облачка: выкл.</string>
+    <string name="local_network_permission_button">Разрешить доступ к ИИ / OCR в локальной сети</string>
+    <string name="local_network_permission_description">Android 17 требует разрешение на доступ к локальной сети для подключения к локальным сервисам ИИ или OCR. Разрешение «Устройства поблизости» можно выдать в настройках приложения.</string>
+    <string name="local_network_open_settings">Открыть настройки приложения</string>
+    <string name="local_network_permission_granted">Доступ к локальной сети разрешён</string>
+    <string name="normal_bubble_text_fill_percent_label" formatted="false">Заполнение текстом обычных облачков</string>
+    <string name="normal_bubble_free_text_fill_percent_label" formatted="false">Заполнение текстом свободных областей</string>
+    <string name="floating_bubble_text_fill_percent_label" formatted="false">Заполнение текстом плавающих облачков</string>
+    <string name="bubble_text_fill_percent_range" formatted="false">20–100 (%)</string>
+    <string name="bubble_text_fill_percent_note" formatted="false">100% использует автоматически подобранный размер шрифта. Меньшие значения уменьшают текст; 20% — пятая часть этого размера. Размер облачка не меняется.</string>
 </resources>

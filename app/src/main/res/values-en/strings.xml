@@ -650,4 +650,13 @@ Communication and feedback group: %2$s</string>
     </string-array>
     <string name="floating_only_bubbles_on">Bubbles only: On</string>
     <string name="floating_only_bubbles_off">Bubbles only: Off</string>
+    <string name="local_network_permission_button">Allow access to LAN AI / OCR services</string>
+    <string name="local_network_permission_description">Android 17 requires local network permission to connect to local AI or OCR services. You can grant Nearby devices permission in app settings.</string>
+    <string name="local_network_open_settings">Open app settings</string>
+    <string name="local_network_permission_granted">Local network access is allowed</string>
+    <string name="normal_bubble_text_fill_percent_label" formatted="false">Normal bubble text fill</string>
+    <string name="normal_bubble_free_text_fill_percent_label" formatted="false">Free text bubble text fill</string>
+    <string name="floating_bubble_text_fill_percent_label" formatted="false">Floating bubble text fill</string>
+    <string name="bubble_text_fill_percent_range" formatted="false">20–100 (%)</string>
+    <string name="bubble_text_fill_percent_note" formatted="false">100% uses the automatically fitted font size. Lower values make text smaller; 20% uses one fifth of that size. Bubble size stays the same.</string>
 </resources>

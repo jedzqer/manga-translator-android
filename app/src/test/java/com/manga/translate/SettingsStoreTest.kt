@@ -53,6 +53,34 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `bubble text fill defaults persists independently and clamps invalid values`() {
+        val store = SettingsStore(context)
+        val normal = store.loadNormalBubbleRenderSettings()
+        val floating = store.loadFloatingBubbleRenderSettings()
+        assertEquals(100, normal.textFillPercent)
+        assertEquals(100, normal.freeBubbleTextFillPercent)
+        assertEquals(100, floating.textFillPercent)
+        store.saveNormalBubbleRenderSettings(normal.copy(textFillPercent = 70, freeBubbleTextFillPercent = 40))
+        store.saveFloatingBubbleRenderSettings(floating.copy(textFillPercent = 20))
+        val reloaded = SettingsStore(context)
+        assertEquals(70, reloaded.loadNormalBubbleRenderSettings().textFillPercent)
+        assertEquals(40, reloaded.loadNormalBubbleRenderSettings().freeBubbleTextFillPercent)
+        assertEquals(20, reloaded.loadFloatingBubbleRenderSettings().textFillPercent)
+        store.saveNormalBubbleRenderSettings(normal.copy(textFillPercent = 0, freeBubbleTextFillPercent = 101))
+        store.saveFloatingBubbleRenderSettings(floating.copy(textFillPercent = -1))
+        assertEquals(20, store.loadNormalBubbleRenderSettings().textFillPercent)
+        assertEquals(100, store.loadNormalBubbleRenderSettings().freeBubbleTextFillPercent)
+        assertEquals(20, store.loadFloatingBubbleRenderSettings().textFillPercent)
+        context.getSharedPreferences("manga_translate_settings", Context.MODE_PRIVATE).edit()
+            .putInt(SettingsStore.KEY_NORMAL_BUBBLE_TEXT_FILL_PERCENT, 999)
+            .putInt(SettingsStore.KEY_NORMAL_FREE_BUBBLE_TEXT_FILL_PERCENT, -1)
+            .putInt(SettingsStore.KEY_FLOATING_BUBBLE_TEXT_FILL_PERCENT, 999).commit()
+        assertEquals(100, store.loadNormalBubbleRenderSettings().textFillPercent)
+        assertEquals(20, store.loadNormalBubbleRenderSettings().freeBubbleTextFillPercent)
+        assertEquals(100, store.loadFloatingBubbleRenderSettings().textFillPercent)
+    }
+
+    @Test
     fun `OCR supplement and manual API preferences default off and persist independently`() {
         val store = SettingsStore(context)
         val defaults = store.loadOcrApiSettings()

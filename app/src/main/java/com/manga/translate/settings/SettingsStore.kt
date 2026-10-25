@@ -180,7 +180,9 @@ data class NormalBubbleRenderSettings(
     val font: BubbleFont = BubbleFont.SYSTEM_DEFAULT,
     val customFontUrl: String = "",
     val customFontFileName: String = "",
-    val isBold: Boolean = false
+    val isBold: Boolean = false,
+    val textFillPercent: Int = 100,
+    val freeBubbleTextFillPercent: Int = 100
 )
 
 data class BubbleFontSettings(
@@ -209,7 +211,8 @@ data class FloatingBubbleRenderSettings(
     val font: BubbleFont = BubbleFont.SYSTEM_DEFAULT,
     val customFontUrl: String = "",
     val customFontFileName: String = "",
-    val isBold: Boolean = false
+    val isBold: Boolean = false,
+    val textFillPercent: Int = 100
 )
 
 data class CustomRequestParameter(
@@ -531,6 +534,9 @@ class SettingsStore(context: Context) {
         internal const val KEY_LOCAL_OCR_CONCURRENCY = "local_ocr_concurrency"
         internal const val KEY_OCR_API_FORMAT = "ocr_api_format"
         internal const val KEY_HORIZONTAL_TEXT = "horizontal_text_layout"
+        internal const val KEY_NORMAL_BUBBLE_TEXT_FILL_PERCENT = "normal_bubble_text_fill_percent"
+        internal const val KEY_NORMAL_FREE_BUBBLE_TEXT_FILL_PERCENT = "normal_free_bubble_text_fill_percent"
+        internal const val KEY_FLOATING_BUBBLE_TEXT_FILL_PERCENT = "floating_bubble_text_fill_percent"
         // Keep the former outward-only preferences intact; they cannot represent an inset.
         internal const val KEY_NORMAL_BUBBLE_SHRINK_PERCENT = "normal_bubble_inset_percent"
         // Retain the stored horizontal adjustment, whose positive values already expanded.

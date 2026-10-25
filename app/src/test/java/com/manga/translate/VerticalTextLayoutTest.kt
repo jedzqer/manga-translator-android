@@ -46,7 +46,7 @@ class VerticalTextLayoutTest {
         val build = { size: Float -> VerticalTextLayoutCalculator.build(paint, text, width, height, size) }
         val largest = BubbleTextScaling.findLargestFittingTextSize(width, height) { build(it).fits }
         assertEquals(2, build(largest).columns)
-        val preferred = BubbleTextScaling.findAutoVerticalTextSize(width, height, build)
+        val preferred = BubbleTextScaling.findAutoVerticalTextSize(width, height, buildLayout = build)
         assertEquals(1, build(preferred).columns)
         assertTrue(build(preferred).fits)
         assertTrue(preferred >= largest * 0.8f)
@@ -58,7 +58,7 @@ class VerticalTextLayoutTest {
         val text = "春夏秋冬天地".repeat(10)
         val build = { size: Float -> VerticalTextLayoutCalculator.build(paint, text, 160, 240, size) }
         val largest = BubbleTextScaling.findLargestFittingTextSize(160, 240) { build(it).fits }
-        val preferred = BubbleTextScaling.findAutoVerticalTextSize(160, 240, build)
+        val preferred = BubbleTextScaling.findAutoVerticalTextSize(160, 240, buildLayout = build)
         assertTrue(preferred >= largest * 0.8f)
         assertTrue(build(preferred).columns > 1)
         assertTrue(build(preferred).fits)
@@ -69,7 +69,7 @@ class VerticalTextLayoutTest {
         val paint = TextPaint()
         val text = BubbleTextScaling.prepareTextForLayout("春夏\n\n秋冬")
         val build = { size: Float -> VerticalTextLayoutCalculator.build(paint, text, 160, 240, size) }
-        val size = BubbleTextScaling.findAutoVerticalTextSize(160, 240, build)
+        val size = BubbleTextScaling.findAutoVerticalTextSize(160, 240, buildLayout = build)
         assertEquals(3, build(size).columns)
         assertTrue(build(size).fits)
     }
@@ -84,7 +84,7 @@ class VerticalTextLayoutTest {
         val build = { size: Float -> VerticalTextLayoutCalculator.build(paint, text, width, height, size) }
         val largest = BubbleTextScaling.findLargestFittingTextSize(width, height) { build(it).fits }
         assertEquals(3, build(largest).columns)
-        val preferred = BubbleTextScaling.findAutoVerticalTextSize(width, height, build)
+        val preferred = BubbleTextScaling.findAutoVerticalTextSize(width, height, buildLayout = build)
         assertEquals(2, build(preferred).columns)
         assertTrue(preferred >= largest * 0.8f)
         assertTrue(build(preferred).fits)

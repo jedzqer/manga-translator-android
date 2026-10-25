@@ -469,6 +469,7 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
                     buildLayout = { content, width, ts ->
                         buildLayout(text = content, paint = TextPaint(textPaint).apply { this.textSize = ts }, availableWidth = width)
                     },
+                    textFillPercent = bubbleRenderSettings.textFillPercent,
                     layoutFits = BubbleTextScaling::layoutFits
                 )
                 val textLayout = buildLayout(
@@ -678,7 +679,7 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         maxWidth: Int,
         maxHeight: Int
     ): Float {
-        return BubbleTextScaling.findAutoVerticalTextSize(maxWidth, maxHeight) { textSize ->
+        return BubbleTextScaling.findAutoVerticalTextSize(maxWidth, maxHeight, bubbleRenderSettings.textFillPercent) { textSize ->
             buildVerticalLayout(text, maxWidth, maxHeight, textSize)
         }
     }

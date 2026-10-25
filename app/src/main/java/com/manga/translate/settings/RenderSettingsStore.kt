@@ -46,6 +46,12 @@ internal class RenderSettingsStore(
     fun loadNormalBubbleRenderSettings(): NormalBubbleRenderSettings {
         val fontSettings = loadBubbleFontSettings()
         return NormalBubbleRenderSettings(
+            textFillPercent = storage.prefs.getInt(
+                SettingsStore.KEY_NORMAL_BUBBLE_TEXT_FILL_PERCENT, 100
+            ).coerceIn(20, 100),
+            freeBubbleTextFillPercent = storage.prefs.getInt(
+                SettingsStore.KEY_NORMAL_FREE_BUBBLE_TEXT_FILL_PERCENT, 100
+            ).coerceIn(20, 100),
             shrinkPercent = storage.prefs.getInt(
                 SettingsStore.KEY_NORMAL_BUBBLE_SHRINK_PERCENT,
                 SettingsStore.DEFAULT_NORMAL_BUBBLE_SHRINK_PERCENT
@@ -87,6 +93,8 @@ internal class RenderSettingsStore(
     fun saveNormalBubbleRenderSettings(settings: NormalBubbleRenderSettings) {
         storage.editSettings(
             setOf(
+                SettingsStore.KEY_NORMAL_BUBBLE_TEXT_FILL_PERCENT,
+                SettingsStore.KEY_NORMAL_FREE_BUBBLE_TEXT_FILL_PERCENT,
                 SettingsStore.KEY_NORMAL_BUBBLE_SHRINK_PERCENT,
                 SettingsStore.KEY_TRANSLATION_BUBBLE_OPACITY_PERCENT,
                 SettingsStore.KEY_NORMAL_FREE_BUBBLE_SIZE_ADJUST_PERCENT,
@@ -96,6 +104,15 @@ internal class RenderSettingsStore(
                 SettingsStore.KEY_HORIZONTAL_TEXT
             )
         ) {
+            putInt(
+                SettingsStore.KEY_NORMAL_BUBBLE_TEXT_FILL_PERCENT,
+                settings.textFillPercent.coerceIn(20, 100)
+            )
+            putInt(
+                SettingsStore.KEY_NORMAL_FREE_BUBBLE_TEXT_FILL_PERCENT,
+                settings.freeBubbleTextFillPercent.coerceIn(20, 100)
+            )
+
             putInt(
                 SettingsStore.KEY_NORMAL_BUBBLE_SHRINK_PERCENT,
                 settings.shrinkPercent.coerceIn(
@@ -139,6 +156,9 @@ internal class RenderSettingsStore(
     fun loadFloatingBubbleRenderSettings(): FloatingBubbleRenderSettings {
         val fontSettings = loadBubbleFontSettings()
         return FloatingBubbleRenderSettings(
+            textFillPercent = storage.prefs.getInt(
+                SettingsStore.KEY_FLOATING_BUBBLE_TEXT_FILL_PERCENT, 100
+            ).coerceIn(20, 100),
             sizeAdjustPercent = storage.prefs.getInt(
                 SettingsStore.KEY_FLOATING_BUBBLE_SIZE_ADJUST_PERCENT,
                 SettingsStore.DEFAULT_FLOATING_BUBBLE_SIZE_ADJUST_PERCENT
@@ -171,6 +191,7 @@ internal class RenderSettingsStore(
     fun saveFloatingBubbleRenderSettings(settings: FloatingBubbleRenderSettings) {
         storage.editSettings(
             setOf(
+                SettingsStore.KEY_FLOATING_BUBBLE_TEXT_FILL_PERCENT,
                 SettingsStore.KEY_FLOATING_BUBBLE_SIZE_ADJUST_PERCENT,
                 SettingsStore.KEY_FLOATING_BUBBLE_OPACITY_PERCENT,
                 SettingsStore.KEY_FLOATING_BUBBLE_SHAPE,
@@ -178,6 +199,11 @@ internal class RenderSettingsStore(
                 SettingsStore.KEY_FLOATING_BUBBLE_AUTO_ADAPT_COLOR
             )
         ) {
+            putInt(
+                SettingsStore.KEY_FLOATING_BUBBLE_TEXT_FILL_PERCENT,
+                settings.textFillPercent.coerceIn(20, 100)
+            )
+
             putInt(
                 SettingsStore.KEY_FLOATING_BUBBLE_SIZE_ADJUST_PERCENT,
                 settings.sizeAdjustPercent.coerceIn(

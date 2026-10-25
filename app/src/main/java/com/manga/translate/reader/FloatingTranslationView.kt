@@ -1097,7 +1097,9 @@ class FloatingTranslationView @JvmOverloads constructor(
         drawClippedPath(canvas, drawPath, pageClip)
         if (textRect.width() <= 0f || textRect.height() <= 0f) return
         drawClippedContent(canvas, pageClip) {
-            drawTextInRect(this, bubble.text, textRect, startFromTop)
+            val textFillPercent = if (bubble.source == BubbleSource.TEXT_DETECTOR)
+                bubbleRenderSettings.freeBubbleTextFillPercent else bubbleRenderSettings.textFillPercent
+            drawTextInRect(this, bubble.text, textRect, textFillPercent, startFromTop)
         }
     }
 
@@ -1421,6 +1423,7 @@ class FloatingTranslationView @JvmOverloads constructor(
         canvas: Canvas,
         rawText: String,
         rect: RectF,
+        textFillPercent: Int,
         startFromTop: Boolean
     ) {
         val text = BubbleTextScaling.prepareTextForLayout(rawText)
@@ -1430,11 +1433,12 @@ class FloatingTranslationView @JvmOverloads constructor(
                     this,
                     VerticalTextSymbolConverter.convert(text),
                     rect,
+                    textFillPercent,
                     startFromTop
                 )
             }
         } else {
-            val textSize = resolveHorizontalTextSize(rect, text)
+            val textSize = resolveHorizontalTextSize(rect, text, textFillPercent)
             val layout = buildLayout(text, rect.width().toInt().coerceAtLeast(1), textSize)
             val left = BubbleTextPlacement.horizontalTextLeft(rect, layout.width)
             val top = BubbleTextPlacement.horizontalTextTop(rect, layout.height, startFromTop)
@@ -1446,12 +1450,13 @@ class FloatingTranslationView @JvmOverloads constructor(
         }
     }
 
-    private fun resolveHorizontalTextSize(rect: RectF, text: String): Float {
+    private fun resolveHorizontalTextSize(rect: RectF, text: String, textFillPercent: Int): Float {
         return BubbleTextScaling.findAutoHorizontalTextSize(
             text = text,
             maxWidth = rect.width().toInt().coerceAtLeast(1),
             maxHeight = rect.height().toInt().coerceAtLeast(1),
             buildLayout = ::buildLayout,
+            textFillPercent = textFillPercent,
             layoutFits = BubbleTextScaling::layoutFits
         )
     }
@@ -1508,11 +1513,12 @@ class FloatingTranslationView @JvmOverloads constructor(
         canvas: Canvas,
         text: String,
         rect: RectF,
+        textFillPercent: Int,
         startFromTop: Boolean
     ) {
         val maxWidth = rect.width().toInt().coerceAtLeast(1)
         val maxHeight = rect.height().toInt().coerceAtLeast(1)
-        val textSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight)
+        val textSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight, textFillPercent)
         val layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
         VerticalTextRenderer.draw(canvas, text, rect, textPaint, layout, startFromTop)
     }
@@ -1520,9 +1526,10 @@ class FloatingTranslationView @JvmOverloads constructor(
     private fun findDefaultVerticalTextSize(
         text: String,
         maxWidth: Int,
-        maxHeight: Int
+        maxHeight: Int,
+        textFillPercent: Int
     ): Float {
-        return BubbleTextScaling.findAutoVerticalTextSize(maxWidth, maxHeight) { textSize ->
+        return BubbleTextScaling.findAutoVerticalTextSize(maxWidth, maxHeight, textFillPercent) { textSize ->
             buildVerticalLayout(text, maxWidth, maxHeight, textSize)
         }
     }

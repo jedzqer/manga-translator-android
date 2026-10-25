@@ -44,7 +44,7 @@ DeepSeek provides an OpenAI-compatible API.
 | API Format | **OpenAI compatible** |
 | API URL | `https://api.deepseek.com` |
 | API Key | The key created in DeepSeek Platform |
-| Model name | `deepseek-v4-flash` for a lower-cost starting point, or `deepseek-v4-pro` for a stronger model |
+| Model name | `deepseek-flash` |
 
 The app sends requests to the OpenAI-compatible chat-completions endpoint. You can select **Get Model List** to see models exposed by your account, and should use the exact model ID that DeepSeek provides.
 

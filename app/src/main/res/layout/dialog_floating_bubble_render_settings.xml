@@ -48,6 +48,29 @@
                 android:inputType="number" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:labelFor="@id/floating_bubble_text_fill_percent_input"
+            android:text="@string/floating_bubble_text_fill_percent_label"
+            android:textColor="?attr/dialogTextColor" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MangaTranslator.Input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/bubble_text_fill_percent_range">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/floating_bubble_text_fill_percent_input"
+                style="@style/Widget.MangaTranslator.EditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:maxLength="3" />
+        </com.google.android.material.textfield.TextInputLayout>
+
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/floating_bubble_auto_adapt_color_switch"
             android:layout_width="match_parent"
@@ -73,6 +96,14 @@
                 android:importantForAutofill="no"
                 android:inputType="none" />
         </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/bubble_text_fill_percent_note"
+            android:textColor="?attr/dialogHintTextColor"
+            android:textSize="13sp" />
 
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/floating_bubble_vertical_text_switch"

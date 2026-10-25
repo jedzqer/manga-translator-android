@@ -50,7 +50,8 @@ For your first run, turn off **Full-text fast translation** and **Vision-languag
 
 **Normal bubbles** are detected speech-bubble regions in the manga; translations are laid out inside their outlines. **Free-text bubbles** are translation boxes for standalone text outside speech bubbles, such as narration or signs; their layout starts from the detected text region. Manually added boxes follow the normal-bubble sizing rules.
 
-- **Adjust text size**: open Settings → **Normal Bubble Settings**. Increase **Bubble inset** to reduce the layout area and automatic font size of normal bubbles. Increase the free-text bubble expansion value to enlarge their layout area and automatic font size. Font size adapts to the amount of text and available space, so adjust gradually and check the result.
+- **Adjust text size**: open Settings → **Normal Bubble Settings** and adjust **Normal bubble text fill** and **Free text bubble text fill** separately. Each accepts **20%–100%**, with a default of **100%**, which uses the font size automatically fitted to the text and available space. Lower the percentage to make text smaller or raise it to make text larger, up to the automatically fitted size. For example, 80% uses 80% of that font size. This changes text size without changing bubble size and applies to horizontal and vertical text in both reading and exports. Manually added boxes use the normal bubble text fill setting.
+- **Keep original bubble borders visible**: use **Bubble inset** to reduce the area covered by the rendered bubble so it does not cover the manga's original bubble border or nearby artwork. Adjust it gradually to suit the covered area. The free-text bubble size setting controls its coverage: positive values expand it and negative values shrink it. Use the corresponding text fill setting to adjust font size.
 - Drag a translated bubble to move it. Changes are saved automatically.
 - Double-tap the page to enter or leave zoom mode. In zoom mode, use the cancel control or the `+` and `-` controls to fine-tune bubbles.
 - To jump to a page, tap its image filename in the library folder.
@@ -96,7 +97,7 @@ Both per-request and usage-based billing can be suitable. Compare the number of 
 ### Reading appearance and translation style
 
 - If full-text fast translation is too slow, turn it off to use concurrent page-by-page translation instead.
-- Adjust normal or free-text bubble opacity under **Normal Bubble Settings** when bubbles cover too much artwork. Floating-window bubbles have separate settings.
+- Adjust normal or free-text bubble opacity under **Normal Bubble Settings** when bubbles cover too much artwork. If a rendered bubble covers the original bubble border, slightly increase **Bubble inset**. Floating-window bubbles have separate settings.
 - Free-text bubbles automatically adapt their text color to the background.
 - Customize the global translation style in Settings, or set a style for a folder. Chapters in a collection share the collection's style. Turning off **Follow Global Style** and leaving the field empty adds no style instruction.
 - Upload a custom font or enable bold text under **Font Settings**. Normal and floating-window bubbles share this font setting.
@@ -148,6 +149,8 @@ Configure a separate API URL, key, and model for floating translation. Leave the
 - **Proofreading mode** enters edit mode after every recognition pass.
 - **Auto-clear bubbles** clears bubbles automatically when the page changes.
 - **Floating-button gestures** let you change what single, double, long, and triple taps do.
+
+To adjust floating translation text size, open Settings → **Floating Bubble Settings** → **Floating bubble text fill**. This separate setting also accepts **20%–100%** and defaults to **100%**. Lower it to make text smaller or raise it to restore the automatically fitted size without changing bubble size. It applies only to floating-window translations and does not affect library reading or exports.
 
 ### Library management, export, and backups
 

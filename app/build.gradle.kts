@@ -2,12 +2,12 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 android {
     namespace = "com.manga.translate"
-    compileSdk = 36
+    compileSdk = 37
+    buildToolsVersion = "37.0.0"
     val storeFilePath = project.findProperty("STORE_FILE") as String?
     val storePasswordProp = project.findProperty("STORE_PASSWORD") as String?
     val keyAliasProp = project.findProperty("KEY_ALIAS") as String?
@@ -20,9 +20,9 @@ android {
     defaultConfig {
         applicationId = "com.manga.translate.v3"
         minSdk = 24
-        targetSdk = 36
-        versionCode = 119
-        versionName = "3.7.0"
+        targetSdk = 37
+        versionCode = 122
+        versionName = "3.7.3"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -95,7 +95,7 @@ android {
 
     androidResources { noCompress += "tflite" }
 
-    sourceSets["main"].assets.srcDirs("src/main/assets", "../assets")
+    sourceSets["main"].assets.directories.addAll(listOf("src/main/assets", "../assets"))
 }
 
 kotlin {

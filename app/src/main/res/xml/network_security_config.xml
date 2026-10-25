@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Provider and OCR endpoints are user-defined, including HTTP LAN servers. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

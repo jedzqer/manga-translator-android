@@ -167,6 +167,8 @@ class BubbleRenderer(context: Context) {
                     canvas = canvas,
                     text = text,
                     path = bubblePath,
+                    textFillPercent = if (bubble.source == BubbleSource.TEXT_DETECTOR)
+                        bubbleRenderSettings.freeBubbleTextFillPercent else bubbleRenderSettings.textFillPercent,
                     verticalLayoutEnabled = verticalLayoutEnabled,
                     startFromTop = BubbleTextPlacement.spillsAcrossPage(
                         bubble.rect,
@@ -214,6 +216,7 @@ class BubbleRenderer(context: Context) {
         canvas: Canvas,
         text: String,
         path: Path,
+        textFillPercent: Int,
         verticalLayoutEnabled: Boolean,
         startFromTop: Boolean
     ) {
@@ -226,6 +229,7 @@ class BubbleRenderer(context: Context) {
             canvas,
             text,
             textRect,
+            textFillPercent,
             verticalLayoutEnabled,
             startFromTop
         )
@@ -235,6 +239,7 @@ class BubbleRenderer(context: Context) {
         canvas: Canvas,
         rawText: String,
         rect: RectF,
+        textFillPercent: Int,
         verticalLayoutEnabled: Boolean,
         startFromTop: Boolean
     ) {
@@ -245,11 +250,12 @@ class BubbleRenderer(context: Context) {
                     this,
                     VerticalTextSymbolConverter.convert(text),
                     rect,
+                    textFillPercent,
                     startFromTop
                 )
             }
         } else {
-            val textSize = resolveHorizontalTextSize(rect, text)
+            val textSize = resolveHorizontalTextSize(rect, text, textFillPercent)
             val layout = buildLayout(text, rect.width().toInt().coerceAtLeast(1), textSize)
             val left = BubbleTextPlacement.horizontalTextLeft(rect, layout.width)
             val top = BubbleTextPlacement.horizontalTextTop(rect, layout.height, startFromTop)
@@ -261,12 +267,13 @@ class BubbleRenderer(context: Context) {
         }
     }
 
-    private fun resolveHorizontalTextSize(rect: RectF, text: String): Float {
+    private fun resolveHorizontalTextSize(rect: RectF, text: String, textFillPercent: Int): Float {
         return BubbleTextScaling.findAutoHorizontalTextSize(
             text = text,
             maxWidth = rect.width().toInt().coerceAtLeast(1),
             maxHeight = rect.height().toInt().coerceAtLeast(1),
             buildLayout = ::buildLayout,
+            textFillPercent = textFillPercent,
             layoutFits = BubbleTextScaling::layoutFits
         )
     }
@@ -284,11 +291,12 @@ class BubbleRenderer(context: Context) {
         canvas: Canvas,
         text: String,
         rect: RectF,
+        textFillPercent: Int,
         startFromTop: Boolean
     ) {
         val maxWidth = rect.width().toInt().coerceAtLeast(1)
         val maxHeight = rect.height().toInt().coerceAtLeast(1)
-        val textSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight)
+        val textSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight, textFillPercent)
         val layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
         VerticalTextRenderer.draw(canvas, text, rect, textPaint, layout, startFromTop)
     }
@@ -296,9 +304,10 @@ class BubbleRenderer(context: Context) {
     private fun findDefaultVerticalTextSize(
         text: String,
         maxWidth: Int,
-        maxHeight: Int
+        maxHeight: Int,
+        textFillPercent: Int
     ): Float {
-        return BubbleTextScaling.findAutoVerticalTextSize(maxWidth, maxHeight) { textSize ->
+        return BubbleTextScaling.findAutoVerticalTextSize(maxWidth, maxHeight, textFillPercent) { textSize ->
             buildVerticalLayout(text, maxWidth, maxHeight, textSize)
         }
     }

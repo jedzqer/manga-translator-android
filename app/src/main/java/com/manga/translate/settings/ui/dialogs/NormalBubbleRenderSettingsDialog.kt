@@ -32,11 +32,19 @@ internal class NormalBubbleRenderSettingsDialog(
         dialogBinding.normalBubbleVerticalTextSwitch.isChecked = !currentSettings.useHorizontalText
         dialogBinding.normalBubbleAutoAdaptColorSwitch.isChecked = currentSettings.autoAdaptBubbleColor
         dialogBinding.normalBubbleFreeAutoAdaptColorSwitch.isChecked = currentSettings.autoAdaptFreeBubbleColor
+        dialogBinding.normalBubbleTextFillPercentInput.setText(fragment.formatNumber(currentSettings.textFillPercent))
+        dialogBinding.normalBubbleFreeTextFillPercentInput.setText(fragment.formatNumber(currentSettings.freeBubbleTextFillPercent))
         AlertDialog.Builder(fragment.requireContext())
             .setTitle(R.string.normal_bubble_render_settings_title)
             .setView(dialogBinding.root)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val updated = NormalBubbleRenderSettings(
+                    freeBubbleTextFillPercent = fragment.parseIntInput(
+                        dialogBinding.normalBubbleFreeTextFillPercentInput.text?.toString()
+                    ) ?: currentSettings.freeBubbleTextFillPercent,
+                    textFillPercent = fragment.parseIntInput(
+                        dialogBinding.normalBubbleTextFillPercentInput.text?.toString()
+                    ) ?: currentSettings.textFillPercent,
                     shrinkPercent = fragment.parseIntInput(
                         dialogBinding.normalBubbleShrinkPercentInput.text?.toString()
                     ) ?: currentSettings.shrinkPercent,
