@@ -4,6 +4,12 @@
 
 For feedback and discussion, join the [Discord server](https://discord.gg/qxfC2kqfr).
 
+**Recommended way to read this guide:** If it is hard to follow, do not force yourself through it. Give the whole guide to an AI and let it walk you through step by step.
+
+- Copy the full text, download this file, or send this page's link to an AI, so that it has the entire guide.
+- Then ask: "I want to start using this app. What should I do first?"
+- When you get stuck on a step, ask the AI about that step.
+
 ---
 
 Read in order of complexity: [Basics: Quick Start](#basics-quick-start) → [Intermediate: Quality and Everyday Use](#intermediate-quality-and-everyday-use) → [Advanced: Requests and Prompts](#advanced-requests-and-prompts). The basics are enough to start reading.
