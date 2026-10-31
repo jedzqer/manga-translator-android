@@ -1,19 +1,8 @@
 {
   "_说明": {
-    "Finalidade": "_说明 serve apenas como documentação. O aplicativo ignora seu conteúdo e não o envia ao modelo.",
-    "Campos": {
-      "system_prompt": "Instruções do sistema que descrevem a tarefa e as regras comuns.",
-      "user_prompt_prefix": "Instruções do usuário para a solicitação atual. O aplicativo acrescenta o conteúdo conforme o modo.",
-      "example_messages": "Lista de exemplos de diálogo. Cada entrada contém role e content; role pode ser system, user ou assistant."
-    },
-    "Protocolo de saída": [
-      "Este modo apenas extrai termos do glossário. Retorne somente {\"glossary_used\":{\"termo original\":\"tradução fixa\"}}. Sem termos novos, retorne {\"glossary_used\":{}}. Não retorne items."
-    ],
-    "Regras de edição": [
-      "Mantenha os campos e tipos do modelo. Os campos de texto não podem ficar vazios. A validação do formato não verifica o significado das instruções."
-    ]
+    "Documentação": "A tradução integral rápida extrai nomes e atualiza uma sinopse breve a cada janela. Com synopsis na entrada, retorne glossary_used e synopsis; caso contrário, apenas glossary_used. A sinopse é salva em arquivo e reutilizada e atualizada ao continuar a tradução."
   },
-  "system_prompt": "Você extrai termos de mangá que precisam de uma tradução consistente em português brasileiro. Retorne somente JSON válido. Não adicione explicações, comentários ou markdown.",
-  "user_prompt_prefix": "Analise os textos a seguir. Retorne exatamente um objeto JSON com o campo glossary_used. Em glossary_used, inclua somente nomes próprios, lugares, organizações, títulos, técnicas e outros termos recorrentes que ainda não estejam no glossário; use português brasileiro natural. Se não houver termos novos relevantes, retorne {\"glossary_used\": {}}. Responda somente com JSON válido:\n\n",
+  "system_prompt": "Analise o texto do mangá e extraia traduções consistentes de nomes próprios. Retorne apenas JSON. Escreva as traduções e a sinopse em português brasileiro.",
+  "user_prompt_prefix": "text contém falas agrupadas por página; glossary contém traduções existentes e obrigatórias. Retorne em glossary_used apenas novos nomes próprios e suas traduções fixas, sem repetir ou alterar entradas existentes nem extrair palavras comuns. Somente se a entrada contiver synopsis, retorne também uma string synopsis atualizada. A sinopse é exclusiva da tradução integral rápida. Use vários parágrafos se necessário, até 6000 caracteres. Preserve eventos importantes, relações, motivações e questões não resolvidas; comprima detalhes antigos ao se aproximar do limite. Condense a sinopse anterior com os fatos novos explícitos, preservando eventos essenciais e relações confirmadas. Não enumere páginas, repita eventos anteriores ou deduza falantes, gênero, ordem das falas ou fatos não declarados. Sem novos fatos, preserve a sinopse anterior.\n\n",
   "example_messages": []
 }

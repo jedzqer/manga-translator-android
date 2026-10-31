@@ -10,6 +10,9 @@ import com.manga.translate.platform.RequestPerfTrace
 import com.manga.translate.settings.ApiSettings
 import com.manga.translate.settings.OCR_PROVIDER_ID
 import com.manga.translate.settings.OcrApiSettings
+import com.manga.translate.translation.FullTranslationSynopsis
+import com.manga.translate.translation.TextBudgetUnit
+import com.manga.translate.translation.TextBatchPlan
 import com.manga.translate.settings.SettingsStore
 import java.io.InterruptedIOException
 import kotlinx.coroutines.CancellationException
@@ -79,30 +82,114 @@ class LlmClient(
         glossaryProcessingEnabled: Boolean
     ): LlmBubbleTranslationResult? =
         withContext(Dispatchers.IO) {
-            val content = requestContent(
-                text = "",
-                glossary = glossary,
-                promptAsset = promptAsset,
-                useJsonPayload = true,
-                requestTimeoutMs = requestTimeoutMs,
-                retryCount = retryCount,
-                apiSettings = apiSettings,
-                userPayloadOverride = payloadBuilder.buildBubbleItemsUserPayload(items, glossary),
-                glossaryProcessingEnabled = glossaryProcessingEnabled
-            )
-                ?: return@withContext null
-            responseParser.parseBubbleTranslationContent(content, items.map { it.id }).let { result ->
-                if (glossaryProcessingEnabled) result else result.copy(glossaryUsed = emptyMap())
+            val settings = apiSettings ?: settingsStore.load()
+            if (!settings.isValid()) return@withContext null
+            if (items.isEmpty()) return@withContext LlmBubbleTranslationResult(emptyList(), emptyMap())
+            require(items.map { it.id }.distinct().size == items.size)
+            val grouped = items.groupBy { it.sourceId }
+            require(grouped.values.flatten() == items) { "Source pages must be contiguous" }
+            val units = grouped.map { (source, page) ->
+                TextBudgetUnit(source, payloadBuilder.buildBubbleItemsUserPayload(page, emptyMap()))
             }
+            val synopsis = if (promptAsset == "prompts/llm_prompts_FullTrans.json")
+                currentCoroutineContext()[FullTranslationSynopsis]?.text else null
+            val names = LinkedHashMap(glossary)
+            val additions = linkedMapOf<String, String>()
+            val results = runBudgetedText(units, settings, promptAsset, requestTimeoutMs, retryCount,
+                glossaryProcessingEnabled, 8192,
+                buildUser = { batch -> payloadBuilder.buildBubbleItemsUserPayload(
+                    batch.flatMap { grouped.getValue(it.sourceId) }, names, synopsis) },
+                parse = { content, batch -> validateTextBubbleIds(
+                    responseParser.parseBubbleTranslationContent(content,
+                        batch.flatMap { grouped.getValue(it.sourceId) }.map { it.id }),
+                    batch.flatMap { grouped.getValue(it.sourceId) }.map { it.id }, content) },
+                onSuccess = { result ->
+                    if (glossaryProcessingEnabled) result.glossaryUsed.forEach { (key, value) ->
+                        if (!names.containsKey(key)) { names[key] = value; additions[key] = value }
+                    }
+                })
+            LlmBubbleTranslationResult(results.flatMap { it.items }, additions)
         }
 
     override suspend fun extractGlossary(
         text: String,
         glossary: Map<String, String>,
         promptAsset: String
+    ): Map<String, String>? = extractGlossaryPages(
+        listOf(TextBudgetUnit("page", text)), glossary, promptAsset)
+
+    /** Each unit is one whole image. Successful glossary batches are merged before the next plan. */
+    internal suspend fun extractGlossaryPages(
+        pages: List<TextBudgetUnit>,
+        glossary: Map<String, String>,
+        promptAsset: String,
+        onSuccess: suspend (Map<String, String>) -> Unit = {}
     ): Map<String, String>? = withContext(Dispatchers.IO) {
-        requestContent(text, glossary, promptAsset, useJsonPayload = true)
-            ?.let { responseParser.parseGlossaryContent(it) }
+        val settings = settingsStore.load()
+        if (!settings.isValid()) return@withContext null
+        val names = LinkedHashMap(glossary)
+        val additions = linkedMapOf<String, String>()
+        val synopsis = currentCoroutineContext()[FullTranslationSynopsis]
+        val pending = pages.filterNot { synopsis?.isComplete(it.sourceId) == true }
+        runBudgetedText(pending, settings, promptAsset, null, RetryHandler.RETRY_COUNT, true,
+            if (synopsis != null) 8192 else 4096,
+            buildUser = { batch -> payloadBuilder.buildUserPayload(
+                batch.joinToString("\n") { it.serializedText }, names, synopsis?.text) },
+            parse = { content, batch -> Triple(responseParser.parseGlossaryContentStrict(content),
+                if (synopsis != null) responseParser.parseSynopsis(content) else null,
+                batch.map { it.sourceId }) },
+            onSuccess = { (extracted, summary, sourceIds) ->
+                val fresh = extracted.filterKeys { !names.containsKey(it) }
+                onSuccess(fresh)
+                names.putAll(fresh)
+                additions.putAll(fresh)
+                synopsis?.commit(sourceIds, requireNotNull(summary))
+            })
+        additions
+    }
+
+    private fun validateTextBubbleIds(
+        result: LlmBubbleTranslationResult, requested: List<Int>, content: String
+    ): LlmBubbleTranslationResult {
+        val returned = result.items.map { it.id }
+        if (returned.size != returned.toSet().size || returned.toSet() != requested.toSet()) {
+            throw LlmResponseException(LlmErrorCode.MissingTranslationItems,
+                "Requested IDs do not exactly match response IDs. response=${content.take(600)}")
+        }
+        return result
+    }
+
+    private suspend fun <T> runBudgetedText(
+        units: List<TextBudgetUnit>, settings: ApiSettings, promptAsset: String,
+        requestTimeoutMs: Int?, retryCount: Int, glossaryProcessingEnabled: Boolean,
+        defaultOutput: Int, buildUser: (List<TextBudgetUnit>) -> String,
+        parse: (String, List<TextBudgetUnit>) -> T,
+        onSuccess: suspend (T) -> Unit
+    ): List<T> {
+        if (units.isEmpty()) return emptyList()
+        val capability = settingsStore.loadModelContextSettings(settings)
+        val template = BudgetedTextTemplate(payloadBuilder.buildPayload(settings, settings.modelName.trim(),
+            promptAsset, settings.apiFormat, "", glossaryProcessingEnabled), settings.apiFormat, capability, defaultOutput)
+        val timeout = requestTimeoutMs ?: RequestTimeoutPolicy.callTimeoutMs(settingsStore.loadApiTimeoutMs(), units.size)
+        val policy = retryHandler.buildRetryPolicy(retryCount)
+        val context = currentCoroutineContext()[RequestBudgetContext] ?: RequestBudgetContext()
+        val deadline = context.getOrStart(timeout, policy.maxAttempts)
+        val attempts = currentCoroutineContext()[TextAttemptBudget] ?: TextAttemptBudget(
+            ((units.size.toLong() * 2 - 1) * maxOf(3, policy.maxAttempts)).coerceAtMost(512).toInt())
+        return withContext(context + attempts) {
+            deadline.run {
+                executeBudgetedText(units, template, buildUser,
+                    send = { payload, batch ->
+                        var parsed: T? = null
+                        executeRequestWithRetry("text:$promptAsset", promptAsset, settings, timeout,
+                            policy.maxAttempts, "response", { payload },
+                            validateContent = { parsed = parse(it, batch) }, retryPolicyOverride = policy)
+                            ?: throw LlmResponseException(LlmErrorCode.EmptyResponse,
+                                appContext.getString(R.string.model_response_empty_content))
+                        requireNotNull(parsed)
+                    }, onSuccess = onSuccess)
+            }
+        }
     }
 
     suspend fun fetchModelList(
@@ -310,24 +397,31 @@ class LlmClient(
         } else {
             text
         }
-        return executeRequestWithRetry(
-            operation = "text:$promptAsset",
-            promptAsset = promptAsset,
-            settings = settings,
-            requestTimeoutMs = requestTimeoutMs,
-            retryCount = retryCount,
-            contentLogLabel = "response",
-            buildPayload = {
-                payloadBuilder.buildPayload(
-                    settings = settings,
-                    modelName = selectedModel,
-                    promptAsset = promptAsset,
-                    apiFormat = settings.apiFormat,
-                    userPayload = userPayload,
-                    glossaryProcessingEnabled = glossaryProcessingEnabled
+        val payloadTemplate = payloadBuilder.buildPayload(
+            settings, selectedModel, promptAsset, settings.apiFormat, "", glossaryProcessingEnabled)
+        val capability = settingsStore.loadModelContextSettings(settings)
+        val template = BudgetedTextTemplate(payloadTemplate, settings.apiFormat, capability, 4096)
+        val payload = template.payload(userPayload)
+        val plan = template.check(payload)
+        if (plan is TextBatchPlan.Rejected) throw LlmResponseException(
+            LlmErrorCode.Custom("TEXT_BUDGET_EXCEEDED"),
+            "${plan.reason}: input=${plan.budget.inputTokens}, available=${plan.budget.availableInputTokens}",
+            retryable = false)
+        val timeout = requestTimeoutMs ?: RequestTimeoutPolicy.callTimeoutMs(settingsStore.loadApiTimeoutMs())
+        val retryPolicy = retryHandler.buildRetryPolicy(retryCount)
+        val budgetContext = currentCoroutineContext()[RequestBudgetContext] ?: RequestBudgetContext()
+        val deadline = budgetContext.getOrStart(timeout, retryPolicy.maxAttempts)
+        val attempts = currentCoroutineContext()[TextAttemptBudget]
+            ?: TextAttemptBudget(retryPolicy.maxAttempts * 3)
+        return withContext(budgetContext + attempts) {
+            deadline.run {
+                executeRequestWithRetry(
+                    operation = "text:$promptAsset", promptAsset = promptAsset, settings = settings,
+                    requestTimeoutMs = timeout, retryCount = retryCount, contentLogLabel = "response",
+                    buildPayload = { payload }, retryPolicyOverride = retryPolicy
                 )
             }
-        )
+        }
     }
 
     private suspend fun requestImageContent(
@@ -393,10 +487,11 @@ class LlmClient(
         contentLogLabel: String,
         buildPayload: () -> JSONObject,
         sanitizePayloadForLog: ((String) -> String)? = null,
-        validateContent: ((String) -> Unit)? = null
+        validateContent: ((String) -> Unit)? = null,
+        retryPolicyOverride: RetryPolicy? = null
     ): String? {
         val callTimeoutMs = RequestTimeoutPolicy.callTimeoutMs(requestTimeoutMs ?: settingsStore.loadApiTimeoutMs())
-        val retryPolicy = retryHandler.buildRetryPolicy(retryCount)
+        val retryPolicy = retryPolicyOverride ?: retryHandler.buildRetryPolicy(retryCount)
         val budget = (currentCoroutineContext()[RequestBudgetContext] ?: RequestBudgetContext())
             .getOrStart(callTimeoutMs, retryPolicy.maxAttempts)
         return budget.run {
@@ -441,6 +536,7 @@ class LlmClient(
             lastErrorBody = null
             lastResponseException = null
             val attemptTimeoutMs = budget.attemptTimeoutMs(timeoutMs)
+            currentCoroutineContext()[TextAttemptBudget]?.consume()
             requestTrace.beginAttempt()
             val result = try {
                 httpTransport.executeRequest(
@@ -456,6 +552,9 @@ class LlmClient(
                             "LlmClient",
                             "HTTP $code on ${redactEndpoint(endpoint)}: ${responseParser.summarizeBody(body)}"
                         )
+                        if (operation.startsWith("text:") && isContextOverflow(code, body)) {
+                            throw LlmResponseException(LlmErrorCode.Custom("CONTEXT_LENGTH_EXCEEDED"), body)
+                        }
                         lastErrorCode = "HTTP $code"
                         lastErrorBody = body
                         null

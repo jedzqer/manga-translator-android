@@ -29,9 +29,9 @@ class BubbleExpansionTest {
     }
 
     @Test
-    fun `defaults keep masks unchanged and expand free bubbles by ten percent`() {
+    fun `defaults inset normal bubbles and expand free bubbles by ten percent`() {
         val settings = SettingsStore(context).loadNormalBubbleRenderSettings()
-        assertEquals(0, settings.shrinkPercent)
+        assertEquals(10, settings.shrinkPercent)
         assertEquals(10, settings.freeBubbleSizeAdjustPercent)
     }
 
@@ -42,7 +42,7 @@ class BubbleExpansionTest {
             .putInt("normal_free_bubble_shrink_percent_v2", 7)
             .putInt("normal_free_bubble_vertical_expansion_percent", 18).commit()
         val settings = SettingsStore(context).loadNormalBubbleRenderSettings()
-        assertEquals(0, settings.shrinkPercent)
+        assertEquals(10, settings.shrinkPercent)
         assertEquals(7, settings.freeBubbleSizeAdjustPercent)
     }
 

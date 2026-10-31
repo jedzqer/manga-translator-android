@@ -164,6 +164,15 @@
                 android:textColor="?attr/dialogTextColor" />
 
             <Button
+                android:id="@+id/fetch_models_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:text="@string/fetch_models" />
+
+            <Button
                 android:id="@+id/thinking_length_button"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -171,6 +180,15 @@
                 android:layout_marginStart="2dp"
                 android:layout_marginEnd="2dp"
                 android:text="@string/thinking_length_button" />
+
+            <Button
+                android:id="@+id/model_context_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:text="@string/model_context_title" />
 
             <Button
                 android:id="@+id/ai_provider_profiles_button"
@@ -198,15 +216,6 @@
                 android:layout_marginStart="2dp"
                 android:layout_marginEnd="2dp"
                 android:text="@string/custom_request_params_button" />
-
-            <Button
-                android:id="@+id/fetch_models_button"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:layout_marginStart="2dp"
-                android:layout_marginEnd="2dp"
-                android:text="@string/fetch_models" />
 
             <Button
                 android:id="@+id/translation_request_settings_button"

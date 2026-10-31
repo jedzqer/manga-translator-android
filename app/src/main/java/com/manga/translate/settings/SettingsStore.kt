@@ -7,6 +7,7 @@ import com.manga.translate.R
 import com.manga.translate.model.ApiFormat
 import com.manga.translate.model.AppLanguage
 import com.manga.translate.model.FloatingBallGestureAction
+import com.manga.translate.model.FloatingOverlayMode
 import com.manga.translate.model.LinkSource
 import com.manga.translate.model.OcrApiFormat
 import com.manga.translate.model.ReadingDisplayMode
@@ -164,8 +165,21 @@ data class FloatingTranslateApiSettings(
     val longPressAction: FloatingBallGestureAction,
     val tripleTapAction: FloatingBallGestureAction,
     val detectionTopInsetPercent: Int = 0,
-    val detectionBottomInsetPercent: Int = 0
-)
+    val detectionBottomInsetPercent: Int = 0,
+    val overlayMode: FloatingOverlayMode = SettingsStore.DEFAULT_FLOATING_OVERLAY_MODE
+) {
+    val gestureActions: List<FloatingBallGestureAction>
+        get() = listOf(singleTapAction, doubleTapAction, longPressAction, tripleTapAction)
+
+    /** Imported settings without a clear-screen gesture must not freeze the screen. */
+    fun effectiveOverlayMode(): FloatingOverlayMode {
+        return if (FloatingOverlayMode.isAllowed(overlayMode, gestureActions)) {
+            overlayMode
+        } else {
+            FloatingOverlayMode.TRANSLUCENT_PASSTHROUGH
+        }
+    }
+}
 
 data class NormalBubbleRenderSettings(
     // Positive values shrink both axes around the bubble center.
@@ -230,7 +244,8 @@ data class AiProviderProfile(
     val ocrSettings: OcrApiSettings,
     val floatingTranslateSettings: FloatingTranslateApiSettings,
     val llmParameters: LlmParameterSettings,
-    val customRequestParameters: List<CustomRequestParameter>
+    val customRequestParameters: List<CustomRequestParameter>,
+    val modelContextEntries: List<ModelContextEntry> = emptyList()
 )
 
 data class AiProviderProfilesState(
@@ -362,7 +377,10 @@ class SettingsStore(context: Context) {
 
     fun loadMaxConcurrency(): Int = apiSettingsStore.loadMaxConcurrency()
 
-    fun loadTranslationBatchPages(): Int = apiSettingsStore.loadTranslationBatchPages()
+    fun loadTranslationBatchPages(useVlDirectTranslate: Boolean = false): Int =
+        apiSettingsStore.loadTranslationBatchPages().coerceAtMost(
+            if (useVlDirectTranslate) MAX_VL_TRANSLATION_BATCH_PAGES else MAX_TRANSLATION_BATCH_PAGES
+        )
 
     fun saveTranslationBatchPages(value: Int) = apiSettingsStore.saveTranslationBatchPages(value)
 
@@ -484,6 +502,12 @@ class SettingsStore(context: Context) {
         return providerProfileStore.applyAiProviderProfile(name)
     }
 
+    fun loadModelContextSettings(settings: ApiSettings = load()): ModelContextSettings =
+        providerProfileStore.loadModelContextSettings(settings)
+
+    fun saveModelContextSettings(settings: ModelContextSettings): Boolean =
+        providerProfileStore.saveModelContextSettings(settings)
+
     fun deleteAiProviderProfile(name: String): Boolean {
         return providerProfileStore.deleteAiProviderProfile(name)
     }
@@ -517,6 +541,7 @@ class SettingsStore(context: Context) {
         internal const val KEY_FLOATING_DOUBLE_TAP_ACTION = "floating_double_tap_action"
         internal const val KEY_FLOATING_LONG_PRESS_ACTION = "floating_long_press_action"
         internal const val KEY_FLOATING_TRIPLE_TAP_ACTION = "floating_triple_tap_action"
+        internal const val KEY_FLOATING_OVERLAY_MODE = "floating_overlay_mode"
         internal const val KEY_FLOATING_ONLY_RECOGNIZE_BUBBLES = "floating_only_recognize_bubbles"
         internal const val KEY_FLOATING_DETECTION_TOP_INSET_PERCENT =
             "floating_detection_top_inset_percent"
@@ -555,7 +580,8 @@ class SettingsStore(context: Context) {
         internal const val KEY_API_RETRY_COUNT = "api_retry_count"
         internal const val KEY_MAX_CONCURRENCY = "max_concurrency"
         internal const val KEY_TRANSLATION_BATCH_PAGES = "translation_batch_pages"
-        internal const val MAX_TRANSLATION_BATCH_PAGES = 100
+        internal const val MAX_TRANSLATION_BATCH_PAGES = 500
+        internal const val MAX_VL_TRANSLATION_BATCH_PAGES = 50
         internal const val KEY_API_TIMEOUT_SECONDS = "api_timeout_seconds"
         internal const val KEY_APP_LANGUAGE = "app_language"
         internal const val KEY_THEME_MODE = "theme_mode"
@@ -625,6 +651,7 @@ class SettingsStore(context: Context) {
         internal val DEFAULT_FLOATING_DOUBLE_TAP_ACTION = FloatingBallGestureAction.CLEAR_SCREEN
         internal val DEFAULT_FLOATING_LONG_PRESS_ACTION = FloatingBallGestureAction.OPEN_MENU
         internal val DEFAULT_FLOATING_TRIPLE_TAP_ACTION = FloatingBallGestureAction.NONE
+        internal val DEFAULT_FLOATING_OVERLAY_MODE = FloatingOverlayMode.TRANSLUCENT_PASSTHROUGH
         internal const val DEFAULT_FLOATING_API_TIMEOUT_SECONDS = 300
         const val MIN_FLOATING_API_TIMEOUT_SECONDS = 30
         const val MAX_FLOATING_API_TIMEOUT_SECONDS = 1200
@@ -633,7 +660,7 @@ class SettingsStore(context: Context) {
         internal const val MIN_FLOATING_BUBBLE_SIZE_ADJUST_PERCENT = -30
         internal const val MAX_FLOATING_BUBBLE_SIZE_ADJUST_PERCENT = 30
         internal const val DEFAULT_FLOATING_BUBBLE_AUTO_ADAPT_COLOR = true
-        internal const val DEFAULT_NORMAL_BUBBLE_SHRINK_PERCENT = 0
+        internal const val DEFAULT_NORMAL_BUBBLE_SHRINK_PERCENT = 10
         internal const val MIN_NORMAL_BUBBLE_SHRINK_PERCENT = 0
         internal const val MAX_NORMAL_BUBBLE_SHRINK_PERCENT = 30
         internal const val DEFAULT_NORMAL_FREE_BUBBLE_SIZE_ADJUST_PERCENT = 10

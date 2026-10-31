@@ -7,8 +7,8 @@
     <string name="translation_request_settings_button_format">AI request settings: %1$d concurrent, %2$d pages/request</string>
     <string name="translation_request_settings_title">AI request settings</string>
     <string name="translation_batch_pages_title">Pages per request</string>
-    <string name="translation_batch_pages_hint">Pages per request (1–100)</string>
-    <string name="translation_batch_pages_note">Sends pages to AI together and saves results per page. Set 1 to disable; 5–15 pages is recommended. Larger batches may reduce quality, strain your phone or produce incomplete translations, especially in VL mode.</string>
+    <string name="translation_batch_pages_hint">Pages per request (1–500)</string>
+    <string name="translation_batch_pages_note">Sends pages to AI together and saves results per page. Set 1 to disable; 5–15 pages is recommended. Larger batches may reduce quality, strain your phone or produce incomplete translations, especially in VL mode. VL mode merges at most 50 pages per request; values above 50 are treated as 50. The app adjusts the processing window automatically based on memory and the effective pages per request.</string>
     <string name="exclamation_mark" translatable="false">!</string>
     <string name="app_name">MT Reader</string>
     <string name="preview_image">Detection Preview</string>
@@ -207,6 +207,11 @@
     <string name="floating_proofreading_mode_note">Opens editing mode after translation so you can add, remove and adjust bubbles.</string>
     <string name="floating_auto_close_on_screen_change">Automatically clear bubbles</string>
     <string name="floating_auto_close_on_screen_change_note">Closes translation bubbles automatically when turning pages, with a small performance cost.</string>
+    <string name="floating_overlay_mode_hint">Bubble display mode</string>
+    <string name="floating_overlay_mode_translucent">Translucent, touches pass through</string>
+    <string name="floating_overlay_mode_opaque">Opaque, freezes the screen</string>
+    <string name="floating_overlay_mode_note">Translucent: bubbles are at most 80% opaque and you can still use the app underneath. Opaque: bubbles are fully opaque, but touches are blocked and the screen is frozen while they are shown. Use the floating ball gestures on the screen instead, for example double tap to clear the screen.</string>
+    <string name="floating_overlay_mode_requires_clear_screen">Opaque mode requires at least one floating ball gesture set to Clear screen, otherwise the frozen screen cannot be dismissed while bubbles are shown.</string>
     <string name="floating_detection_region_title">Translation detection region</string>
     <string name="floating_detection_region_note">Exclude areas at the top and bottom from translation to avoid status bars and similar content (0–90%).</string>
     <string name="floating_detection_top_inset_hint">Top margin (%)</string>
@@ -251,7 +256,6 @@
     <string name="llm_param_temperature">temperature</string>
     <string name="llm_param_top_p">top_p</string>
     <string name="llm_param_top_k">top_k</string>
-    <string name="llm_param_max_output_tokens">max_output_tokens</string>
     <string name="llm_param_enable_thinking">Enable thinking</string>
     <string name="llm_param_frequency_penalty">frequency_penalty</string>
     <string name="llm_param_presence_penalty">presence_penalty</string>
@@ -404,7 +408,7 @@
     <string name="folder_vl_model_required">Currently direct translation requires the VL model. Please switch to a model that supports image input in the main settings, or turn off the switch.</string>
     <string name="folder_full_translate">Full Translation</string>
     <string name="folder_full_translate_info_title">About Full Translation</string>
-    <string name="folder_full_translate_info">Extracts terms from up to 100 pages per batch to keep names consistent. The first translated image takes longer; turn this off to see translations sooner.</string>
+    <string name="folder_full_translate_info">Within each bounded page window, the app extracts terms and updates a synopsis of up to 6000 characters for later windows and continuation translations, then translates and saves each page. The synopsis is saved as synopsis_en.json in the folder. The app adjusts the window automatically based on memory and pages per request. The first translated image takes longer; turn this off to see translations sooner.</string>
     <string name="folder_full_translate_info_desc">About Full Translation</string>
     <string name="folder_glossary_processing">Glossary Processing</string>
     <string name="folder_glossary_processing_info_title">About Glossary Processing</string>
@@ -413,7 +417,7 @@
     <string name="folder_only_translate_bubbles">Translate bubbles only</string>
     <string name="folder_only_translate_bubbles_info_title">About bubble-only translation</string>
     <string name="folder_only_translate_bubbles_info_desc">About bubble-only translation</string>
-    <string name="folder_only_translate_bubbles_note">When enabled, built-in OCR recognizes bubble regions only. If no bubbles are detected, page text is still recognized. This option is unavailable with VL full-page translation or API OCR.</string>
+    <string name="folder_only_translate_bubbles_note">When enabled, built-in OCR recognizes bubble regions only. If no bubbles are detected, text outside bubbles is not translated. This option is unavailable with VL full-page translation or API OCR.</string>
     <string name="translation_preparing">Preparing</string>
     <string name="folder_preprocess_progress">%1$s（%2$d/%3$d）</string>
     <string name="folder_preprocess_stage_ocr">OCR Preprocessing</string>
@@ -509,6 +513,8 @@
     <string name="model_response_failed_clear_advanced_params">This API may not support advanced parameters. Clear optional advanced parameters in LLM Parameters and try again.</string>
     <string name="model_response_empty_content">The model returned an empty response and no valid content could be extracted.</string>
     <string name="model_response_truncated">The translation exceeded the output limit. Increase max_output_tokens in LLM Parameters and try again.</string>
+    <string name="model_text_budget_exceeded">This request exceeds the configured model input or output limit. Shorten the content or review the model capability settings.</string>
+    <string name="model_text_budget_exhausted">This request used its shared retry or time budget.</string>
     <string name="model_response_blank_bubbles">Model returned blank results: %2$d bubbles in %1$s mode did not return valid translations.</string>
     <string name="error_page_prefix">page:</string>
     <string name="translation_continue">Retry</string>
@@ -659,4 +665,18 @@ Communication and feedback group: %2$s</string>
     <string name="floating_bubble_text_fill_percent_label" formatted="false">Floating bubble text fill</string>
     <string name="bubble_text_fill_percent_range" formatted="false">20–100 (%)</string>
     <string name="bubble_text_fill_percent_note" formatted="false">100% uses the automatically fitted font size. Lower values make text smaller; 20% uses one fifth of that size. Bubble size stays the same.</string>
+
+    <string name="model_context_title">Model context settings</string>
+    <string name="model_context_scope">Provider: %1$s\nModel: %2$s\nEndpoint: %3$s</string>
+    <string name="model_context_unsaved">Current settings (no saved provider)</string>
+    <string name="model_context_unknown">Default: %1$d tokens</string>
+    <string name="model_context_input">Maximum input (tokens)</string>
+    <string name="model_context_output">Maximum output (tokens)</string>
+    <string name="model_context_total">Total context (tokens)</string>
+    <string name="model_context_note">Unsure? Leave the fields blank: defaults are 262,144 input, 65,536 output and 262,144 total context tokens. Empty fields show and use their defaults. Enter a number to override it; confirm to save restored defaults. Some local deployments have smaller limits; adjust these values to match your service.\n\nInput and output are independent maxima. Each request shares total context between input, output and a safety margin. These limits are separate from the output allocation in LLM parameters and do not yet adjust translation batches automatically. Values apply only to this provider, endpoint, API format and model.</string>
+    <string name="model_context_invalid">Enter a whole number from 1 to 2147483647, or leave blank to use the default.</string>
+    <string name="model_context_clear">Use defaults</string>
+    <string name="model_context_save_failed">Could not save, or the model settings changed. Reopen this dialog and try again.</string>
+    <string name="model_context_missing_identity">Enter a model name and endpoint first.</string>
+    <string name="llm_param_max_output_tokens">Output limit per request (tokens)</string>
 </resources>

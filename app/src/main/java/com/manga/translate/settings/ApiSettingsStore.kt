@@ -2,6 +2,7 @@ package com.manga.translate.settings
 
 import com.manga.translate.model.ApiFormat
 import com.manga.translate.model.FloatingBallGestureAction
+import com.manga.translate.model.FloatingOverlayMode
 
 internal class ApiSettingsStore(
     private val storage: SettingsStoreStorage
@@ -116,7 +117,11 @@ internal class ApiSettingsStore(
                 SettingsStore.DEFAULT_FLOATING_TRIPLE_TAP_ACTION
             ),
             detectionTopInsetPercent = detectionTopInsetPercent,
-            detectionBottomInsetPercent = detectionBottomInsetPercent
+            detectionBottomInsetPercent = detectionBottomInsetPercent,
+            overlayMode = FloatingOverlayMode.fromPref(
+                storage.prefs.getString(SettingsStore.KEY_FLOATING_OVERLAY_MODE, null),
+                SettingsStore.DEFAULT_FLOATING_OVERLAY_MODE
+            )
         )
     }
 
@@ -166,7 +171,8 @@ internal class ApiSettingsStore(
                 SettingsStore.KEY_FLOATING_LONG_PRESS_ACTION,
                 SettingsStore.KEY_FLOATING_TRIPLE_TAP_ACTION,
                 SettingsStore.KEY_FLOATING_DETECTION_TOP_INSET_PERCENT,
-                SettingsStore.KEY_FLOATING_DETECTION_BOTTOM_INSET_PERCENT
+                SettingsStore.KEY_FLOATING_DETECTION_BOTTOM_INSET_PERCENT,
+                SettingsStore.KEY_FLOATING_OVERLAY_MODE
             )
         ) {
             putString(SettingsStore.KEY_FLOATING_API_URL, settings.apiUrl)
@@ -208,6 +214,7 @@ internal class ApiSettingsStore(
                 )
                 .putInt(SettingsStore.KEY_FLOATING_DETECTION_TOP_INSET_PERCENT, normalizedTopInset)
                 .putInt(SettingsStore.KEY_FLOATING_DETECTION_BOTTOM_INSET_PERCENT, normalizedBottomInset)
+                .putString(SettingsStore.KEY_FLOATING_OVERLAY_MODE, settings.overlayMode.prefValue)
         }
     }
 

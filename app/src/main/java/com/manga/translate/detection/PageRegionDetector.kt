@@ -11,6 +11,7 @@ import com.manga.translate.platform.PerformanceTrace
 import com.manga.translate.platform.BitmapCropSource
 import com.manga.translate.platform.DETECTION_MAX_EDGE
 import com.manga.translate.platform.PipelineBitmapDecoder
+import com.manga.translate.platform.StitchedBitmapCropSource
 import com.manga.translate.platform.recycleSafely
 import com.manga.translate.settings.SettingsStore
 import kotlin.math.abs
@@ -233,6 +234,29 @@ internal fun isDetectionAtInternalTileBottom(
     if (tileBitmapHeight <= 0 || tileBottom >= pageHeight) return false
     val margin = tileBoundaryMargin(tileBitmapHeight)
     return rect.bottom >= tileBitmapHeight - margin
+}
+
+/** Band around the seam between two stitched pages, or null when either side is too thin. */
+internal fun planSeamDetectionBand(width: Int, seamY: Int, height: Int): RectF? {
+    if (width <= 0 || seamY <= 0 || seamY >= height) return null
+    val halfExtent = width * SEAM_BAND_HALF_HEIGHT_RATIO
+    val top = max(0f, seamY - halfExtent)
+    val bottom = min(height.toFloat(), seamY + halfExtent)
+    if (seamY - top < SEAM_BAND_MIN_SIDE_PX || bottom - seamY < SEAM_BAND_MIN_SIDE_PX) return null
+    return RectF(0f, top, width.toFloat(), bottom)
+}
+
+/**
+ * A seam bubble must extend past the seam on both sides and must not be cut by a band
+ * edge, otherwise the band would only reproduce the truncation it is meant to repair.
+ */
+internal fun isSeamCrossingDetection(rect: RectF, band: RectF, seamY: Int, stitchedHeight: Int): Boolean {
+    val margin = tileBoundaryMargin(band.height().roundToInt())
+    if (rect.top > seamY - margin || rect.bottom < seamY + margin) return false
+    // A band clamped to the stitched page edge is not a cut.
+    if (band.top > 0f && rect.top <= band.top + margin) return false
+    if (band.bottom < stitchedHeight && rect.bottom >= band.bottom - margin) return false
+    return true
 }
 
 internal fun isDetectionAtReplayTileTop(
@@ -747,6 +771,35 @@ internal class PageRegionDetector(
         } finally {
             fullBitmap.recycleSafely()
         }
+    }
+
+    /**
+     * Detect bubbles cut by the seam between two adjacent pages. Page detection only
+     * sees one file, so a bubble split across files is never closed there. A band
+     * around the seam is re-detected on the stitched view; only balloons that clearly
+     * cross the seam and are not cut by the band itself are returned, in [stitched]
+     * coordinates (upper page space, lower page below `seamY`).
+     */
+    suspend fun detectSeamBubbles(
+        stitched: StitchedBitmapCropSource,
+        logTag: String = "PageRegionDetector"
+    ): List<BubbleDetection> {
+        val band = planSeamDetectionBand(stitched.width, stitched.seamY, stitched.height)
+            ?: return emptyList()
+        val bitmap = stitched.decodeRegion(band, maxEdge = DETECTION_MAX_EDGE) ?: return emptyList()
+        val detected = try {
+            detectSingleBitmap(bitmap, "$logTag[seam]")
+                ?.remapToSource(band.width().roundToInt(), band.height().roundToInt())
+        } finally {
+            bitmap.recycleSafely()
+        } ?: return emptyList()
+        val bubbles = detected.bubbleDetections
+            .map { it.copy(rect = it.rect.offsetBy(band.left, band.top), maskContour = null) }
+            .filter { isSeamCrossingDetection(it.rect, band, stitched.seamY, stitched.height) }
+        if (bubbles.isNotEmpty()) {
+            AppLogger.log(logTag, "Seam detection found ${bubbles.size} bubble(s) across y=${stitched.seamY}")
+        }
+        return bubbles
     }
 
     private suspend fun detectLongImageTiledPage(
@@ -1544,6 +1597,8 @@ private const val BUBBLE_DEDUP_VERTICAL_SPLIT_MAX_GAP_PX = 12f
 private const val TILE_BOUNDARY_MARGIN_RATIO = 0.015f
 private const val TILE_BOUNDARY_MARGIN_MIN_PX = 4f
 private const val TILE_BOUNDARY_MARGIN_MAX_PX = 20f
+private const val SEAM_BAND_HALF_HEIGHT_RATIO = 0.25f
+private const val SEAM_BAND_MIN_SIDE_PX = 16f
 private const val MERGED_CONTOUR_MIN_SAMPLE_ROWS = 8
 private const val MERGED_CONTOUR_MAX_SAMPLE_ROWS = 160
 private const val CONTOUR_COORD_EPSILON = 1e-5f

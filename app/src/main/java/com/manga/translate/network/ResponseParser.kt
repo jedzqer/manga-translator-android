@@ -39,7 +39,8 @@ internal class ResponseParser {
                 ApiFormat.OPENAI_COMPATIBLE ->
                     hasTruncationMarker(json.optJSONArray("choices"), "finish_reason", "length")
                 ApiFormat.OPENAI_RESPONSES ->
-                    json.optString("status").trim().equals("incomplete", ignoreCase = true)
+                    json.optString("status").trim().equals("incomplete", ignoreCase = true) &&
+                        json.optJSONObject("incomplete_details")?.optString("reason") == "max_output_tokens"
                 ApiFormat.GEMINI ->
                     hasTruncationMarker(json.optJSONArray("candidates"), "finishReason", "MAX_TOKENS")
             }
@@ -163,6 +164,50 @@ internal class ResponseParser {
             if (value is String) return value.trim()
         }
         throw LlmResponseException(LlmErrorCode.MissingTranslation, content)
+    }
+
+    /** Extraction must not turn malformed/truncated JSON into a successful empty glossary. */
+    fun parseGlossaryContentStrict(content: String): Map<String, String> {
+        try {
+            val json = JSONObject(stripCodeFence(content))
+            fun find(node: JSONObject): JSONObject? {
+                node.optJSONObject("glossary_used")?.let { return it }
+                for (key in listOf("data", "result", "output", "response", "message")) {
+                    node.optJSONObject(key)?.let { find(it) }?.let { return it }
+                }
+                return null
+            }
+            val glossary = find(json) ?: throw IllegalArgumentException("Missing glossary_used")
+            val result = linkedMapOf<String, String>()
+            for (key in glossary.keys()) {
+                val value = glossary.get(key)
+                require(value is String)
+                if (key.isNotBlank() && value.isNotBlank()) result[key] = value.trim()
+            }
+            return result
+        } catch (error: Exception) {
+            throw LlmResponseException(LlmErrorCode.InvalidFormat, content, error)
+        }
+    }
+
+    /** Full translation requires an explicit synopsis string, including when it is empty. */
+    fun parseSynopsis(content: String): String {
+        try {
+            fun find(node: JSONObject): String? {
+                if (node.has("synopsis")) {
+                    val value = node.get("synopsis")
+                    require(value is String)
+                    return value
+                }
+                for (key in listOf("data", "result", "output", "response", "message")) {
+                    node.optJSONObject(key)?.let { find(it) }?.let { return it }
+                }
+                return null
+            }
+            return requireNotNull(find(JSONObject(stripCodeFence(content)))) { "Missing synopsis" }
+        } catch (error: Exception) {
+            throw LlmResponseException(LlmErrorCode.InvalidFormat, content, error)
+        }
     }
 
     fun parseGlossaryContent(content: String): Map<String, String> {

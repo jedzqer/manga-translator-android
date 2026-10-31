@@ -166,16 +166,18 @@ internal class PayloadBuilder(
         }
     }
 
-    fun buildUserPayload(text: String, glossary: Map<String, String>): String {
+    fun buildUserPayload(text: String, glossary: Map<String, String>, synopsis: String? = null): String {
         return JSONObject()
             .put("text", text)
             .put("glossary", buildGlossaryJson(glossary))
+            .apply { if (synopsis != null) put("synopsis", synopsis) }
             .toString()
     }
 
     fun buildBubbleItemsUserPayload(
         items: List<LlmBubbleTranslationRequestItem>,
-        glossary: Map<String, String>
+        glossary: Map<String, String>,
+        synopsis: String? = null
     ): String {
         val itemsJson = JSONArray()
         items.forEach { item ->
@@ -188,6 +190,7 @@ internal class PayloadBuilder(
         return JSONObject()
             .put("items", itemsJson)
             .put("glossary", buildGlossaryJson(glossary))
+            .apply { if (synopsis != null) put("synopsis", synopsis) }
             .toString()
     }
 

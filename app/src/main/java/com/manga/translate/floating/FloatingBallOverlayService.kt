@@ -118,6 +118,29 @@ class FloatingBallOverlayService : Service() {
     private var controllerBallView: View? = null
     private var detectionOverlayView: FloatingDetectionOverlayView? = null
     private var detectionLayoutParams: WindowManager.LayoutParams? = null
+    private val screenTapDetector: FloatingScreenTapDetector by lazy {
+        FloatingScreenTapDetector(
+            handler = mainHandler,
+            touchSlopPx = 3f * resources.displayMetrics.density,
+            doubleTapTimeoutMs = ViewConfiguration.getDoubleTapTimeout().toLong(),
+            longPressTimeoutMs = ViewConfiguration.getLongPressTimeout().toLong(),
+            actions = {
+                val settings = settingsStore.loadFloatingTranslateApiSettings()
+                FloatingTapActions(
+                    single = settings.singleTapAction,
+                    double = settings.doubleTapAction,
+                    triple = settings.tripleTapAction,
+                    longPress = settings.longPressAction
+                )
+            },
+            onAction = { action ->
+                val menuPanel = controllerMenuPanel
+                if (action == FloatingBallGestureAction.CLEAR_SCREEN && menuPanel != null) {
+                    performFloatingBallGestureAction(action, menuPanel)
+                }
+            }
+        )
+    }
     private val recognitionCaptureMutex = Mutex()
     private val screenCaptureSession by lazy {
         ProjectionCaptureSession(applicationContext) {
@@ -218,6 +241,7 @@ class FloatingBallOverlayService : Service() {
         scope.launch {
             settingsStore.settingsVersion.collect {
                 detectionOverlayView?.setFloatingBubbleRenderSettings(settingsStore.loadFloatingBubbleRenderSettings())
+                refreshDetectionOverlayTouchability()
             }
         }
         displayManager.registerDisplayListener(displayListener, mainHandler)
@@ -602,16 +626,18 @@ class FloatingBallOverlayService : Service() {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
+        val policy = resolveDetectionWindowPolicy()
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             type,
-            buildDetectionFlags(),
+            buildDetectionFlags(policy),
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
+            alpha = policy.alpha
         }
         overlay.setFloatingBubbleRenderSettings(settingsStore.loadFloatingBubbleRenderSettings())
         overlay.setEditMode(editConfirmCoordinator.isEditing)
@@ -652,11 +678,19 @@ class FloatingBallOverlayService : Service() {
         }
     }
 
-    private fun buildDetectionFlags(): Int {
+    private fun resolveDetectionWindowPolicy(): DetectionOverlayWindowPolicy {
+        return DetectionOverlayWindowPolicy.resolve(
+            mode = settingsStore.loadFloatingTranslateApiSettings().effectiveOverlayMode(),
+            isEditing = editConfirmCoordinator.isEditing,
+            hasBubbles = currentSession?.bubbles?.isNotEmpty() == true
+        )
+    }
+
+    private fun buildDetectionFlags(policy: DetectionOverlayWindowPolicy): Int {
         var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-        if (!editConfirmCoordinator.isEditing) {
+        if (!policy.touchable) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         }
         return flags
@@ -1064,6 +1098,7 @@ class FloatingBallOverlayService : Service() {
         if (session == null) {
             detectionOverlayView?.clearDetections()
             detectionOverlayView?.setSourceBitmap(null)
+            refreshDetectionOverlayTouchability()
             updateEditButtons()
             return
         }
@@ -1073,14 +1108,21 @@ class FloatingBallOverlayService : Service() {
             session.bubbles
         )
         detectionOverlayView?.setSourceBitmap(bitmapController.sessionBitmap)
+        refreshDetectionOverlayTouchability()
         updateEditButtons()
     }
 
     private fun refreshDetectionOverlayTouchability() {
         val params = detectionLayoutParams ?: return
-        val newFlags = buildDetectionFlags()
-        if (params.flags == newFlags) return
+        val policy = resolveDetectionWindowPolicy()
+        // Edit mode handles its own touches; the tap detector only serves the frozen opaque overlay.
+        detectionOverlayView?.setScreenTapDetector(
+            if (policy.touchable && !editConfirmCoordinator.isEditing) screenTapDetector else null
+        )
+        val newFlags = buildDetectionFlags(policy)
+        if (params.flags == newFlags && params.alpha == policy.alpha) return
         params.flags = newFlags
+        params.alpha = policy.alpha
         try {
             windowManager.updateViewLayout(detectionOverlayView, params)
         } catch (_: Exception) {

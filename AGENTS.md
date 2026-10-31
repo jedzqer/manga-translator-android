@@ -109,6 +109,11 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - 译文与 OCR 原文相同是合法结果。无意义气泡仍必须返回对应 ID 和空译文；完整响应中的空译文表示移除该气泡。
 - 调整上述协议、glossary 回传或错误分类时，必须同步检查 `LlmClient`、`TextBubbleTranslationCoordinator` 及其单元测试。
 
+### 纯文本预算
+
+- `translation/TextRequestBudget.kt` 是独立预算与有序分批组件，使用模型能力快照、完整序列化输入、输出及推理预留和安全余量；默认 UTF-8 字节保守估算不是服务端精确 token 计数。使用契约见 `dev_doc/纯文本请求预算.md`。
+- 一张图片的全部文字作为不可拆单元；上下文超限或输出截断只能按完整图片边界缩小批次，单页失败不得截断原文。组件只规划批次，实际请求接入须共享原重试预算并严格验证完整响应后提交。
+
 ### 翻译供应商与 glossary
 
 - 翻译固定使用主供应商，不得再引入附加供应商池或调度。
@@ -116,8 +121,12 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - 并发逐页翻译使用 glossary 快照，成功后串行合并。关闭译名处理时仍可读取已有 `glossary.json` 作为上下文，但不得提取、合并或写入新译名；文字请求必须将开关传至请求构造层，关闭时明确要求 `glossary_used` 为空对象。
 - VL 整页直译由共享 `VlPageTranslationCoordinator` 处理：漫画库可按文件夹或集合选择完整画面或仅气泡：完整画面保留原图并标注 ID，仅气泡使用白底蒙版着色标注；悬浮窗和 API OCR 仍使用白底蒙版。默认每页或长图检测分块发送一次结构化图片请求；合并设置大于 1 时，漫画库按页序将多页及其检测分块作为独立图片合并发送，ID 按图片顺序在请求内连续编号，响应拆回各页原始 ID 与几何。合并请求受 AI 并发数限制，超时按含目标页数扩展，逐张编码后释放位图；已有结果仍直接读取，部分结果单独补填。文本块优先编号，无文本块气泡单独编号；响应 ID 必须与请求完全一致。回填时同一气泡内的非空文字块译文合并到父气泡的坐标与蒙版，游离文字保持文字块几何；误检与纯拟声词返回空译文并过滤。漫画库沿用译名处理开关，开启时使用 glossary 快照并在成功后串行合并，关闭时只读已有译名。悬浮窗暂不处理译名；携带译名上下文或启用译名提取的图片请求不得复用悬浮窗图片缓存。全文速译不接入 VL。
 - 多页气泡合并仅合并 AI 请求，不拼接图片或改写页内坐标；由 `TranslationPipeline.translatePagesWithGlossary()` 分配请求级唯一 ID 并拆回逐页结果。合并后的请求受 AI 并发数限制，超时按实际含文字页数扩展；已有部分译文仍走补填流程，已有缓存不因合并页数变化而失效。普通阅读模式使用有界、保持页序的 OCR 队列，凑批后即可发送并继续准备后续页面；不得将该流水线直接套用于条漫或全文速译。
-- 全文速译按有界窗口依次完成 OCR、译名提取和翻译落盘，译名请求同时限制文本量并沿用已累积的译名；不得恢复为整文件夹 OCR 结果常驻或一次性全文译名请求。条漫窗口须保留相邻页衔接，跨页合并结果仍只存在于内存。
+- 全文速译按有界窗口依次完成 OCR、译名提取和翻译落盘，译名请求按 token 预算装入完整页面文本并沿用已累积的译名；不得恢复为整文件夹 OCR 结果常驻或一次性全文译名请求。条漫窗口须保留相邻页衔接，跨页合并结果仍只存在于内存。
+- 剧情概览仅用于全文速译：随译名请求按完整页预算滚动更新，提示词要求压缩关键事件与人物关系，最多 6000 字符。概览保存于文件夹内按目标语言隔离的 `synopsis.json`（旧文件缺失时从空概览开始），续译加载后继续更新；全文翻译请求读取最新概览。概览不修改用户译文或 glossary 结构；全文速译分析响应必须返回字符串 synopsis，缺失或类型错误按无效响应报错，旧自定义提示词不豁免。
 - 全文速译固定启用译名处理；`CrossPageBubbleMerger` 只用于 `WEBTOON_SCROLL`，普通横向阅读不得执行跨页气泡合并。
+- 条漫模式下，相邻两页在接缝附近有区域时，先由 `TranslationPipeline.repairPageSeam()` 在拼接视图（`StitchedBitmapCropSource`）上对接缝上下各 0.25 倍页宽的条带重新检测一次（`PageRegionDetector.detectSeamBubbles()`），只保留跨越接缝且未被条带边缘截断的气泡并整体 OCR，替换两页上的残片后再执行 `CrossPageBubbleMerger`。修复结果与跨页合并一样只存在于内存，不写入 OCR 缓存；修复失败时保留原逐页结果。
+
+- AI 请求设置仅提供并发数和每次请求合并页数（1–500）。VL 实际合并最多 50 页，超过时按 50 页处理。处理窗口按应用堆容量与余量自动估算，并至少容纳当前模式实际使用的合并页数，每个窗口重新计算；旧的手动处理页数偏好不再读取。普通翻译、全文速译、条漫和 VL 均受窗口约束，条漫额外保留一页衔接；这不是 native/GPU 内存的精确预算，文本请求还受模型预算约束。
 
 ### 检测与 OCR
 
@@ -134,6 +143,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 - 普通页优先使用 `ARGB_8888`；长图或超高分辨率页面通过 `ReadingRegionImageView` 分块解码，并以源图分辨率作为布局坐标。
 - 普通气泡设置作用于阅读页、条漫页和导出；悬浮窗气泡设置只作用于 overlay。两套大小、透明度、形状和文字密度设置不得串用。
+- 悬浮窗检测 overlay 是全屏的不可信窗口。Android 12 起窗口 alpha 高于 0.8 时，即使带 `FLAG_NOT_TOUCHABLE` 也会丢弃下层应用的触摸，所以窗口 alpha、可触摸性与手势接管统一由 `DetectionOverlayWindowPolicy` 按 `FloatingOverlayMode`（`FloatingTranslateApiSettings.overlayMode`）决定，不得在 Service 中另写 flags 或 alpha。半透明穿透模式 alpha 固定 0.8；不透明模式仅在有气泡或编辑时 alpha 1.0 并拦截触摸，此时 `FloatingScreenTapDetector` 把单击、双击、三击和长按映射为悬浮球手势配置，目前只执行清屏。不透明模式要求至少一个悬浮球手势为清屏：设置弹窗拒绝保存不满足的组合，导入的不满足配置由 `FloatingTranslateApiSettings.effectiveOverlayMode()` 回退半透明。
 - 全局字体由 `BubbleFontResolver` 管理，普通渲染与悬浮窗共用；上传字体持久化在应用私有 `custom_fonts` 目录。
 - 普通气泡、游离文字气泡和悬浮窗气泡的文字填充比例独立保存，范围为 20%–100%，默认 100%。比例缩放自动适配后的字号，不改变气泡几何；横排、竖排、阅读与导出共用该规则，手动框使用普通气泡比例。
 - `BubbleTextScaling` 和竖排布局是共享算法。修改排版、路径缩放或密度规则时，必须检查 `BubbleRenderer`、`FloatingTranslationView`、`FloatingDetectionOverlayView` 以及对应测试。
@@ -167,6 +177,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - `SettingsStore` 是设置访问门面；新增设置应归入 `ApiSettingsStore`、`OcrSettingsStore`、`RenderSettingsStore`、`AppSettingsStore`、`LlmParameterStore` 或 `ProviderProfileStore`，不得继续膨胀 UI 层持久化逻辑。
 - 文件夹级设置、标签、排序和阅读方式统一经 `LibraryPreferencesGateway`。
 - 文件夹及集合文风由 `LibraryPreferencesGateway` 管理，默认跟随全局；集合内章节共用集合设置。专属空字符串表示不附加文风要求，不能当作跟随全局。实际文风随请求传递，禁止临时修改全局文风实现覆盖。
+- 模型上下文能力通过 `SettingsStore.loadModelContextSettings()` 读取，按供应商 profile、endpoint、接口格式、模型和 providerId 隔离；能力包含可空的最大输入、最大输出及总上下文（token），与 LLM 单次输出额度独立。未配置字段保持可空持久化，读取 `effectiveLimits` 获得逐字段兜底值，默认值统一由 `ModelContextDefaults` 定义；兜底是应用保守预设，不是已核实模型能力，也不从模型名推断。文本请求由 `TextRequestBudget` 预检实际序列化 Payload；能力、提示词和请求参数按逻辑操作冻结，结构化翻译及全文译名提取以整页不可拆单元装箱，确认截断或上下文溢出后仅按完整页面缩批。网络与响应重试共享截止时间和调用上限；任务不得中途重新读取其他供应商的能力配置。
 - AI 供应商 profile 位于 `files/ai_provider_profiles.json`；供应商配置和其他偏好键以对应 Store 常量为准，不在本文复制完整键表。
 - 设置弹窗默认对齐 `dialog_ocr_settings.xml`：滚动容器关闭 padding 裁剪，内容边距和控件节奏复用现有布局资源；不要为单个弹窗另建一套视觉规则。
 
@@ -179,6 +190,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 | `*.json` 翻译结果 | `TranslationStore` |
 | `*.ocr.json` OCR 缓存 | `OcrStore` |
 | `glossary.json` | `GlossaryStore` |
+| `synopsis.json` / `synopsis_<目标语言>.json` 剧情概览 | `SynopsisStore` |
 | `.extract-state.json` | `ExtractStateStore` |
 | 页级任务进度 | `TranslationProgressStore` |
 | `cache/floating_translate_cache.json` | `FloatingTranslationCacheStore`；清除应用缓存即可删除 |

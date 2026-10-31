@@ -66,7 +66,7 @@ class FolderTranslationBehaviorTest {
                 val secondPage = AtomicInteger(-1)
                 val firstSnapshots = Collections.synchronizedList(mutableListOf<Set<String>>())
                 f.dispatch { payload ->
-                    if (payload.has("text")) return@dispatch f.response(JSONObject().put("glossary_used", JSONObject()))
+                    if (payload.has("text")) return@dispatch f.response(JSONObject().put("synopsis", "").put("glossary_used", JSONObject()))
                     val inFlight = active.incrementAndGet()
                     peak.updateAndGet { maxOf(it, inFlight) }
                     try {
@@ -183,7 +183,7 @@ class FolderTranslationBehaviorTest {
         for ((full, batchSize) in listOf(false to 1, false to 2, true to 1, true to 2)) {
             withFixture(5, batchSize = batchSize) { f ->
                 f.dispatch { payload ->
-                    if (payload.has("text")) return@dispatch f.response(JSONObject().put("glossary_used", JSONObject()))
+                    if (payload.has("text")) return@dispatch f.response(JSONObject().put("synopsis", "").put("glossary_used", JSONObject()))
                     val source = payload.getJSONArray("items").getJSONObject(0).getString("text")
                     if (source == "source_0") f.response(JSONObject().put("items", JSONArray()))
                     else f.translationResponse(payload)
@@ -225,7 +225,7 @@ class FolderTranslationBehaviorTest {
                 val before = f.container.translationStore.translationFileFor(image).readBytes()
                 val refills = AtomicInteger()
                 f.dispatch { payload ->
-                    if (payload.has("text")) return@dispatch f.response(JSONObject().put("glossary_used", JSONObject()))
+                    if (payload.has("text")) return@dispatch f.response(JSONObject().put("synopsis", "").put("glossary_used", JSONObject()))
                     val items = payload.getJSONArray("items")
                     if (items.getJSONObject(0).getString("text") == "refill_source") {
                         refills.incrementAndGet()

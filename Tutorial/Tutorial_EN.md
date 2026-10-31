@@ -81,6 +81,8 @@ For your first run, turn off **Full-text fast translation** and **Vision-languag
 - **Highest quality**: usually enable full-text fast translation, turn off local OCR, and use a capable API OCR model together with a strong translation model. This improves OCR accuracy and glossary consistency, but increases requests and cost.
 - **Theoretical fastest**: enable vision-language full-page translation and use a fast, highly concurrent vision model. Actual speed depends on the API provider and network conditions, and image costs are usually higher.
 
+Full-text fast translation extracts and accumulates glossary terms in each processing window and generates a plot synopsis of up to 6,000 characters for later windows. The synopsis is saved in the folder separately for each target language, then loaded and updated when translation continues. It does not change saved translations.If the model refuses to perform a translation, please disable this option.
+
 #### OCR supplementation: requests and billing
 
 In the manga library, AI OCR supplementation groups regions by page and recognizes them in batches using white-background masks and ID annotations. **It does not send a separate request for each bubble.** Several regions on a normal, single-tile page can be recognized in one request. Long images are sent by actual detection tile, so one page may require multiple requests.
@@ -90,7 +92,8 @@ Both per-request and usage-based billing can be suitable. Compare the number of 
 #### Page merging for translation
 
 - Moderate merging can improve dialogue context and naming consistency while reducing request count and repeated prompts. This may save money on a **translation API** billed per request, but it does not reduce API OCR or supplementation request counts.
-- The limit is 100 pages, with 5–15 suggested. Start smaller for vision-language translation, long images, or dense text. Large requests increase device and AI workload.
+- The setting accepts 1–500 pages; 1 disables merging. Text requests are split according to the actual request budget. Vision-language translation merges at most 50 pages per request, even if you select a higher value. Start with 5–15 pages, or smaller batches for vision-language translation, long images, or dense text. Excessively large requests may increase device load, exceed provider limits, or reduce translation quality.
+- Pages per request controls how many pages are included in one AI request, not how many pages a chapter can contain. The app automatically sizes processing windows based on available memory and the page-merging setting. Webtoon windows also retain an adjacent page for continuity.
 
 > Draw a box manually around missed text regions to add them to the translation.
 
@@ -105,10 +108,12 @@ Both per-request and usage-based billing can be suitable. Compare the number of 
 ### Folder translation options
 
 - **Vision-language full-page translation**: enable it in a folder to send annotated page content to the main image-capable model and skip OCR. Long images are sent in sections. It cannot be enabled together with **Full-text fast translation**.
-- **Full-text fast translation** completes OCR, glossary extraction, and translation in windows of up to 100 pages, accumulating terms between windows. The first window still needs glossary extraction before translation starts. Cross-page bubbles are handled in Webtoon Scroll only, not ordinary reading mode.
+- **Full-text fast translation** automatically sizes processing windows based on memory, completing OCR, glossary extraction, and translation within each window and accumulating terms between batches. Window size does not limit the total pages in a chapter. The first batch needs glossary extraction before translation starts. Cross-page bubbles are handled in Webtoon Scroll only, not ordinary reading mode. A saved plot synopsis is also updated when translation continues, giving later windows context from earlier events without changing saved translations.
 - **Glossary Processing**: ordinary and vision-language full-page translation extract and add new terms when enabled. Existing terms take precedence to keep names consistent across later pages. When disabled, existing terms can still be used, but no new terms are saved. Full-text fast translation always enables glossary processing.
 - **VL full artwork**: applies to vision-language translation in the manga library. When enabled, the full artwork is preserved with ID annotations, allowing the model to use characters, actions, and scenes as context. When disabled, only bubble and text regions remain, with everything else filled white. Long images are still sent in detection tiles. This controls visual context, while **Translate bubbles only** below controls local OCR regions. Floating translation and API OCR continue to use white-background masks.
 - **Translate bubbles only**: saved per folder. Local OCR recognizes detected bubble regions only; if no bubbles are detected anywhere on the page, page text is still recognized. This option is disabled while vision-language translation or API OCR is enabled, but its saved value is retained. Use it to skip text outside bubbles; it may also omit narration or signs.
+
+In Webtoon Scroll, when both adjacent pages have detected regions near their shared edge, the app detects the seam area again to repair bubbles cut by the page boundary before merging across pages. Ordinary horizontal reading does not use this cross-page repair or merging.
 
 ### OCR settings
 
@@ -149,6 +154,9 @@ Configure a separate API URL, key, and model for floating translation. Leave the
 - **Proofreading mode** enters edit mode after every recognition pass.
 - **Auto-clear bubbles** clears bubbles automatically when the page changes.
 - **Floating-button gestures** let you change what single, double, long, and triple taps do.
+- **Bubble display mode** (Android 12 and later): **Translucent** keeps bubbles at most 80% opaque and lets touches pass through to the app underneath. **Opaque** makes bubbles fully opaque, but blocks touches and freezes the screen while they are shown. Use the floating-button gesture settings on the screen instead, for example double tap to clear the screen.
+
+Opaque mode requires at least one floating-button gesture to be assigned to **Clear bubbles**; otherwise, the settings cannot be saved. While bubbles are visible, screen gestures follow the floating button’s single-tap, double-tap, long-press, and triple-tap assignments, but currently only **Clear bubbles** is executed on the opaque screen. When no bubbles are visible or editing is active, touch handling follows the current interface state. Below Android 12, this mode does not block touches to the app underneath.
 
 To adjust floating translation text size, open Settings → **Floating Bubble Settings** → **Floating bubble text fill**. This separate setting also accepts **20%–100%** and defaults to **100%**. Lower it to make text smaller or raise it to restore the automatically fitted size without changing bubble size. It applies only to floating-window translations and does not affect library reading or exports.
 
@@ -170,7 +178,15 @@ To adjust floating translation text size, open Settings → **Floating Bubble Se
 
 **AI API Number of concurrent calls** accepts **1–100**, setting the maximum number of simultaneous AI requests. Start low and increase it after checking provider limits and device load. Higher concurrency does not guarantee faster results; reduce it if requests are rate-limited.
 
-**Pages per request** accepts 1–100; 1 disables page merging. Start with 5–15 pages. Ordinary, full-text fast, and vision-language full-page translation support merging in folder, collection, and batch tasks. Results are saved page by page; vision-language merging sends several separate images. Larger batches are not always better; see the cost and quality guidance above.
+**Pages per request** accepts 1–500; 1 disables page merging. Start with 5–15 pages. Ordinary, full-text fast, and vision-language full-page translation support merging in folder, collection, and batch tasks. Results are saved page by page; vision-language merging sends separate images and is capped at 50 pages per request, even if you select a higher value. The app automatically sizes processing windows based on memory and the page-merging setting; window size does not limit the total pages in a chapter. Larger batches are not always better; see the cost and quality guidance above.
+
+### Model context and text request budgets
+
+Open **Model context settings** in Settings to enter the current model’s maximum input, maximum output, and total context in tokens. These limits are saved separately for each provider, API URL, API format, and model, so switching providers or models loads the corresponding configuration.
+
+If you do not know the model’s specifications, leave the fields blank. The app displays and uses conservative defaults: **262,144 input tokens**, **65,536 output tokens**, and **262,144 total context tokens**. These defaults are not a guarantee of your provider’s deployed model capabilities. Enter the actual limits if your local deployment or provider supports less. Input and output are independent maxima; prompts, source text, reserved output, and a safety margin must also fit within the total context.
+
+These capability limits are separate from the per-request output limit in **LLM parameters**. The text request budget checks the complete input, including prompts and glossary terms, together with reserved output, and splits batches only at page boundaries. If a whole page or the fixed prompt cannot fit, try fewer merged pages, a shorter prompt, or a model with a larger context. Model context settings do not change saved translations or automatically retranslate pages.
 
 ### Custom request parameters
 

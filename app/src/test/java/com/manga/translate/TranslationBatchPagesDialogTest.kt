@@ -49,8 +49,8 @@ class TranslationBatchPagesDialogTest {
             val button = settingsBinding.translationRequestSettingsButton
             val parent = button.parent as ViewGroup
             assertEquals(
-                parent.indexOfChild(settingsBinding.fetchModelsButton) + 1,
-                parent.indexOfChild(button)
+                parent.indexOfChild(settingsBinding.enableThinkingSwitch) + 1,
+                parent.indexOfChild(settingsBinding.fetchModelsButton)
             )
             button.performClick()
             shadowOf(android.os.Looper.getMainLooper()).idle()
@@ -72,7 +72,7 @@ class TranslationBatchPagesDialogTest {
 
             assertTrue(binding.maxConcurrencyInput.width > 0)
             binding.maxConcurrencyInput.setText("5")
-            for (invalidPages in listOf("", "0", "101")) {
+            for (invalidPages in listOf("", "0", "501")) {
                 binding.batchPagesInput.setText(invalidPages)
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
                 assertTrue(dialog.isShowing)
@@ -80,7 +80,7 @@ class TranslationBatchPagesDialogTest {
                 assertEquals(3, settings.loadMaxConcurrency())
                 assertEquals(4, settings.loadTranslationBatchPages())
             }
-            binding.batchPagesInput.setText("100")
+            binding.batchPagesInput.setText("500")
             for (invalidConcurrency in listOf("", "0", "201")) {
                 binding.maxConcurrencyInput.setText(invalidConcurrency)
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
@@ -93,9 +93,9 @@ class TranslationBatchPagesDialogTest {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
             assertFalse(dialog.isShowing)
             assertEquals(5, settings.loadMaxConcurrency())
-            assertEquals(100, settings.loadTranslationBatchPages())
+            assertEquals(500, settings.loadTranslationBatchPages())
             assertEquals(
-                activity.getString(R.string.translation_request_settings_button_format, 5, 100),
+                activity.getString(R.string.translation_request_settings_button_format, 5, 500),
                 button.text.toString()
             )
 
@@ -105,7 +105,7 @@ class TranslationBatchPagesDialogTest {
             val reopenedInput = reopened.findViewById<com.google.android.material.textfield.TextInputEditText>(
                 R.id.batch_pages_input
             )!!
-            assertEquals("100", reopenedInput.text.toString())
+            assertEquals("500", reopenedInput.text.toString())
             val reopenedConcurrency = reopened.findViewById<com.google.android.material.textfield.TextInputEditText>(
                 R.id.max_concurrency_input
             )!!
@@ -116,7 +116,7 @@ class TranslationBatchPagesDialogTest {
             shadowOf(android.os.Looper.getMainLooper()).idle()
             assertFalse(reopened.isShowing)
             assertEquals(5, settings.loadMaxConcurrency())
-            assertEquals(100, settings.loadTranslationBatchPages())
+            assertEquals(500, settings.loadTranslationBatchPages())
         } finally {
             controller.pause().stop().destroy()
         }

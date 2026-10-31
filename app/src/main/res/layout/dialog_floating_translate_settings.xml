@@ -58,6 +58,33 @@
             android:text="@string/floating_auto_close_on_screen_change_note"
             android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
 
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/floating_overlay_mode_layout"
+            style="@style/Widget.MangaTranslator.Input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:hint="@string/floating_overlay_mode_hint"
+            app:endIconMode="dropdown_menu">
+
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                android:id="@+id/floating_overlay_mode_input"
+                style="@style/Widget.MangaTranslator.DialogEditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:focusable="false"
+                android:importantForAutofill="no"
+                android:inputType="none" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView
+            android:id="@+id/floating_overlay_mode_note"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/floating_overlay_mode_note"
+            android:textAppearance="@style/Widget.MangaTranslator.BodyMuted" />
+
         <TextView
             android:id="@+id/floating_detection_region_title"
             android:layout_width="match_parent"

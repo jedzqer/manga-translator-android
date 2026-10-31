@@ -8,8 +8,8 @@
     <string name="translation_request_settings_button_format">AI 請求設定：並行 %1$d，合併 %2$d 頁</string>
     <string name="translation_request_settings_title">AI 請求設定</string>
     <string name="translation_batch_pages_title">每次請求合併頁數</string>
-    <string name="translation_batch_pages_hint">每次請求合併頁數（1–100）</string>
-    <string name="translation_batch_pages_note">將多頁合併交給 AI 翻譯，結果仍逐頁儲存。填 1 不合併，建議 5～15 頁。頁數過多可能降低品質、增加手機負擔或導致譯文不完整，VL 模式尤其如此。</string>
+    <string name="translation_batch_pages_hint">每次請求合併頁數（1–500）</string>
+    <string name="translation_batch_pages_note">將多頁合併交給 AI 翻譯，結果仍逐頁儲存。填 1 不合併，建議 5～15 頁。頁數過多可能降低品質、增加手機負擔或導致譯文不完整，VL 模式尤其如此。 VL 模式每次最多合併 50 頁，設定超過 50 頁時按 50 頁處理。處理視窗由軟體依記憶體與實際合併頁數自動調整。</string>
     <string name="exclamation_mark" translatable="false">!</string>
     <!-- Global / Pipeline -->
     <string name="app_name">MT 閱讀器</string>
@@ -220,6 +220,11 @@
     <string name="floating_proofreading_mode_note">翻譯後自動進入編輯模式，可增刪和調整氣泡。</string>
     <string name="floating_auto_close_on_screen_change">自動清除氣泡</string>
     <string name="floating_auto_close_on_screen_change_note">翻頁時自動關閉譯文氣泡，會增加少量效能消耗。</string>
+    <string name="floating_overlay_mode_hint">氣泡顯示方式</string>
+    <string name="floating_overlay_mode_translucent">半透明，可穿透觸控</string>
+    <string name="floating_overlay_mode_opaque">不透明，凍結畫面</string>
+    <string name="floating_overlay_mode_note">半透明：氣泡最高 80% 不透明，仍可直接操作下方應用程式。不透明：氣泡完全不透明，但顯示期間會攔截螢幕觸控、凍結畫面，需依懸浮球手勢的設定在螢幕上操作，例如雙擊清除螢幕。</string>
+    <string name="floating_overlay_mode_requires_clear_screen">不透明模式需要至少將一個懸浮球手勢設為「清除螢幕」，否則氣泡顯示期間無法退出凍結畫面。</string>
     <string name="floating_detection_region_title">翻譯檢測區域</string>
     <string name="floating_detection_region_note">設定頂部和底部不翻譯的範圍，避開狀態列等內容（0–90%）。</string>
     <string name="floating_detection_top_inset_hint">頂部留空比例（%）</string>
@@ -264,7 +269,6 @@
     <string name="llm_param_temperature">temperature</string>
     <string name="llm_param_top_p">top_p</string>
     <string name="llm_param_top_k">top_k</string>
-    <string name="llm_param_max_output_tokens">max_output_tokens</string>
     <string name="llm_param_enable_thinking">啟用思考</string>
     <string name="llm_param_frequency_penalty">frequency_penalty</string>
     <string name="llm_param_presence_penalty">presence_penalty</string>
@@ -425,7 +429,7 @@
     <string name="folder_vl_model_required">目前普通翻譯直翻需要 VL 模型。請在主設定中改用支援影像輸入的模型，或關閉該開關。</string>
     <string name="folder_full_translate">全文速譯</string>
     <string name="folder_full_translate_info_title">全文速譯說明</string>
-    <string name="folder_full_translate_info">開啟後，每批最多從 100 頁中擷取譯名，讓前後譯名更一致。首張譯圖需要等待較久；想盡快看到譯文可關閉。</string>
+    <string name="folder_full_translate_info">開啟後，在有限的頁面視窗內擷取譯名，並持續更新最多 6000 個字元的劇情概覽，供後續視窗與接續翻譯理解上下文，再翻譯並逐頁儲存。劇情概覽會以 synopsis_zh_hant.json 儲存在資料夾中。視窗大小由軟體依記憶體與合併頁數自動調整。首張譯圖需要等待較久；想盡快看到譯文可關閉。</string>
     <string name="folder_full_translate_info_desc">全文速譯說明</string>
     <string name="folder_glossary_processing">譯名處理</string>
     <string name="folder_glossary_processing_info_title">譯名處理說明</string>
@@ -434,7 +438,7 @@
     <string name="folder_only_translate_bubbles">僅翻譯氣泡</string>
     <string name="folder_only_translate_bubbles_info_title">僅翻譯氣泡說明</string>
     <string name="folder_only_translate_bubbles_info_desc">僅翻譯氣泡說明</string>
-    <string name="folder_only_translate_bubbles_note">開啟後，內建 OCR 只辨識氣泡區域；未偵測到氣泡時仍會辨識頁面文字。VL 整頁直譯或 API OCR 啟用時，此選項無法使用。</string>
+    <string name="folder_only_translate_bubbles_note">開啟後，內建 OCR 只辨識氣泡區域；未偵測到氣泡時不翻譯該頁的游離文字。VL 整頁直譯或 API OCR 啟用時，此選項無法使用。</string>
 
     <!-- Library / Progress -->
     <string name="translation_preparing">預處理中</string>
@@ -542,6 +546,8 @@
     <string name="model_response_failed_clear_advanced_params">目前介面可能不支援高級參數。請在「LLM 參數」中清空可選高級參數後重試。</string>
     <string name="model_response_empty_content">模型返回空回應，無法提取有效內容。</string>
     <string name="model_response_truncated">譯文超出輸出長度限制。請在「LLM 參數」中調大 max_output_tokens 後重試。</string>
+    <string name="model_text_budget_exceeded">本次請求超出已設定的模型輸入或輸出額度。請縮短內容或檢查模型能力設定。</string>
+    <string name="model_text_budget_exhausted">本次請求已用盡共用的重試次數或時間預算。</string>
     <string name="model_response_blank_bubbles">模型返回空白結果：%1$s 模式下有 %2$d 個氣泡未返回有效翻譯內容。</string>
     <string name="error_page_prefix">頁面：</string>
     <string name="translation_continue">重試</string>
@@ -697,4 +703,18 @@
     <string name="floating_bubble_text_fill_percent_label" formatted="false">懸浮視窗氣泡文字填充比例</string>
     <string name="bubble_text_fill_percent_range" formatted="false">20–100（%）</string>
     <string name="bubble_text_fill_percent_note" formatted="false">100% 使用自動調整字級，降低比例可縮小文字；20% 為自動字級的五分之一。不會改變氣泡大小。</string>
+
+    <string name="model_context_title">模型上下文設定</string>
+    <string name="model_context_scope">供應商：%1$s\n模型：%2$s\n位址：%3$s</string>
+    <string name="model_context_unsaved">目前設定（未存為供應商）</string>
+    <string name="model_context_unknown">預設：%1$d token</string>
+    <string name="model_context_input">最大輸入（token）</string>
+    <string name="model_context_output">最大輸出（token）</string>
+    <string name="model_context_total">總上下文（token）</string>
+    <string name="model_context_note">不確定時無需填寫：預設最大輸入 262,144、最大輸出 65,536、總上下文 262,144 token。空白欄位顯示並使用預設值，輸入數字即可覆寫；恢復預設後點擊確定儲存。部分本機部署可能限制更小，請依服務規格調低。\n\n輸入和輸出是獨立上限，實際請求的輸入、輸出和安全餘量共用總上下文。能力上限與 LLM 參數中的單次輸出額度獨立；目前不自動調整翻譯批次。設定只用於目前供應商、位址、介面格式和模型。</string>
+    <string name="model_context_invalid">請輸入 1–2147483647 的整數，留空使用預設值。</string>
+    <string name="model_context_clear">恢復預設</string>
+    <string name="model_context_save_failed">儲存失敗或目前模型設定已變更，請重新開啟後再試。</string>
+    <string name="model_context_missing_identity">請先填寫模型名稱和介面位址。</string>
+    <string name="llm_param_max_output_tokens">單次請求輸出上限（token）</string>
 </resources>

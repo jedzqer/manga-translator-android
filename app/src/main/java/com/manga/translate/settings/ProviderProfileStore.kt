@@ -3,6 +3,7 @@ package com.manga.translate.settings
 import com.manga.translate.R
 import com.manga.translate.model.ApiFormat
 import com.manga.translate.model.FloatingBallGestureAction
+import com.manga.translate.model.FloatingOverlayMode
 import com.manga.translate.model.OcrApiFormat
 import com.manga.translate.model.ThinkingLength
 import com.manga.translate.platform.AppLogger
@@ -16,6 +17,34 @@ internal class ProviderProfileStore(
     private val llmParameterStore: LlmParameterStore,
     private val profileFileWriter: AiProviderProfilesFileWriter = AtomicAiProviderProfilesFileWriter
 ) {
+    fun loadModelContextSettings(settings: ApiSettings): ModelContextSettings {
+        val identity = ModelContextIdentity.from(settings)
+        return ModelContextSettings(
+            loadAiProviderProfilesState().activeProfileName,
+            identity,
+            llmParameterStore.loadModelContextEntries().firstOrNull { it.identity == identity }?.limits
+                ?: ModelContextLimits()
+        )
+    }
+
+    fun saveModelContextSettings(settings: ModelContextSettings): Boolean {
+        val state = loadAiProviderProfilesState()
+        // A dialog opened before a profile/deployment change must not write into the new scope.
+        if (state.activeProfileName != settings.profileName ||
+            ModelContextIdentity.from(apiSettingsStore.load()) != settings.identity ||
+            settings.identity.endpoint.isBlank() || settings.identity.modelName.isBlank()) return false
+        val entries = llmParameterStore.loadModelContextEntries().filterNot { it.identity == settings.identity } +
+            ModelContextEntry(settings.identity, settings.limits)
+        if (state.activeProfileName != null) {
+            val updated = state.copy(profiles = state.profiles.map {
+                if (it.name == state.activeProfileName) it.copy(modelContextEntries = entries) else it
+            })
+            if (!writeAiProviderProfilesState(updated)) return false
+        }
+        llmParameterStore.saveModelContextEntries(entries)
+        return true
+    }
+
     fun loadCustomRequestParameters(): List<CustomRequestParameter> {
         val raw = storage.prefs.getString(SettingsStore.KEY_CUSTOM_REQUEST_PARAMETERS, null).orEmpty()
         if (raw.isBlank()) return emptyList()
@@ -151,6 +180,7 @@ internal class ProviderProfileStore(
         ocrSettingsStore.saveOcrApiSettings(profile.ocrSettings)
         apiSettingsStore.saveFloatingTranslateApiSettings(profile.floatingTranslateSettings)
         llmParameterStore.saveLlmParameters(profile.llmParameters)
+        llmParameterStore.saveModelContextEntries(profile.modelContextEntries)
         saveCustomRequestParameters(profile.customRequestParameters)
         return true
     }
@@ -178,7 +208,8 @@ internal class ProviderProfileStore(
             ocrSettings = ocrSettingsStore.loadOcrApiSettings(),
             floatingTranslateSettings = apiSettingsStore.loadFloatingTranslateApiSettings(),
             llmParameters = llmParameterStore.loadLlmParameters(),
-            customRequestParameters = loadCustomRequestParameters()
+            customRequestParameters = loadCustomRequestParameters(),
+            modelContextEntries = llmParameterStore.loadModelContextEntries()
         )
     }
 
@@ -214,6 +245,7 @@ internal class ProviderProfileStore(
     private fun serializeAiProviderProfile(profile: AiProviderProfile): JSONObject {
         return JSONObject()
             .put("name", profile.name)
+            .put("modelContextEntries", ModelContextCodec.encode(profile.modelContextEntries))
             .put(
                 "mainSettings",
                 JSONObject()
@@ -291,6 +323,10 @@ internal class ProviderProfileStore(
                         "tripleTapAction",
                         profile.floatingTranslateSettings.tripleTapAction.prefValue
                     )
+                    .put(
+                        "overlayMode",
+                        profile.floatingTranslateSettings.overlayMode.prefValue
+                    )
             )
             .put(
                 "llmParameters",
@@ -331,6 +367,7 @@ internal class ProviderProfileStore(
         val hasUnsupportedOcrFormat = OcrApiFormat.isUnsupportedPref(ocrApiFormatPref)
         return AiProviderProfile(
             name = name,
+            modelContextEntries = ModelContextCodec.decode(item.optJSONArray("modelContextEntries")),
             mainSettings = ApiSettings(
                 apiUrl = mainJson.optString("apiUrl", SettingsStore.DEFAULT_API_URL),
                 apiKey = mainJson.optString("apiKey"),
@@ -462,6 +499,10 @@ internal class ProviderProfileStore(
                 tripleTapAction = FloatingBallGestureAction.fromPref(
                     floatingJson.optStringOrNull("tripleTapAction"),
                     SettingsStore.DEFAULT_FLOATING_TRIPLE_TAP_ACTION
+                ),
+                overlayMode = FloatingOverlayMode.fromPref(
+                    floatingJson.optStringOrNull("overlayMode"),
+                    SettingsStore.DEFAULT_FLOATING_OVERLAY_MODE
                 )
             ),
             llmParameters = LlmParameterSettings(

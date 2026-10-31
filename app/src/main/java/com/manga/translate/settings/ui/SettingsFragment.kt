@@ -44,6 +44,7 @@ import com.manga.translate.settings.ui.dialogs.BackupProgressDialog
 import com.manga.translate.settings.ui.dialogs.BackupExportOptionsDialog
 import com.manga.translate.settings.ui.dialogs.BackupExportOptionsHost
 import com.manga.translate.storage.AppBackupManager
+import com.manga.translate.settings.ui.dialogs.ModelContextDialog
 import com.manga.translate.settings.ui.dialogs.AiProviderProfilesDialog
 import com.manga.translate.settings.ui.dialogs.ApiFormatDialog
 import com.manga.translate.settings.ui.dialogs.BubbleFontSettingsDialog
@@ -351,6 +352,10 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
                 "Settings",
                 "enable_thinking ${if (isChecked) "enabled" else "disabled"}"
             )
+        }
+        binding.modelContextButton.setOnClickListener {
+            persistSettings()
+            ModelContextDialog(this, settingsStore).show()
         }
         binding.thinkingLengthButton.setOnClickListener {
             showThinkingLengthDialog()

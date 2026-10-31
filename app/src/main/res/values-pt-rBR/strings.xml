@@ -7,8 +7,8 @@
     <string name="translation_request_settings_button_format">Solicitações de IA: %1$d simultâneas, %2$d páginas/solicitação</string>
     <string name="translation_request_settings_title">Configurações de solicitações de IA</string>
     <string name="translation_batch_pages_title">Páginas por solicitação</string>
-    <string name="translation_batch_pages_hint">Páginas por solicitação (1–100)</string>
-    <string name="translation_batch_pages_note">Envia páginas juntas à IA e salva os resultados por página. Use 1 para desativar; recomendamos de 5 a 15 páginas. Lotes maiores podem reduzir a qualidade, sobrecarregar o celular ou gerar traduções incompletas, sobretudo no modo VL.</string>
+    <string name="translation_batch_pages_hint">Páginas por solicitação (1–500)</string>
+    <string name="translation_batch_pages_note">Envia páginas juntas à IA e salva os resultados por página. Use 1 para desativar; recomendamos de 5 a 15 páginas. Lotes maiores podem reduzir a qualidade, sobrecarregar o celular ou gerar traduções incompletas, sobretudo no modo VL. O modo VL combina no máximo 50 páginas por solicitação; valores acima de 50 são tratados como 50. O aplicativo ajusta a janela de processamento automaticamente conforme a memória e o número efetivo de páginas por solicitação.</string>
     <string name="exclamation_mark" translatable="false">!</string>
     <string name="app_name">MT Reader</string>
     <string name="preview_image">Visualização da detecção</string>
@@ -207,6 +207,11 @@
     <string name="floating_proofreading_mode_note">Abre o modo de edição após traduzir para adicionar, remover e ajustar balões.</string>
     <string name="floating_auto_close_on_screen_change">Limpar balões automaticamente</string>
     <string name="floating_auto_close_on_screen_change_note">Fecha os balões traduzidos ao virar a página, com um pequeno custo de desempenho.</string>
+    <string name="floating_overlay_mode_hint">Modo de exibição dos balões</string>
+    <string name="floating_overlay_mode_translucent">Translúcido, toques passam através</string>
+    <string name="floating_overlay_mode_opaque">Opaco, congela a tela</string>
+    <string name="floating_overlay_mode_note">Translúcido: os balões ficam com no máximo 80% de opacidade e você ainda pode usar o app por baixo. Opaco: os balões ficam totalmente opacos, mas os toques são bloqueados e a tela fica congelada enquanto eles aparecem. Use os gestos da bolinha flutuante na tela, por exemplo toque duplo para limpar a tela.</string>
+    <string name="floating_overlay_mode_requires_clear_screen">O modo opaco exige que pelo menos um gesto da bolinha flutuante esteja definido como Limpar tela; caso contrário, não será possível sair da tela congelada enquanto os balões aparecem.</string>
     <string name="floating_detection_region_title">Região de detecção da tradução</string>
     <string name="floating_detection_region_note">Exclua áreas no topo e na base da tradução para evitar barras de status e outros elementos (0–90%).</string>
     <string name="floating_detection_top_inset_hint">Margem superior (%)</string>
@@ -251,7 +256,6 @@
     <string name="llm_param_temperature">temperature</string>
     <string name="llm_param_top_p">top_p</string>
     <string name="llm_param_top_k">top_k</string>
-    <string name="llm_param_max_output_tokens">max_output_tokens</string>
     <string name="llm_param_enable_thinking">Ativar raciocínio</string>
     <string name="llm_param_frequency_penalty">frequency_penalty</string>
     <string name="llm_param_presence_penalty">presence_penalty</string>
@@ -404,7 +408,7 @@
     <string name="folder_vl_model_required">Atualmente, a tradução direta exige o modelo VL. Alterne para um modelo que aceite entrada de imagem nas configurações principais ou desative esta opção.</string>
     <string name="folder_full_translate">Tradução completa</string>
     <string name="folder_full_translate_info_title">Sobre a tradução completa</string>
-    <string name="folder_full_translate_info">Extrai termos de até 100 páginas por lote para manter os nomes consistentes. A primeira imagem traduzida demora mais; desative para ver traduções mais cedo.</string>
+    <string name="folder_full_translate_info">Em cada grupo limitado de páginas, o aplicativo extrai termos e atualiza um resumo de até 6000 caracteres para os grupos seguintes e traduções continuadas, depois traduz e salva cada página. O resumo é salvo como synopsis_pt_br.json na pasta. O aplicativo ajusta a janela automaticamente conforme a memória e as páginas por solicitação. A primeira imagem traduzida demora mais; desative para ver traduções mais cedo.</string>
     <string name="folder_full_translate_info_desc">Sobre a tradução completa</string>
     <string name="folder_glossary_processing">Processamento de glossário</string>
     <string name="folder_glossary_processing_info_title">Sobre o processamento de glossário</string>
@@ -413,7 +417,7 @@
     <string name="folder_only_translate_bubbles">Traduzir somente balões</string>
     <string name="folder_only_translate_bubbles_info_title">Sobre traduzir somente balões</string>
     <string name="folder_only_translate_bubbles_info_desc">Sobre traduzir somente balões</string>
-    <string name="folder_only_translate_bubbles_note">Quando ativado, o OCR integrado reconhece apenas as regiões dos balões. Se nenhum balão for detectado, o texto da página ainda será reconhecido. Esta opção fica indisponível com tradução VL da página inteira ou OCR por API.</string>
+    <string name="folder_only_translate_bubbles_note">Quando ativado, o OCR integrado reconhece apenas as regiões dos balões. Se nenhum balão for detectado, o texto fora dos balões não será traduzido. Esta opção fica indisponível com tradução VL da página inteira ou OCR por API.</string>
     <string name="translation_preparing">Preparando</string>
     <string name="folder_preprocess_progress">%1$s (%2$d/%3$d)</string>
     <string name="folder_preprocess_stage_ocr">Pré-processamento do OCR</string>
@@ -509,6 +513,8 @@
     <string name="model_response_failed_clear_advanced_params">Esta API pode não aceitar parâmetros avançados. Limpe os parâmetros avançados opcionais em “Parâmetros de IA” e tente novamente.</string>
     <string name="model_response_empty_content">O modelo retornou uma resposta vazia e nenhum conteúdo válido pôde ser extraído.</string>
     <string name="model_response_truncated">A tradução excedeu o limite de saída. Aumente max_output_tokens em “Parâmetros de IA” e tente novamente.</string>
+    <string name="model_text_budget_exceeded">Esta solicitação excede o limite de entrada ou saída configurado para o modelo. Reduza o conteúdo ou revise as configurações de capacidade do modelo.</string>
+    <string name="model_text_budget_exhausted">Esta solicitação esgotou o orçamento compartilhado de tentativas ou tempo.</string>
     <string name="model_response_blank_bubbles">O modelo retornou resultados em branco: %2$d balões no modo %1$s não retornaram traduções válidas.</string>
     <string name="error_page_prefix">página:</string>
     <string name="translation_continue">Tentar novamente</string>
@@ -659,4 +665,18 @@ Grupo de comunicação e feedback: %2$s</string>
     <string name="floating_bubble_text_fill_percent_label" formatted="false">Preenchimento do texto dos balões flutuantes</string>
     <string name="bubble_text_fill_percent_range" formatted="false">20–100 (%)</string>
     <string name="bubble_text_fill_percent_note" formatted="false">100% usa o tamanho de fonte ajustado automaticamente. Valores menores reduzem o texto; 20% usa um quinto desse tamanho. O tamanho do balão permanece igual.</string>
+
+    <string name="model_context_title">Configuração de contexto do modelo</string>
+    <string name="model_context_scope">Provedor: %1$s\nModelo: %2$s\nEndereço: %3$s</string>
+    <string name="model_context_unsaved">Configuração atual (sem provedor salvo)</string>
+    <string name="model_context_unknown">Padrão: %1$d tokens</string>
+    <string name="model_context_input">Entrada máxima (tokens)</string>
+    <string name="model_context_output">Saída máxima (tokens)</string>
+    <string name="model_context_total">Contexto total (tokens)</string>
+    <string name="model_context_note">Em caso de dúvida, deixe em branco: os padrões são 262.144 tokens de entrada, 65.536 de saída e 262.144 de contexto total. Campos vazios mostram e usam o padrão. Digite um número para substituí-lo; confirme para salvar os padrões restaurados. Algumas instalações locais têm limites menores; ajuste os valores conforme o serviço.\n\nEntrada e saída têm limites independentes. Cada solicitação divide o contexto total entre entrada, saída e margem de segurança. Esses limites são separados da cota de saída nos parâmetros do LLM e ainda não ajustam os lotes de tradução automaticamente. Os valores se aplicam apenas a este provedor, endereço, formato de API e modelo.</string>
+    <string name="model_context_invalid">Digite um número inteiro de 1 a 2147483647 ou deixe em branco para usar o padrão.</string>
+    <string name="model_context_clear">Usar padrões</string>
+    <string name="model_context_save_failed">Não foi possível salvar ou a configuração do modelo mudou. Reabra a janela e tente novamente.</string>
+    <string name="model_context_missing_identity">Preencha primeiro o nome do modelo e o endereço da API.</string>
+    <string name="llm_param_max_output_tokens">Limite de saída por solicitação (tokens)</string>
 </resources>

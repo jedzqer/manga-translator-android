@@ -20,7 +20,8 @@ class LlmRequestException(
 class LlmResponseException(
     val errorCode: LlmErrorCode,
     val responseContent: String,
-    cause: Throwable? = null
+    cause: Throwable? = null,
+    val retryable: Boolean = true
 ) : Exception("LLM response invalid: ${errorCode.value}", cause) {
     constructor(errorCode: String, responseContent: String, cause: Throwable? = null) : this(
         LlmErrorCode.from(errorCode),
@@ -36,7 +37,9 @@ data class LlmTranslationResult(
 
 data class LlmBubbleTranslationRequestItem(
     val id: Int,
-    val text: String
+    val text: String,
+    /** All items sharing a source are indivisible; absent means the whole request is one page. */
+    val sourceId: String = "page"
 )
 
 data class LlmBubbleTranslationResult(

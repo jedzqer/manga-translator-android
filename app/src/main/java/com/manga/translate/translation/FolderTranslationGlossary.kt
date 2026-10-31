@@ -3,10 +3,10 @@ package com.manga.translate.translation
 import com.manga.translate.model.PageOcrResult
 import com.manga.translate.network.LlmClient
 import com.manga.translate.network.LlmResponseException
-import com.manga.translate.network.executeWithModelResponseRetries
 import com.manga.translate.platform.AppLogger
 import com.manga.translate.storage.ExtractStateStore
 import com.manga.translate.storage.GlossaryStore
+import com.manga.translate.storage.SynopsisStore
 import java.io.File
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -20,6 +20,7 @@ internal class FolderTranslationGlossary(
     private val glossaryStore: GlossaryStore,
     private val extractStateStore: ExtractStateStore,
     private val llmClient: LlmClient,
+    private val synopsisStore: SynopsisStore = SynopsisStore(),
     private val targetKeyProvider: () -> String
 ) {
     private val translationTargetKey: String get() = targetKeyProvider()
@@ -66,6 +67,9 @@ internal class FolderTranslationGlossary(
         return extractStateStore.load(folder, translationTargetKey)
     }
 
+    fun loadSynopsis(folder: File): String = synopsisStore.load(folder, translationTargetKey)
+    fun saveSynopsis(folder: File, text: String) = synopsisStore.save(folder, text, translationTargetKey)
+
     fun saveScopedExtractState(folder: File, extracted: Set<String>) {
         extractStateStore.save(folder, extracted, translationTargetKey)
     }
@@ -89,33 +93,27 @@ internal class FolderTranslationGlossary(
         var extractionComplete = true
         var hadModelError = false
         val glossaryImage = glossaryPages.firstOrNull()?.imageFile?.name.orEmpty()
-        for (text in glossaryTextBatches(glossaryPages)) {
-            currentCoroutineContext().ensureActive()
-            onProgress(glossaryImage)
-            while (true) {
-                try {
-                    val extracted = executeWithModelResponseRetries("Library") {
-                        llmClient.extractGlossary(text, glossary, "prompts/llm_prompts_abstract.json")
-                    }
-                    if (extracted == null) {
-                        extractionComplete = false
-                    } else if (extracted.isNotEmpty()) {
-                        // Existing translations remain authoritative during extraction.
-                        val additions = extracted.filterKeys { !glossary.containsKey(it) }
-                        saveScopedGlossary(folder, glossary, additions)
-                    }
+        val units = glossaryPageUnits(glossaryPages)
+        currentCoroutineContext().ensureActive()
+        onProgress(glossaryImage)
+        while (units.isNotEmpty()) {
+            try {
+                val extracted = llmClient.extractGlossaryPages(units, glossary,
+                    "prompts/llm_prompts_abstract.json") { additions ->
+                    saveScopedGlossary(folder, glossary, additions)
+                }
+                if (extracted == null) extractionComplete = false
+                break
+            } catch (e: LlmResponseException) {
+                AppLogger.log("Library", "Full-page glossary response invalid", e)
+                if (onInvalidResponse(e.responseContent)) {
+                    extractionComplete = false
+                    hadModelError = true
                     break
-                } catch (e: LlmResponseException) {
-                    AppLogger.log("Library", "Full-page glossary response invalid", e)
-                    if (onInvalidResponse(e.responseContent)) {
-                        extractionComplete = false
-                        hadModelError = true
-                        break
-                    }
                 }
             }
         }
-        // A page can span requests. Failed/cancelled extraction remains retryable.
+        // Only complete windows are marked extracted. Successful additions survive later failure.
         if (extractionComplete && glossaryPages.isNotEmpty()) {
             glossaryPages.forEach { extractState.add(it.imageFile.name) }
             saveScopedExtractState(folder, extractState)

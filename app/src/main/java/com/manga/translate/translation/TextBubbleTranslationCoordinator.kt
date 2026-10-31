@@ -25,7 +25,8 @@ internal class TextBubbleTranslationCoordinator(
         logTag: String,
         translationMode: String,
         preserveInputOrder: Boolean = false,
-        glossaryProcessingEnabled: Boolean = true
+        glossaryProcessingEnabled: Boolean = true,
+        sourceIds: Map<Int, String> = emptyMap()
     ): TextBubbleTranslationBatchResult? {
         if (bubbles.isEmpty()) {
             return TextBubbleTranslationBatchResult(bubbles = bubbles, glossaryUsed = emptyMap())
@@ -54,7 +55,8 @@ internal class TextBubbleTranslationCoordinator(
         val requestItems = ordered.map {
             LlmBubbleTranslationRequestItem(
                 id = it.id,
-                text = normalizeOcrText(it.sourceText, language)
+                text = normalizeOcrText(it.sourceText, language),
+                sourceId = sourceIds[it.id] ?: "page"
             )
         }
         val translated = llmClient.translateBubbleItems(

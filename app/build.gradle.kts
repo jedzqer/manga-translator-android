@@ -21,13 +21,21 @@ android {
         applicationId = "com.manga.translate.v3"
         minSdk = 24
         targetSdk = 37
-        versionCode = 122
-        versionName = "3.7.3"
+        versionCode = 125
+        versionName = "3.7.6"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    if (project.findProperty("qaDeviceTest") == "true") {
+        buildTypes {
+            debug {
+                applicationIdSuffix = ".qa"
+            }
+        }
     }
 
     val releaseSigning = if (hasSigning) {
@@ -129,4 +137,7 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("com.microsoft.onnxruntime:onnxruntime:1.28.0")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }

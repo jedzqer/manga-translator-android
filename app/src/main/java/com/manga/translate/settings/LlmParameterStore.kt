@@ -5,6 +5,20 @@ import com.manga.translate.model.ThinkingLength
 internal class LlmParameterStore(
     private val storage: SettingsStoreStorage
 ) {
+    fun loadModelContextEntries(): List<ModelContextEntry> = runCatching {
+        ModelContextCodec.decode(org.json.JSONArray(storage.prefs.getString(MODEL_CONTEXT_KEY, "[]")))
+    }.getOrDefault(emptyList())
+
+    fun saveModelContextEntries(entries: List<ModelContextEntry>) {
+        storage.editSettings(setOf(MODEL_CONTEXT_KEY)) {
+            putString(MODEL_CONTEXT_KEY, ModelContextCodec.encode(entries).toString())
+        }
+    }
+
+    companion object {
+        internal const val MODEL_CONTEXT_KEY = "model_context_entries"
+    }
+
     fun loadLlmParameters(): LlmParameterSettings {
         return LlmParameterSettings(
             temperature = storage.readDoubleWithDefault(

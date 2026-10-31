@@ -1,5 +1,6 @@
 package com.manga.translate
 
+import com.manga.translate.translation.resolveTranslationProcessingLimit
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.manga.translate.library.LibraryPreferencesGateway
@@ -163,7 +164,17 @@ class SettingsStoreTest {
         store.saveTranslationBatchPages(0)
         assertEquals(1, store.loadTranslationBatchPages())
         store.saveTranslationBatchPages(Int.MAX_VALUE)
-        assertEquals(100, store.loadTranslationBatchPages())
+        assertEquals(500, store.loadTranslationBatchPages())
+        assertEquals(50, store.loadTranslationBatchPages(useVlDirectTranslate = true))
+        assertEquals(500, SettingsStore(context).loadTranslationBatchPages())
+        assertEquals(500, store.resolveTranslationProcessingLimit())
+        assertTrue(store.resolveTranslationProcessingLimit(useVlDirectTranslate = true) in 50..100)
+        store.saveTranslationBatchPages(49)
+        assertEquals(49, store.loadTranslationBatchPages(useVlDirectTranslate = true))
+        store.saveTranslationBatchPages(50)
+        assertEquals(50, store.loadTranslationBatchPages(useVlDirectTranslate = true))
+        store.saveTranslationBatchPages(51)
+        assertEquals(50, store.loadTranslationBatchPages(useVlDirectTranslate = true))
         assertEquals(SettingsStore.DEFAULT_MAX_CONCURRENCY, store.loadMaxConcurrency())
         assertEquals(SettingsStore.DEFAULT_API_TIMEOUT_SECONDS, store.loadApiTimeoutSeconds())
     }

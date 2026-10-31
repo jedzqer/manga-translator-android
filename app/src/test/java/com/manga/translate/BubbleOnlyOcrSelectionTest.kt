@@ -28,18 +28,30 @@ class BubbleOnlyOcrSelectionTest {
     }
 
     @Test
-    fun `bubble-only OCR keeps text regions as fallback when no bubbles were detected`() {
+    fun `bubble-only OCR excludes text-only pages`() {
         val text = PageRegion(1, RectF(10f, 10f, 90f, 30f), BubbleSource.TEXT_DETECTOR)
         val detection = detection(listOf(text))
 
-        assertSame(detection, selectPageRegionsForOcr(detection, bubbleOnlyEnabled = true))
+        val filtered = selectPageRegionsForOcr(detection, bubbleOnlyEnabled = true)
+
+        assertEquals(emptyList<PageRegion>(), filtered.regions)
+        assertEquals(emptyList<RectF>(), filtered.textRects)
+        assertEquals(listOf(text), detection.regions)
     }
 
     @Test
     fun `only-bubbles cache mode is local-only and separated from existing OCR cache`() {
-        assertEquals("bubbles_only", ocrRegionCacheMode(onlyTranslateBubbles = true, useLocalOcr = true))
+        assertEquals("bubbles_only_strict", ocrRegionCacheMode(onlyTranslateBubbles = true, useLocalOcr = true))
         assertEquals("bubbles_and_text", ocrRegionCacheMode(onlyTranslateBubbles = true, useLocalOcr = false))
         assertEquals("bubbles_and_text", ocrRegionCacheMode(onlyTranslateBubbles = false, useLocalOcr = true))
+    }
+
+    @Test
+    fun `disabled bubble-only OCR preserves text regions`() {
+        val text = PageRegion(1, RectF(10f, 10f, 90f, 30f), BubbleSource.TEXT_DETECTOR)
+        val detection = detection(listOf(text))
+
+        assertSame(detection, selectPageRegionsForOcr(detection, bubbleOnlyEnabled = false))
     }
 
     private fun detection(regions: List<PageRegion>) = PageRegionDetectionResult(

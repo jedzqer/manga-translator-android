@@ -39,6 +39,7 @@ import com.manga.translate.platform.ImageFileSupport
 import com.manga.translate.platform.PipelineBitmapDecoder
 import com.manga.translate.platform.PerformanceTrace
 import com.manga.translate.platform.PromptAssetResolver
+import com.manga.translate.platform.StitchedBitmapCropSource
 import com.manga.translate.platform.recycleSafely
 import com.manga.translate.ocr.OcrTextSanitizer
 import com.manga.translate.settings.OCR_PROVIDER_ID
@@ -286,6 +287,64 @@ internal class TranslationPipeline(
         }
     }
 
+    /**
+     * Re-detect and OCR bubbles split by the seam between two adjacent pages. A recovered
+     * bubble is placed on [upper] in its coordinates (bottom beyond its height) and replaces
+     * the fragments on both pages. The result exists only in memory; page OCR caches are
+     * untouched. Returns null when nothing changed or the repair could not run.
+     */
+    suspend fun repairPageSeam(
+        upper: PageOcrResult,
+        lower: PageOcrResult,
+        language: TranslationLanguage
+    ): Pair<PageOcrResult, PageOcrResult>? = withContext(Dispatchers.Default) {
+        try {
+            val ocrSettings = settingsStore.loadResolvedOcrApiSettings()
+            val resolvedLanguage = TranslationLanguage.resolveForOcr(language, ocrSettings.useLocalOcr)
+            val useLocalOcr = ocrSettings.useLocalOcr && resolvedLanguage.supportsLocalOcr()
+            if (!useLocalOcr && !llmClient.isOcrConfigured()) return@withContext null
+            PipelineBitmapDecoder.openCropSource(upper.imageFile)?.use { upperSource ->
+                PipelineBitmapDecoder.openCropSource(lower.imageFile)?.use { lowerSource ->
+                    if (upperSource.width != upper.width || upperSource.height != upper.height ||
+                        lowerSource.width != lower.width || lowerSource.height != lower.height
+                    ) {
+                        return@withContext null
+                    }
+                    val stitched = StitchedBitmapCropSource(upperSource, lowerSource)
+                    val seamBubbles = pageRegionDetector.detectSeamBubbles(stitched, "Pipeline")
+                    if (seamBubbles.isEmpty()) return@withContext null
+                    val recovered = seamBubbles.mapNotNull { detection ->
+                        val text = recognizeRegionFromSource(
+                            cropSource = stitched,
+                            rect = detection.rect,
+                            language = resolvedLanguage,
+                            useLocalOcr = useLocalOcr,
+                            logTag = "Pipeline",
+                            bubbleSource = BubbleSource.BUBBLE_DETECTOR
+                        )
+                        text.takeIf { it.isNotBlank() }?.let {
+                            OcrBubble(-1, detection.rect, it, BubbleSource.BUBBLE_DETECTOR)
+                        }
+                    }
+                    if (recovered.isEmpty()) return@withContext null
+                    val repaired = applySeamBubbles(upper, lower, recovered)
+                    AppLogger.log(
+                        "Pipeline",
+                        "Recovered ${recovered.size} seam bubble(s) between " +
+                            "${upper.imageFile.name} and ${lower.imageFile.name}"
+                    )
+                    repaired
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The per-page results remain valid; the seam simply keeps its fragments.
+            AppLogger.log("Pipeline", "Seam repair failed for ${upper.imageFile.name}", e)
+            null
+        }
+    }
+
     suspend fun translatePagesWithGlossary(
         pages: List<PageOcrResult>,
         glossary: Map<String, String>,
@@ -344,6 +403,9 @@ internal class TranslationPipeline(
                     logTag = "Pipeline",
                     translationMode = mode,
                     preserveInputOrder = true,
+                    sourceIds = pageBubbles.flatMapIndexed { index, pairs ->
+                        pairs.map { it.second.id to pages[index].imageFile.absolutePath }
+                    }.toMap(),
                     glossaryProcessingEnabled = glossaryProcessingEnabled
                 )
             }
@@ -845,7 +907,8 @@ internal class TranslationPipeline(
         return LlmResponseException(
             errorCode = errorCode,
             responseContent = "$pagePrefix$pageName\n$responseContent",
-            cause = this
+            cause = this,
+            retryable = retryable
         )
     }
 
@@ -857,12 +920,11 @@ internal fun selectPageRegionsForOcr(
 ): PageRegionDetectionResult {
     if (!bubbleOnlyEnabled) return detection
     val bubbleRegions = detection.regions.filter { it.source == BubbleSource.BUBBLE_DETECTOR }
-    if (bubbleRegions.isEmpty()) return detection
     return detection.copy(regions = bubbleRegions, textRects = emptyList())
 }
 
 internal fun ocrRegionCacheMode(onlyTranslateBubbles: Boolean, useLocalOcr: Boolean): String =
-    if (onlyTranslateBubbles && useLocalOcr) "bubbles_only" else "bubbles_and_text"
+    if (onlyTranslateBubbles && useLocalOcr) "bubbles_only_strict" else "bubbles_and_text"
 
 internal fun buildDetectionStrategyTag(
     pageWidth: Int,

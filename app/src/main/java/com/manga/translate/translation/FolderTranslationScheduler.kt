@@ -325,7 +325,7 @@ internal class FolderTranslationScheduler(
         val progressMutex = Mutex()
         var processedCount = 0
         var failedCount = 0
-        val batchSize = settingsStore.loadTranslationBatchPages()
+        val batchSize = settingsStore.loadTranslationBatchPages(useVlDirectTranslate)
         val batchable = pages.indices.map { index ->
             val partial = !force && ocrPreparation.hasRefillablePartialTranslation(
                 pages[index]

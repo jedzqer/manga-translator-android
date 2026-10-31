@@ -4,12 +4,10 @@ import android.graphics.RectF
 import com.manga.translate.model.OcrBubble
 import com.manga.translate.model.PageOcrResult
 import com.manga.translate.translation.CrossPageBubbleMerger
-import com.manga.translate.translation.GLOSSARY_WINDOW_CHARACTERS
 import com.manga.translate.translation.TRANSLATION_WINDOW_PAGES
 import com.manga.translate.translation.forEachPreparedPageWindow
-import com.manga.translate.translation.glossaryTextBatches
+import com.manga.translate.translation.glossaryPageUnits
 import com.manga.translate.translation.mergeOcrWindow
-import com.manga.translate.translation.translationWindowSize
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
@@ -21,13 +19,6 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class TranslationWindowTest {
-    @Test
-    fun `translation window follows configured batch size above the default window`() {
-        assertEquals(TRANSLATION_WINDOW_PAGES, translationWindowSize(1))
-        assertEquals(TRANSLATION_WINDOW_PAGES, translationWindowSize(TRANSLATION_WINDOW_PAGES))
-        assertEquals(TRANSLATION_WINDOW_PAGES, translationWindowSize(200))
-    }
-
     @Test
     fun `ten thousand pages finish each window before preparing more and visit each page once`() = runBlocking {
         for (lookAhead in listOf(false, true)) {
@@ -152,7 +143,7 @@ class TranslationWindowTest {
     }
 
     @Test
-    fun `glossary requests are bounded and retain all text in reading order`() {
+    fun `glossary units retain entire images and reading order`() {
         val longText = "漢字😀".repeat(10_000)
         val pages = listOf(
             page(0, listOf(
@@ -162,16 +153,12 @@ class TranslationWindowTest {
             )),
             page(1, listOf(bubble(0, longText)))
         )
-        for (limit in listOf(10, 21, GLOSSARY_WINDOW_CHARACTERS)) {
-            val requests = glossaryTextBatches(pages, limit).toList()
-            assertTrue(requests.size > 1)
-            assertTrue(requests.all { it.length <= limit && it.isNotBlank() })
-            val content = Regex("<b>(.*?)</b>\\n", RegexOption.DOT_MATCHES_ALL)
-            val parts = requests.flatMap { request -> content.findAll(request).map { it.groupValues[1] }.toList() }
-            assertEquals("firstlast$longText", parts.joinToString(""))
-            assertTrue(parts.none { it.first().isLowSurrogate() || it.last().isHighSurrogate() })
-        }
-        assertEquals(emptyList<String>(), glossaryTextBatches(listOf(page(0, emptyList()))).toList())
+        val units = glossaryPageUnits(pages)
+        assertEquals(2, units.size)
+        assertEquals(pages.map { it.imageFile.absolutePath }, units.map { it.sourceId })
+        assertEquals("<b>first</b>\n<b>last</b>", units[0].serializedText)
+        assertEquals("<b>$longText</b>", units[1].serializedText)
+        assertTrue(glossaryPageUnits(listOf(page(0, emptyList()))).isEmpty())
     }
 
     @Test

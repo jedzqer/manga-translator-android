@@ -15,7 +15,6 @@ import com.manga.translate.model.TranslationLanguage
 import com.manga.translate.model.TranslationMetadata
 import com.manga.translate.platform.PromptAssetResolver
 import com.manga.translate.translation.FolderTranslationTask
-import com.manga.translate.translation.GLOSSARY_WINDOW_CHARACTERS
 import com.manga.translate.translation.TRANSLATION_WINDOW_PAGES
 import com.manga.translate.translation.buildDetectionStrategyTag
 import com.manga.translate.settings.ApiSettings
@@ -48,10 +47,10 @@ class FolderTranslationWindowTest {
     fun `batch uses the same windows with cumulative glossary and completed page counts`() = checkTask(true)
 
     @Test
-    fun `folder clamps oversized batches to the fixed window`() = checkTask(false, batchSize = 200)
+    fun `folder expands automatic windows for larger batches`() = checkTask(false, batchSize = 200)
 
     @Test
-    fun `batch clamps oversized batches to the fixed window`() = checkTask(true, batchSize = 200)
+    fun `batch expands automatic windows for larger batches`() = checkTask(true, batchSize = 200)
 
     @Test
     fun `standard batches preserve page order partial refill and disabled glossary context`() {
@@ -161,6 +160,9 @@ class FolderTranslationWindowTest {
         }
     }
 
+    @Test
+    fun `legacy processing preference does not limit request batches`() = checkTask(false)
+
     private fun checkTask(batch: Boolean, batchSize: Int = TRANSLATION_WINDOW_PAGES) {
         val context: Context = RuntimeEnvironment.getApplication()
         val container = context.appContainer
@@ -170,11 +172,14 @@ class FolderTranslationWindowTest {
         settings.saveApiRetryCount(0)
         settings.saveMaxConcurrency(1)
         settings.saveTranslationBatchPages(batchSize)
+        // A previously saved manual window must no longer affect scheduling.
+        context.getSharedPreferences("manga_translate_settings", Context.MODE_PRIVATE).edit()
+            .putInt("translation_processing_pages", 20).commit()
+        val windowSize = batchSize
         val effectiveBatchSize = settings.loadTranslationBatchPages()
-        assertEquals(minOf(batchSize, TRANSLATION_WINDOW_PAGES), effectiveBatchSize)
+        assertEquals(batchSize, effectiveBatchSize)
         settings.saveOcrApiSettings(settings.loadOcrApiSettings().copy(useLocalOcr = false, modelName = "ocr-test"))
         val folder = requireNotNull(container.libraryRepository.createFolder("windows_${System.nanoTime()}"))
-        val windowSize = TRANSLATION_WINDOW_PAGES
         val images = List(windowSize + 2) { File(folder, "%04d.png".format(it)) }
         val pipeline = container.createTranslationPipeline()
         val targetKey = PromptAssetResolver.translationTargetKey(context)
@@ -189,8 +194,7 @@ class FolderTranslationWindowTest {
         val requestSizes = mutableListOf<Int>()
         val cacheMode = "api|${buildDetectionStrategyTag(100, 100)}|bubbles_and_text"
         fun source(index: Int) = "source_${index}_".padEnd(320, 'a')
-        val pagesPerGlossaryRequest = GLOSSARY_WINDOW_CHARACTERS / "<b>${source(1)}</b>\n".length
-        val firstWindowGlossaryRequests = (windowSize + pagesPerGlossaryRequest - 1) / pagesPerGlossaryRequest
+        val firstWindowGlossaryRequests = 1
         try {
             val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
             try {
@@ -224,8 +228,11 @@ class FolderTranslationWindowTest {
                     assertEquals("保留", glossary.getString("existing"))
                     for (index in 1..glossaryRequests) assertEquals("译名$index", glossary.getString("term$index"))
                     val response = if (payload.has("text")) {
+                        assertEquals(if (glossaryRequests == 0) "" else "synopsis$glossaryRequests",
+                            payload.getString("synopsis"))
                         val text = payload.getString("text")
-                        assertTrue(text.length <= GLOSSARY_WINDOW_CHARACTERS)
+                        assertTrue(Regex("<b>").findAll(text).count() <= windowSize)
+                        assertEquals(Regex("<b>").findAll(text).count(), Regex("</b>").findAll(text).count())
                         assertFalse(text.contains("source_0_"))
                         if (text.contains("source_${windowSize + 1}_")) {
                             assertEquals(windowSize, translatedSources.size)
@@ -240,10 +247,11 @@ class FolderTranslationWindowTest {
                             }
                         }
                         glossaryRequests++
-                        JSONObject().put("glossary_used", JSONObject()
+                        JSONObject().put("synopsis", "synopsis$glossaryRequests").put("glossary_used", JSONObject()
                             .put("existing", "不应覆盖")
                             .put("term$glossaryRequests", "译名$glossaryRequests"))
                     } else {
+                        assertEquals("synopsis$glossaryRequests", payload.getString("synopsis"))
                         assertEquals("Extracted glossary must be durable before translation",
                             expectedGlossary(), container.glossaryStore.load(folder, targetKey))
                         val items = payload.getJSONArray("items")

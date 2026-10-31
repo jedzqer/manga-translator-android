@@ -8,8 +8,8 @@
     <string name="translation_request_settings_button_format">Запросы ИИ: одновременно %1$d, страниц на запрос: %2$d</string>
     <string name="translation_request_settings_title">Настройки запросов ИИ</string>
     <string name="translation_batch_pages_title">Страниц на запрос</string>
-    <string name="translation_batch_pages_hint">Страниц в запросе (1–100)</string>
-    <string name="translation_batch_pages_note">Отправляет страницы ИИ вместе, сохраняя результаты постранично. Значение 1 отключает объединение; рекомендуем 5–15 страниц. Большие группы могут снизить качество, перегрузить телефон или дать неполный перевод, особенно в режиме VL.</string>
+    <string name="translation_batch_pages_hint">Страниц в запросе (1–500)</string>
+    <string name="translation_batch_pages_note">Отправляет страницы ИИ вместе, сохраняя результаты постранично. Значение 1 отключает объединение; рекомендуем 5–15 страниц. Большие группы могут снизить качество, перегрузить телефон или дать неполный перевод, особенно в режиме VL. В режиме VL объединяется не более 50 страниц на запрос; значения выше 50 считаются равными 50. Приложение автоматически подбирает размер группы обработки с учётом памяти и фактического числа страниц на запрос.</string>
     <string name="exclamation_mark" translatable="false">!</string>
     <string name="app_name">MT Reader</string>
     <string name="preview_image">Предпросмотр распознавания</string>
@@ -208,6 +208,11 @@
     <string name="floating_proofreading_mode_note">После перевода открывает режим редактирования: можно добавлять, удалять и настраивать пузыри.</string>
     <string name="floating_auto_close_on_screen_change">Автоматически очищать пузырьки</string>
     <string name="floating_auto_close_on_screen_change_note">Автоматически закрывает пузыри перевода при перелистывании, немного увеличивая нагрузку.</string>
+    <string name="floating_overlay_mode_hint">Режим отображения пузырей</string>
+    <string name="floating_overlay_mode_translucent">Полупрозрачный, касания проходят насквозь</string>
+    <string name="floating_overlay_mode_opaque">Непрозрачный, экран замораживается</string>
+    <string name="floating_overlay_mode_note">Полупрозрачный: пузыри непрозрачны не более чем на 80%, приложением под ними можно пользоваться. Непрозрачный: пузыри полностью непрозрачны, но пока они показаны, касания блокируются, а экран заморожен. Используйте жесты плавающей кнопки на экране, например двойное нажатие, чтобы очистить экран.</string>
+    <string name="floating_overlay_mode_requires_clear_screen">Для непрозрачного режима хотя бы один жест плавающей кнопки должен очищать экран, иначе замороженный экран нельзя будет закрыть, пока показаны пузыри.</string>
     <string name="floating_detection_region_title">Область обнаружения перевода</string>
     <string name="floating_detection_region_note">Исключите верхнюю и нижнюю части экрана из перевода, чтобы не захватывать строку состояния и другие элементы (0–90%).</string>
     <string name="floating_detection_top_inset_hint">Верхнее поле (%)</string>
@@ -252,7 +257,6 @@
     <string name="llm_param_temperature">температура</string>
     <string name="llm_param_top_p">top_p</string>
     <string name="llm_param_top_k">top_k</string>
-    <string name="llm_param_max_output_tokens">max_output_tokens</string>
     <string name="llm_param_enable_thinking">Включить мышление</string>
     <string name="llm_param_frequency_penalty">частота_пенальти</string>
     <string name="llm_param_presence_penalty">присутствие_пенальти</string>
@@ -405,7 +409,7 @@
     <string name="folder_vl_model_required">В настоящее время для прямого перевода требуется модель VL. Пожалуйста, переключитесь на модель, поддерживающую ввод изображения в основных настройках, или выключите переключатель.</string>
     <string name="folder_full_translate">Полный перевод</string>
     <string name="folder_full_translate_info_title">О полном переводе</string>
-    <string name="folder_full_translate_info">Извлекает термины из групп до 100 страниц, чтобы имена переводились единообразно. Первое переведённое изображение появится позже; отключите, чтобы увидеть перевод быстрее.</string>
+    <string name="folder_full_translate_info">В каждой ограниченной группе страниц приложение извлекает термины и обновляет сюжетный обзор длиной до 6000 символов для следующих групп и продолжения перевода, затем переводит и сохраняет каждую страницу. Обзор сохраняется в папке как synopsis_ru.json. Размер группы автоматически подбирается с учётом памяти и числа страниц на запрос. Первое переведённое изображение появится позже; отключите, чтобы увидеть перевод быстрее.</string>
     <string name="folder_full_translate_info_desc">О полном переводе</string>
     <string name="folder_glossary_processing">Обработка глоссария</string>
     <string name="folder_glossary_processing_info_title">Об обработке глоссария</string>
@@ -414,7 +418,7 @@
     <string name="folder_only_translate_bubbles">Переводить только пузыри</string>
     <string name="folder_only_translate_bubbles_info_title">О переводе только пузырей</string>
     <string name="folder_only_translate_bubbles_info_desc">О переводе только пузырей</string>
-    <string name="folder_only_translate_bubbles_note">При включении встроенный OCR распознаёт только области пузырей. Если пузыри не найдены, распознаётся текст страницы. Параметр недоступен при полном переводе VL или OCR через API.</string>
+    <string name="folder_only_translate_bubbles_note">При включении встроенный OCR распознаёт только области пузырей. Если пузыри не найдены, текст вне пузырей не переводится. Параметр недоступен при полном переводе VL или OCR через API.</string>
     <string name="translation_preparing">Подготовка</string>
     <string name="folder_preprocess_progress">%1$s（%2$d/%3$d）</string>
     <string name="folder_preprocess_stage_ocr">Предобработка OCR</string>
@@ -510,6 +514,8 @@
     <string name="model_response_failed_clear_advanced_params">Этот API может не поддерживать расширенные параметры. Очистите необязательные расширенные параметры в разделе «Параметры LLM» и повторите попытку.</string>
     <string name="model_response_empty_content">Модель вернула пустой ответ, и не удалось извлечь допустимый контент.</string>
     <string name="model_response_truncated">Перевод превысил лимит вывода. Увеличьте max_output_tokens в разделе «Параметры LLM» и повторите попытку.</string>
+    <string name="model_text_budget_exceeded">Запрос превышает заданный лимит входных или выходных данных модели. Сократите текст или проверьте настройки возможностей модели.</string>
+    <string name="model_text_budget_exhausted">Для этого запроса исчерпан общий лимит повторных попыток или времени.</string>
     <string name="model_response_blank_bubbles">Модель вернула пустые результаты: пузырьки %2$d в режиме %1$s не возвращали действительных переводов.</string>
     <string name="error_page_prefix">страница:</string>
     <string name="translation_continue">Повторить</string>
@@ -660,4 +666,18 @@
     <string name="floating_bubble_text_fill_percent_label" formatted="false">Заполнение текстом плавающих облачков</string>
     <string name="bubble_text_fill_percent_range" formatted="false">20–100 (%)</string>
     <string name="bubble_text_fill_percent_note" formatted="false">100% использует автоматически подобранный размер шрифта. Меньшие значения уменьшают текст; 20% — пятая часть этого размера. Размер облачка не меняется.</string>
+
+    <string name="model_context_title">Настройки контекста модели</string>
+    <string name="model_context_scope">Провайдер: %1$s\nМодель: %2$s\nАдрес: %3$s</string>
+    <string name="model_context_unsaved">Текущие настройки (без сохранённого провайдера)</string>
+    <string name="model_context_unknown">По умолчанию: %1$d</string>
+    <string name="model_context_input">Максимальный ввод (токены)</string>
+    <string name="model_context_output">Максимальный вывод (токены)</string>
+    <string name="model_context_total">Общий контекст (токены)</string>
+    <string name="model_context_note">Если не уверены, оставьте поля пустыми: по умолчанию ввод — 262 144, вывод — 65 536, общий контекст — 262 144 токенов. Пустые поля показывают и используют эти значения. Введите число для замены; подтвердите сохранение после сброса. У некоторых локальных серверов пределы меньше; настройте значения по требованиям сервиса.\n\nВвод и вывод имеют независимые пределы. В каждом запросе ввод, вывод и запас делят общий контекст. Эти пределы независимы от лимита вывода в параметрах LLM и пока не меняют размер пакетов перевода автоматически. Значения относятся только к этому провайдеру, адресу, формату API и модели.</string>
+    <string name="model_context_invalid">Введите целое число от 1 до 2147483647 или оставьте поле пустым для значения по умолчанию.</string>
+    <string name="model_context_clear">Сбросить</string>
+    <string name="model_context_save_failed">Не удалось сохранить, либо настройки модели изменились. Откройте окно заново и повторите попытку.</string>
+    <string name="model_context_missing_identity">Сначала укажите название модели и адрес API.</string>
+    <string name="llm_param_max_output_tokens">Лимит вывода на запрос (токены)</string>
 </resources>

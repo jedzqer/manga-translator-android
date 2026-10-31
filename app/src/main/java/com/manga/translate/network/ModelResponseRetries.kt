@@ -27,6 +27,7 @@ private suspend fun <T> retryResponses(
             return block().also { budgetContext.checkRemaining() }
         } catch (e: LlmResponseException) {
             budgetContext.checkRemaining()
+            if (!e.retryable) throw e
             lastError = e
             AppLogger.log(
                 logTag,

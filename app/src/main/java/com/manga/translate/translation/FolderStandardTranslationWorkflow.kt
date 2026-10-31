@@ -61,32 +61,40 @@ internal class FolderStandardTranslationWorkflow(
             // Non-webtoon standard mode sends each ready batch while subsequent
             // pages continue OCR through an ordered, bounded queue.
             onCountUpdated(0, 0)
-            return executeStandardPagesPipelined(
-                pages = pages,
-                folder = folder,
-                force = force,
-                glossaryProcessingEnabled = glossaryProcessingEnabled,
-                language = language,
-                onlyTranslateBubbles = onlyTranslateBubbles,
-                glossary = glossary,
-                glossaryMutex = glossaryMutex,
-                onPrepareProgress = onPrepareProgress,
-                onCountUpdated = onCountUpdated
-            )
+            var processed = 0
+            var failures = 0
+            var hasFailures = false
+            while (processed < pages.size) {
+                currentCoroutineContext().ensureActive()
+                val end = minOf(processed + settingsStore.resolveTranslationProcessingLimit(), pages.size)
+                val summary = executeStandardPagesPipelined(
+                    pages = pages.subList(processed, end),
+                    folder = folder,
+                    force = force,
+                    glossaryProcessingEnabled = glossaryProcessingEnabled,
+                    language = language,
+                    onlyTranslateBubbles = onlyTranslateBubbles,
+                    glossary = glossary,
+                    glossaryMutex = glossaryMutex,
+                    onPrepareProgress = { count, _, name -> onPrepareProgress(processed + count, pages.size, name) },
+                    onCountUpdated = { count, failed -> onCountUpdated(processed + count, failures + failed) }
+                )
+                processed = end
+                failures += summary.failedCount
+                hasFailures = hasFailures || summary.hasFailures
+            }
+            return PageExecutionSummary(hasFailures, failures)
         }
 
         if (!applyCrossPageMerge) {
             // Bound retained OCR results independently of user-configured concurrency.
-            val batchSize = settingsStore.loadTranslationBatchPages()
-            val windowSize = maxOf(
-                translationWindowSize(batchSize),
-                settingsStore.loadMaxConcurrency().coerceAtLeast(1) * batchSize
-            )
             var processed = 0
             var failures = 0
             onCountUpdated(0, 0)
-            for (start in pages.indices step windowSize) {
+            while (processed < pages.size) {
                 currentCoroutineContext().ensureActive()
+                val start = processed
+                val windowSize = settingsStore.resolveTranslationProcessingLimit(useVlDirectTranslate)
                 val window = pages.subList(start, minOf(start + windowSize, pages.size))
                 val prepared = ocrPreparation.prepareStandardPagesConcurrent(
                     window, force, useVlDirectTranslate, language, onlyTranslateBubbles
@@ -115,7 +123,7 @@ internal class FolderStandardTranslationWorkflow(
         onCountUpdated(0, 0)
         forEachPreparedPageWindow(
             pages = pages,
-            windowSize = translationWindowSize(settingsStore.loadTranslationBatchPages()),
+            resolveWindowSize = { settingsStore.resolveTranslationProcessingLimit() },
             lookAhead = true,
             prepare = { window, offset ->
                 ocrPreparation.prepareStandardPagesConcurrent(
@@ -125,7 +133,10 @@ internal class FolderStandardTranslationWorkflow(
                 }
             },
             transform = { prepared ->
-                val merged = mergeOcrWindow(prepared.map { it?.ocrResult }, pagePositions)
+                val repaired = repairOcrWindowSeams(prepared.map { it?.ocrResult }, pagePositions) { upper, lower ->
+                    translationPipeline.repairPageSeam(upper, lower, language)
+                }
+                val merged = mergeOcrWindow(repaired, pagePositions)
                 prepared.mapIndexed { index, page -> page?.copy(ocrResult = merged[index]) }
             },
             process = { prepared, offset ->
@@ -172,10 +183,10 @@ internal class FolderStandardTranslationWorkflow(
         onCountUpdated: suspend (processedCount: Int, failedCount: Int) -> Unit
     ): PageExecutionSummary {
         val maxConcurrency = settingsStore.loadMaxConcurrency()
-        val windowSize = translationWindowSize(settingsStore.loadTranslationBatchPages())
+        val windowSize = pages.size.coerceAtLeast(1)
         val ocrConcurrency = ocrPreparation.resolveOcrPrepareConcurrency().coerceAtMost(windowSize)
         val apiSemaphore = Semaphore(maxConcurrency)
-        val batchSize = settingsStore.loadTranslationBatchPages()
+        val batchSize = settingsStore.loadTranslationBatchPages().coerceAtMost(windowSize)
         // Queue at most a window of prepared pages, even for large configured batches.
         val channel = Channel<List<PipelinedStandardPage>>(capacity = 2)
         val preparedCount = AtomicInteger(0)

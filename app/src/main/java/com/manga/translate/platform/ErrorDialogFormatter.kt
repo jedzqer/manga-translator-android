@@ -19,6 +19,8 @@ internal object ErrorDialogFormatter {
                 LlmErrorCode.MissingUrl.value -> context.getString(R.string.api_request_error_missing_url)
                 LlmErrorCode.MissingTranslateApiSettings.value -> context.getString(R.string.missing_translate_api_settings)
                 LlmErrorCode.EmptyResponse.value -> context.getString(R.string.api_request_error_empty_response)
+                "TEXT_BUDGET_EXCEEDED" -> context.getString(R.string.model_text_budget_exceeded)
+                "TEXT_ATTEMPTS_EXHAUSTED" -> context.getString(R.string.model_text_budget_exhausted)
                 LlmErrorCode.CustomParamConflict.value -> context.getString(
                     R.string.custom_request_params_conflict_error,
                     detail.orEmpty()

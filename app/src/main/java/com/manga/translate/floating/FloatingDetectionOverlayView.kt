@@ -100,6 +100,7 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
     private var cachedTypefaceSignature: String? = null
     private var editMode = false
     private var createBubbleMode = false
+    private var screenTapDetector: FloatingScreenTapDetector? = null
     private val touchSlop = 3f * resources.displayMetrics.density
     private val minCreateSize = 24f * resources.displayMetrics.density
     private var draggingBubbleId: Int? = null
@@ -218,9 +219,20 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         invalidate()
     }
 
+    /**
+     * Supplies the tap actions and receives the recognized action while this window captures
+     * touches outside edit mode. Cleared again once the window stops capturing touches.
+     */
+    internal fun setScreenTapDetector(detector: FloatingScreenTapDetector?) {
+        if (screenTapDetector === detector) return
+        screenTapDetector?.cancel()
+        screenTapDetector = detector
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val handled = when {
             editMode -> handleEditTouch(event)
+            screenTapDetector != null -> screenTapDetector?.onTouchEvent(event) == true
             else -> false
         }
         if (handled && event.actionMasked == MotionEvent.ACTION_UP && !isDragging) {
@@ -718,6 +730,7 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         super.onDetachedFromWindow()
         typefaceLoadJob?.cancel()
         viewJob.cancel()
+        screenTapDetector?.cancel()
     }
 
 }
