@@ -2,80 +2,129 @@
 
 # Manga Translator 📖
 
-面向安卓的漫画翻译 App：本地气泡检测与 OCR，结合 OpenAI 兼容接口完成翻译，并在原图上覆盖显示可拖动的翻译气泡。并支持屏幕翻译/悬浮窗翻译，可在任意 App 或桌面上直接识别并翻译当前屏幕中的漫画文本。
+面向 Android 的漫画翻译与阅读 App。自动检测气泡和游离文字，使用本地 OCR 或云端 OCR 配合 AI 翻译，也可直接交给视觉模型翻译，再将译文覆盖到原图上。支持漫画库批量处理、条漫阅读和跨应用悬浮窗翻译。
 
-使用教程：[简中教程](./Tutorial/简中教程.md)
+**需要自备翻译 API。** 本地检测和 OCR 可在设备上运行，翻译仍需要配置 AI 服务。
+
+[下载 APK](https://github.com/jedzqer/manga-translator-android/releases) · [简中教程](./Tutorial/简中教程.md) · [API 获取指南](./Tutorial/API获取指南.md)
+
+运行要求：Android 7.0（API 24）及以上。
 
 | 原图 | 翻译结果 |
-|------|----------|
+| --- | --- |
 | ![原图](./Tutorial/FirePunch.webp) | ![翻译结果](./Tutorial/translated.webp) |
 
+## 主要功能
 
-## 主要功能 ✨
-- 支持日、英、韩、法、西、葡、德、意、俄等多种源语言翻译为中文，以及中文翻译为英文或俄文
-- 屏幕翻译：支持悬浮窗翻译，在任意界面识别并翻译当前屏幕内容
-- 漫画库管理：新建文件夹、批量导入图片、漫画文件夹导入，支持CBZ、ZIP、PDF导入导出
-- 翻译流程：气泡检测 + 本地或 OpenAI 兼容 API OCR + LLM 翻译，支持标准模式与全文速译
-- 阅读体验：翻译覆盖层、翻译气泡位置可拖动、阅读进度自动保存；新增取消键与加减号微调，条漫与普通阅读缩放同步
-- 字体设置：支持自定义气泡字体、字体加粗，普通气泡框与悬浮窗气泡框共用一套字体配置
-- 译名表与缓存：按文件夹维护 glossary.json，自动累积固定译名
-- 后台翻译通知：文件夹/批量翻译完成后发送带声音的高优先级系统通知，点击回到漫画库
-- 更新与日志：启动检查更新，翻译期间前台服务与日志查看
-- 条漫/长图：自动判断作品是否更接近条漫并切换阅读方式，长图/条漫模式下支持跨页气泡合并
+- **漫画库**：管理文件夹、集合与章节，支持标签、排序、批量操作，导入图片或漫画文件夹，以及 CBZ、ZIP、PDF 导入导出。
+- **多种翻译方式**：本地 OCR、API OCR、低置信度 AI OCR 补充、VL 视觉直译和全文速译；支持文件夹、集合及批量翻译。
+- **跨页上下文**：多页合并请求，逐页保存结果；全文速译滚动维护译名表与剧情概览。
+- **阅读与编辑**：横向阅读、条漫滚动、长图分块加载、缩放、气泡拖动和手动框选，自动保存阅读进度；条漫支持接缝气泡修复与跨页合并。
+- **排版与字体**：横排或竖排、自定义字体与加粗、气泡形状、大小、透明度和文字填充比例。普通阅读与悬浮窗分别设置气泡样式，阅读与导出共用普通气泡设置。
+- **悬浮窗翻译**：截取当前屏幕并叠加译文，支持手动框选、自定义悬浮球手势、半透明穿透或不透明模式。
+- **AI 配置**：支持 OpenAI 兼容 Chat、OpenAI Responses 和 Gemini 接口，保存及切换供应商配置，自定义请求参数、提示词与翻译文风；文件夹或集合可单独设置文风。
+- **任务与备份**：后台翻译进度和完成通知，应用内日志与更新检查；可分别备份漫画和译文、软件配置（含供应商与自定义字体）。
 
-## 支持的翻译语言 🌐
-- 目标语言由软件界面语言决定：
-  - 简体中文界面 → 简体中文
-  - 繁体中文界面 → 繁体中文
-  - 英文界面 → 英文
-  - 俄文界面 → 俄文
-  - 巴西葡萄牙语界面 → 巴西葡萄牙语
-- 当前文件夹的源语言可在漫画库中单独设置，支持：日文、英文、韩文、简体中文、繁体中文、中英混合、法文、西班牙文、葡萄牙文、德文、意大利文、俄文
-- 软件界面切换为繁体中文时，会优先使用繁体提示词
+## 翻译方式怎么选
 
-## 快速使用 🚀
-1. 在漫画库中新建文件夹并导入图片
-2. 确保图片文件名顺序与阅读顺序一致（例如 1.jpg, 2.jpg）
-3. 在设置页 OCR 设置中选择本地 OCR，或填写 OpenAI 兼容 OCR API 的地址、Key 和模型
-4. 回到漫画库，选择文件夹并点击“翻译文件夹”
-5. 翻译完成后点击“开始阅读”，在阅读页可拖动气泡位置
+| 方式 | 工作流程与适用场景 |
+| --- | --- |
+| 标准翻译 | 检测区域 → OCR → 文字模型翻译。可使用本地 OCR 或 OpenAI 兼容 API OCR；本地 OCR 可启用低置信度 AI 补充。 |
+| VL 直译 | 将标注了区域 ID 的图片发送给支持图片输入的模型。漫画库可选择完整画面或仅气泡；悬浮窗使用仅气泡的白底蒙版。 |
+| 全文速译 | 在有界页面窗口内完成 OCR、译名提取、剧情概览更新和文字翻译，适合需要连续剧情上下文的作品。首张译图等待更久，固定启用译名处理，不使用 VL 直译。 |
 
-*全文速译建议：页数较多时分批上传翻译，或在设置中提高 API 超时。*
+“每次请求合并页数”可设为 1–500，1 表示不合并；VL 每次实际最多 50 页。合并仅影响 AI 请求，图片和译文仍逐页保存。处理窗口由应用根据内存自动调整，文字请求还会按模型上下文预算分批。
 
-## 常见问题 ❓
-- 翻译失败或结果为空：确认 API 地址填写的是服务商给出的 OpenAI 兼容上级地址（例如 `https://api.deepseek.com/v1`、`https://open.bigmodel.cn/api/paas/v4`），软件会自动补全 `/chat/completions`；模型名须与供应商一致且网络可达
-- 翻译顺序错乱：请先对图片按阅读顺序重命名
-- 怎么获取AI：具体获取方法可以去搜索一下
+模型上下文可分别配置最大输入、最大输出和总上下文；未填写时使用应用预设，并不代表服务商模型的真实能力。请按实际模型限制填写，尤其是本地部署的小上下文模型。
 
-## 交流
-可以进QQ群提问交流：1080302768
+## 支持的语言
 
-## Star History
-** 喜欢的话可以点个Star哦 **
-[![Star History Chart](https://api.star-history.com/chart?repos=jedzqer/manga-translator-android&type=date&legend=top-left&sealed_token=2YazS2Kphur58dguyjXJvUdZjAgaLy5Ckqm04dEeskjCGAvyVrTo8KZOe7quJ1KByysmRKbk625CSQNMZhAEKH_DKDbUWlp6JVO77_JGO8dP17C1X8b3Jg)](https://www.star-history.com/?repos=jedzqer%2Fmanga-translator-android&type=date&legend=top-left)
+目标语言跟随界面语言：
 
-## 数据与文件说明 🗂️
-- 漫画库存储：`/Android/data/<package>/files/manga_library/`
-- 每张图片生成同名 `*.json` 翻译结果，OCR 缓存为 `*.ocr.json`
-- 译名表：每个文件夹维护 `glossary.json`
-- 阅读进度、全文速译开关等存储在 SharedPreferences
+| 界面语言 | 翻译目标 |
+| --- | --- |
+| 简体中文 | 简体中文 |
+| 繁体中文 | 繁体中文 |
+| English | 英语 |
+| Português (Brasil) | 巴西葡萄牙语 |
+| Русский | 俄语 |
 
-## 从源码构建 🧩
+源语言可按文件夹设置：日文、英文、韩文、简体中文、繁体中文、中英混合、法文、西班牙文、葡萄牙文、德文、意大利文和俄文。俄文识别需要 API OCR；悬浮窗启动时可选择源语言及横竖排版。
 
-### 环境要求
-- JDK 17.0.17+
-- Kotlin 2.3.0
-- Gradle 9.3.1 (Wrapper)
-- Android SDK: platform 37.0 (Android 17), build-tools 37.0.0
+## 快速使用
 
-### 构建命令
+1. 安装 APK，在设置页填写主 AI 的接口格式、API 地址、Key 和模型名称，可通过“获取模型列表”选择模型。
+2. 选择识别方式：本地 OCR 可直接使用；API OCR 或 AI OCR 补充需要另外配置支持图片输入的 OCR 服务；VL 直译需要主 AI 模型支持图片输入。
+3. 在漫画库导入图片、文件夹或 CBZ / ZIP / PDF，确认页序，并设置源语言、阅读模式和需要的翻译方式。
+4. 发起文件夹或集合翻译，在任务进度中查看状态；完成后进入阅读，可调整气泡位置、排版和字体。
+5. 使用屏幕翻译时，授予悬浮窗与屏幕捕获权限，选择语言并启动悬浮球；通过悬浮球操作翻译或清屏。
+
+## 常见问题
+
+**API 地址怎么填？**
+
+使用服务商提供的地址，例如 `https://api.deepseek.com/v1`。OpenAI 兼容格式自动追加 `/chat/completions`，Responses 格式追加 `/responses`；已经包含对应端点时原样使用，不会自动插入 `/v1`。OCR API 仅支持 OpenAI 兼容 Chat。接口格式、模型名和图片输入能力需与服务商一致，详见 [API 获取指南](./Tutorial/API获取指南.md)。
+
+**请求超限、超时或译文不完整怎么办？**
+
+检查服务商余额、网络和报错信息，并核对模型上下文设置。可降低并发数和合并页数；提高合并页数不保证更快，也可能降低质量。应用会自动分批并进行有限重试，无需为了全文速译手动拆分整个文件夹。
+
+**更换语言、模型或文风后，为什么已有译文没变？**
+
+已保存的译文是用户数据，会直接读取，不因设置变化自动失效。需要更新时主动重译；部分完成的页面只补填尚未翻译的气泡。OCR 缓存单独按识别配置校验。
+
+**应用被系统结束后，会自动继续翻译吗？**
+
+不会。重新打开后需手动发起任务，应用会利用已有页级译文和有效 OCR 缓存跳过已完成工作。
+
+**悬浮译文显示时，为什么不能操作下方应用？**
+
+不透明模式会拦截屏幕触摸，需使用配置的清屏手势退出；该模式要求至少设置一个清屏手势。需要继续操作下方应用时，选择半透明穿透模式，Android 12 及以上窗口透明度最高为 80%。
+
+**局域网服务连不上？**
+
+检查手机与服务所在网络及地址。Android 17 及以上还需要在设置页授予局域网访问权限。
+
+## 数据与备份
+
+漫画库位于应用的外部私有目录 `Android/data/com.manga.translate.v3/files/manga_library/`。
+
+| 数据 | 内容 |
+| --- | --- |
+| `*.json` | 页级翻译结果 |
+| `*.ocr.json` | 可重建的 OCR 缓存 |
+| `glossary.json` | 文件夹译名表 |
+| `synopsis.json` / `synopsis_<目标语言>.json` | 按目标语言保存的全文速译剧情概览 |
+
+普通翻译可关闭译名处理，关闭后仍读取已有译名，但不新增译名。跨页合并的 OCR 结果仅保留在内存中。
+
+在设置页导出应用备份，可独立选择“漫画和译文”（含库偏好、阅读进度）与“软件配置”（含 API 密钥、供应商配置、自定义字体）。换机或卸载前请先导出备份，并妥善保管包含密钥的备份文件。
+
+## 从源码构建
+
+### 环境与命令
+
+- JDK 17。
+- Android SDK Platform 37、Build Tools 37.0.0。
+- 使用仓库的 Gradle Wrapper（9.3.1）；插件及依赖版本以 `build.gradle.kts` 和 `app/build.gradle.kts` 为准。
+- 当前 Gradle 构建模块为 `:app`，源码按业务领域分包。
+
+通过 `ANDROID_HOME` 或 `local.properties` 的 `sdk.dir` 配置 SDK 路径，然后运行：
+
 ```bash
+./gradlew :app:compileDebugKotlin
+./gradlew :app:testDebugUnitTest
 ./gradlew :app:assembleDebug
 ./gradlew :app:assembleRelease
+./gradlew :app:lint
 ```
 
+Debug APK 位于 `app/build/outputs/apk/debug/`，Release APK 位于 `app/build/outputs/apk/release/`。发布签名通过 Gradle 属性 `STORE_FILE`、`STORE_PASSWORD`、`KEY_ALIAS` 和 `KEY_PASSWORD` 配置；缺少签名配置时 release 产物不会自动签名。
+
 ### 模型与资源
-将以下模型文件放入 `assets/` 对应子目录：
+
+模型资源位于 `assets/`，构建前请确认以下文件齐全：
+
 - `models/detection/mixed-dual-s-e5_float16.tflite`（气泡/文字双标签分割，YOLO26s-seg，1472×1472 TFLite FP16）
 - `models/detection/ppocrv6_small_det_640_fp32.tflite`（OCR 区域内部的 Paddle 文字行检测）
 - `models/ocr/ppocrv6_small_rec_{320,640,960}_fp32.tflite` + `models/ocr/characters.json`（日文、英文、中文及中英混合 OCR）
@@ -85,21 +134,24 @@
 应用保留居中补边、轴对齐行框和 Android 图像缩放；不声明与上游 OpenCV/PyTorch 整条流程逐像素一致。
 
 模型下载链接：
+
 - 普通气泡与游离文字检测模型：YOLO26s 双标签文本块检测模型（随应用 assets 提供）
 - 通用识别模型：https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT
 - 韩文 OCR 模型：https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx
 
-提示词、字体与 OCR 配置位于 `assets/` 子目录中，名称需与代码保持一致。
+内置提示词位于 `assets/prompts/`，包含五种界面语言的变体；资源文件名需与代码保持一致。
 
-### 发布版本号同步
-需同时修改：
-- `app/src/main/java/com/manga/translate/app/VersionInfo.kt`
-- `app/build.gradle.kts`
-- `update.json`
+## 致谢
 
-## 🙏 致谢
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)：OCR 模型。
+- [LiteRT Community](https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT)：PP-OCRv6 LiteRT 模型。
+- [Mihon SSIV](https://github.com/mihonapp/subsampling-scale-image-view)：大图分块显示。
+- 所有贡献者与用户的支持。
 
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) - 提供 OCR 模型支持
-- [kha-white/manga-ocr](https://github.com/kha-white/manga-ocr) - MangaOCR 模型支持
-- [bluolightning/manga-ocr-mobile](https://huggingface.co/bluolightning/manga-ocr-mobile) - MangaOCR-mobile 模型支持
-- 所有用户的支持
+## 交流
+
+QQ群：1080302768
+
+喜欢这个项目的话，欢迎点个 Star。
+
+[![Star History Chart](https://api.star-history.com/svg?repos=jedzqer/manga-translator-android&type=date&legend=top-left)](https://www.star-history.com/#jedzqer/manga-translator-android&type=date&legend=top-left)
