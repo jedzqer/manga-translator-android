@@ -584,6 +584,7 @@ class LibraryFragment : Fragment() {
         }
         binding.folderLanguageSetting.setOnClickListener { showLanguageSettingDialog() }
         binding.folderReadingModeButton.setOnClickListener { showFolderReadingModeDialog() }
+        binding.folderBubbleLayoutButton.setOnClickListener { showFolderBubbleLayoutDialog() }
         binding.folderFullTranslateSwitch.setOnCheckedChangeListener { _, isChecked ->
             currentFolder?.let { folder ->
                 preferencesGateway.setFullTranslateEnabled(folder, isChecked)
@@ -778,8 +779,12 @@ class LibraryFragment : Fragment() {
         dialogs.showLanguageSettingConfirmDialog(
             context = requireContext(),
             languages = supportedLanguages,
-            currentLanguage = currentLanguage
-        ) { selectedLanguage ->
+            currentLanguage = currentLanguage,
+            useHorizontalText = settingsStore.loadFloatingBubbleRenderSettings().useHorizontalText
+        ) { selectedLanguage, useHorizontalText ->
+            settingsStore.saveFloatingBubbleRenderSettings(
+                settingsStore.loadFloatingBubbleRenderSettings().copy(useHorizontalText = useHorizontalText)
+            )
             launchScreenCapturePermissionRequest(selectedLanguage)
         }
     }
@@ -1848,6 +1853,15 @@ class LibraryFragment : Fragment() {
             R.string.folder_reading_mode_format,
             getString(mode.labelRes)
         )
+        val bubbleLayout = if (preferencesGateway.getUseHorizontalText(folder)) {
+            R.string.folder_bubble_layout_horizontal
+        } else {
+            R.string.folder_bubble_layout_vertical
+        }
+        binding.folderBubbleLayoutButton.text = getString(
+            R.string.folder_bubble_layout_format,
+            getString(bubbleLayout)
+        )
     }
 
     private fun showLanguageSettingDialog() {
@@ -1873,6 +1887,15 @@ class LibraryFragment : Fragment() {
             readingSessionViewModel.updateReadingMode(folder, selectedMode)
             updateReadingModeButton(folder)
             AppLogger.log("Library", "Set reading mode for ${folder.name}: ${selectedMode.prefValue}")
+        }
+    }
+
+    private fun showFolderBubbleLayoutDialog() {
+        val folder = currentFolder ?: return
+        val useHorizontalText = preferencesGateway.getUseHorizontalText(folder)
+        dialogs.showFolderBubbleLayoutDialog(requireContext(), useHorizontalText) { selectedUseHorizontalText ->
+            preferencesGateway.setUseHorizontalText(folder, selectedUseHorizontalText)
+            updateReadingModeButton(folder)
         }
     }
 

@@ -105,13 +105,6 @@
             android:textColor="?attr/dialogHintTextColor"
             android:textSize="13sp" />
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/floating_bubble_vertical_text_switch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="@string/bubble_vertical_text"
-            android:textColor="?attr/dialogTextColor" />
 
     </LinearLayout>
 </ScrollView>

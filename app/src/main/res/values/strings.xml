@@ -406,6 +406,11 @@
     <string name="folder_reading_mode_format">阅读方式：%1$s</string>
     <string name="folder_reading_mode_standard">横向阅读</string>
     <string name="folder_reading_mode_webtoon_scroll">条漫滚动</string>
+    <string name="folder_bubble_layout_setting">气泡排版</string>
+    <string name="folder_bubble_layout_title">选择气泡排版</string>
+    <string name="folder_bubble_layout_format">气泡排版：%1$s</string>
+    <string name="folder_bubble_layout_vertical">竖向排版</string>
+    <string name="folder_bubble_layout_horizontal">横向排版</string>
     <string name="folder_language_setting">语言设置：%1$s</string>
     <string name="folder_language_setting_title">选择翻译语言</string>
     <string name="folder_language_to_target">翻译成%1$s</string>

@@ -85,6 +85,7 @@ class ReadingFragment : Fragment() {
     private var translationWatchJob: Job? = null
     private var webtoonTranslationWatchJob: Job? = null
     private var webtoonTranslationWarmJob: Job? = null
+    private var readingPrefetchJob: Job? = null
     private var currentDecodedImage: DecodedReadingBitmap? = null
     private var currentBitmap: Bitmap? = null
     private var currentBitmapLease: ReadingBitmapCache.Lease? = null
@@ -317,6 +318,7 @@ class ReadingFragment : Fragment() {
                     if (folderReadingMode != mode && isEditMode) setEditMode(false)
                     folderReadingMode = mode
                     if (mode != FolderReadingMode.WEBTOON_SCROLL) clearWebtoonEditSession()
+                    if (previous == null || previous.currentFolder != session.currentFolder) applyTextLayoutSetting()
                     applyFolderReadingMode()
                     if (previous == null || previous.currentFolder != session.currentFolder ||
                         previous.images != session.images || previous.readingMode != mode) {
@@ -374,6 +376,7 @@ class ReadingFragment : Fragment() {
         super.onDestroyView()
         translationWatchJob?.cancel()
         webtoonTranslationWatchJob?.cancel()
+        readingPrefetchJob?.cancel()
         emptyBubbleJob?.cancel()
         activeEmptyBubbleModelErrorDialog?.dismiss()
         activeEmptyBubbleModelErrorDialog = null
@@ -559,6 +562,24 @@ class ReadingFragment : Fragment() {
             } else {
                 translationWatchJob?.cancel()
             }
+            prefetchAdjacentReadingPages(images, targetIndex)
+        }
+    }
+
+    /** Warm the shared whole-page cache so a quick page turn does not block on decoding. */
+    private fun prefetchAdjacentReadingPages(images: List<java.io.File>, index: Int) {
+        if (folderReadingMode == FolderReadingMode.WEBTOON_SCROLL) return
+        val neighbors = listOf(index - 1, index + 1)
+            .filter { it in images.indices }
+            .map { images[it] }
+        if (neighbors.isEmpty()) return
+        readingPrefetchJob?.cancel()
+        readingPrefetchJob = viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            neighbors.forEach { file ->
+                if (!isActive) return@launch
+                val lease = runCatching { loadBitmap(file) }.getOrNull()
+                lease?.close()
+            }
         }
     }
 
@@ -586,7 +607,7 @@ class ReadingFragment : Fragment() {
             val bubbleRenderSettings = settingsStore.loadNormalBubbleRenderSettings()
             webtoonAdapter.submit(
                 images = emptyList(),
-                verticalLayoutEnabled = !bubbleRenderSettings.useHorizontalText,
+                verticalLayoutEnabled = !useHorizontalText(),
                 bubbleRenderSettings = bubbleRenderSettings
             )
             syncWebtoonEditSession()
@@ -599,7 +620,7 @@ class ReadingFragment : Fragment() {
         val bubbleRenderSettings = settingsStore.loadNormalBubbleRenderSettings()
         webtoonAdapter.submit(
             images = images,
-            verticalLayoutEnabled = !bubbleRenderSettings.useHorizontalText,
+            verticalLayoutEnabled = !useHorizontalText(),
             bubbleRenderSettings = bubbleRenderSettings
         )
         syncWebtoonEditSession()
@@ -916,8 +937,12 @@ class ReadingFragment : Fragment() {
         return shouldUseLongImageTiling(width, height)
     }
 
+    private fun useHorizontalText(): Boolean = readingSessionViewModel.state.value.currentFolder?.let {
+        appContainer.libraryPreferencesGateway.getUseHorizontalText(it)
+    } ?: settingsStore.loadNormalBubbleRenderSettings().useHorizontalText
+
     private fun applyTextLayoutSetting() {
-        val useHorizontal = settingsStore.loadNormalBubbleRenderSettings().useHorizontalText
+        val useHorizontal = useHorizontalText()
         binding.translationOverlay.setVerticalLayoutEnabled(!useHorizontal)
         if (folderReadingMode == FolderReadingMode.WEBTOON_SCROLL) {
             refreshWebtoonAdapterPresentation()
@@ -1128,7 +1153,7 @@ class ReadingFragment : Fragment() {
         val images = readingSessionViewModel.state.value.images.orEmpty()
         webtoonAdapter.submit(
             images = images,
-            verticalLayoutEnabled = !settingsStore.loadNormalBubbleRenderSettings().useHorizontalText,
+            verticalLayoutEnabled = !useHorizontalText(),
             bubbleRenderSettings = settingsStore.loadNormalBubbleRenderSettings()
         )
         syncWebtoonEditSession()

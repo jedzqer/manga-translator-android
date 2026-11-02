@@ -36,7 +36,7 @@ internal fun resolveHorizontalEdgeSwipeDirection(
 
 class ReadingImageTransformController(
     context: Context,
-    private val imageView: ImageView,
+    private val imageView: ReadingRegionImageView,
     private val hasBubbleAt: (x: Float, y: Float) -> Boolean,
     private val onMatrixUpdated: () -> Unit,
     private val allowPanWhenOverflowing: Boolean = true,

@@ -1,9 +1,5 @@
 package com.manga.translate.ocr
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtException
-import ai.onnxruntime.OrtSession
-import ai.onnxruntime.TensorInfo
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -12,41 +8,25 @@ import android.graphics.RectF
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.get
 import androidx.core.graphics.scale
-import com.manga.translate.detection.OnnxRuntimeSupport
-import com.manga.translate.detection.OnnxThreadProfile
-import com.manga.translate.model.TranslationCoreDefaults
 import com.manga.translate.platform.AppLogger
 import com.manga.translate.settings.SettingsStore
-import java.nio.FloatBuffer
-import kotlin.math.max
 import kotlin.math.min
 
 class PaddleTextLineDetector(
-    private val context: Context,
-    private val modelAssetName: String = "models/detection/PP-OCRv6_det_mobile_infer.onnx",
-    private val threadProfile: OnnxThreadProfile = OnnxThreadProfile.LIGHT,
+    context: Context,
     private val settingsStore: SettingsStore = SettingsStore(context.applicationContext)
-) {
-    private val env = OnnxRuntimeSupport.environment()
-    private val session: OrtSession = createSession()
-    private val inputName: String
-    private val inputWidth: Int
-    private val inputHeight: Int
+) : AutoCloseable {
+    private val inputWidth = 640
+    private val inputHeight = 640
+    private val model = LiteRtOcrModel(
+        context,
+        "models/detection/ppocrv6_small_det_640_fp32.tflite",
+        listOf(1, 3, 640, 640),
+        listOf(1, 1, 640, 640)
+    )
 
-    init {
-        val input = session.inputInfo.entries.first()
-        inputName = input.key
-        val shape = (input.value.info as TensorInfo).shape
-        inputHeight = resolveDim(shape.getOrNull(2))
-        inputWidth = resolveDim(shape.getOrNull(3))
-    }
-
-    private fun resolveDim(value: Long?): Int {
-        if (value == null || value <= 0L) {
-            return TranslationCoreDefaults.DefaultLineDetectionInputSize
-        }
-        return value.toInt().coerceAtLeast(1)
-    }
+    @Synchronized
+    override fun close() = model.close()
 
     @Synchronized
     fun detectLines(bitmap: Bitmap): List<RectF> {
@@ -63,27 +43,17 @@ class PaddleTextLineDetector(
             return emptyList()
         }
         val preprocessed = preprocess(bitmap)
-        val tensor = preprocessed.tensor
-        tensor.use {
-            try {
-                session.run(mapOf(inputName to tensor)).use { outputs ->
-                    val output = outputs[0]
-                    val outputShape = (output.info as TensorInfo).shape
-                    val probMap = extractProbMap(output.value, outputShape) ?: return emptyList()
-                    val rects = extractLineRects(probMap, preprocessed)
-                    val sorted = sortBoxesReadingOrder(rects)
-                    if (settingsStore.loadModelIoLogging()) {
-                        AppLogger.log(
-                            "PaddleTextLineDetector",
-                            "Input ${bitmap.width}x${bitmap.height}, lines ${sorted.size}: ${describeRects(sorted)}"
-                        )
-                    }
-                    return sorted
-                }
-            } catch (e: OrtException) {
-                if (throwOnFailure) throw e
-                return emptyList()
+        try {
+            val detections = extractLineRects(model.run(preprocessed.tensor), preprocessed)
+            val sorted = sortBoxesReadingOrder(detections)
+            if (settingsStore.loadModelIoLogging()) {
+                AppLogger.log("PaddleTextLineDetector", "Input ${bitmap.width}x${bitmap.height}, lines ${sorted.size}: ${describeRects(sorted)}")
             }
+            return sorted
+        } catch (e: Exception) {
+            if (throwOnFailure) throw e
+            AppLogger.log("PaddleTextLineDetector", "Line detection failed", e)
+            return emptyList()
         }
     }
 
@@ -95,33 +65,33 @@ class PaddleTextLineDetector(
         val newH = (srcH * scale).toInt().coerceAtLeast(1)
         val resized = bitmap.scale(newW, newH)
         val padded = createBitmap(inputWidth, inputHeight)
-        val canvas = Canvas(padded)
-        canvas.drawColor(Color.BLACK)
         val padX = ((inputWidth - newW) / 2f).coerceAtLeast(0f)
         val padY = ((inputHeight - newH) / 2f).coerceAtLeast(0f)
-        canvas.drawBitmap(resized, padX, padY, null)
-
         val input = FloatArray(3 * inputWidth * inputHeight)
-        var offset = 0
-        for (y in 0 until inputHeight) {
-            for (x in 0 until inputWidth) {
-                val pixel = padded[x, y]
-                val r = ((pixel shr 16) and 0xFF) / 255f
-                val g = ((pixel shr 8) and 0xFF) / 255f
-                val b = (pixel and 0xFF) / 255f
-                input[offset] = (b - MEAN[0]) / STD[0]
-                input[offset + inputWidth * inputHeight] = (g - MEAN[1]) / STD[1]
-                input[offset + 2 * inputWidth * inputHeight] = (r - MEAN[2]) / STD[2]
-                offset++
+        try {
+            val canvas = Canvas(padded)
+            canvas.drawColor(Color.BLACK)
+            canvas.drawBitmap(resized, padX, padY, null)
+
+            var offset = 0
+            for (y in 0 until inputHeight) {
+                for (x in 0 until inputWidth) {
+                    val pixel = padded[x, y]
+                    val r = ((pixel shr 16) and 0xFF).toFloat()
+                    val g = ((pixel shr 8) and 0xFF).toFloat()
+                    val b = (pixel and 0xFF).toFloat()
+                    input[offset] = (b - MEAN[0] * 255f) / (STD[0] * 255f)
+                    input[offset + inputWidth * inputHeight] = (g - MEAN[1] * 255f) / (STD[1] * 255f)
+                    input[offset + 2 * inputWidth * inputHeight] = (r - MEAN[2] * 255f) / (STD[2] * 255f)
+                    offset++
+                }
             }
+        } finally {
+            if (resized !== bitmap) resized.recycle()
+            padded.recycle()
         }
-        val tensor = OnnxTensor.createTensor(
-            env,
-            FloatBuffer.wrap(input),
-            longArrayOf(1, 3, inputHeight.toLong(), inputWidth.toLong())
-        )
         return PreprocessResult(
-            tensor = tensor,
+            tensor = input,
             outputWidth = inputWidth,
             outputHeight = inputHeight,
             ratioW = newW / srcW.toFloat(),
@@ -131,38 +101,6 @@ class PaddleTextLineDetector(
             originalWidth = srcW,
             originalHeight = srcH
         )
-    }
-
-    private fun extractProbMap(raw: Any, shape: LongArray): FloatArray? {
-        val h: Int
-        val w: Int
-        val rows: Array<*>
-        when (shape.size) {
-            4 -> {
-                h = (shape.getOrNull(2) ?: 0L).toInt()
-                w = (shape.getOrNull(3) ?: 0L).toInt()
-                val batch = raw as? Array<*> ?: return null
-                val channel = batch.firstOrNull() as? Array<*> ?: return null
-                val rowBlock = channel.firstOrNull() as? Array<*> ?: return null
-                rows = rowBlock
-            }
-            3 -> {
-                h = (shape.getOrNull(1) ?: 0L).toInt()
-                w = (shape.getOrNull(2) ?: 0L).toInt()
-                val batch = raw as? Array<*> ?: return null
-                val rowBlock = batch.firstOrNull() as? Array<*> ?: return null
-                rows = rowBlock
-            }
-            else -> return null
-        }
-        if (h <= 0 || w <= 0 || rows.size < h) return null
-        val prob = FloatArray(h * w)
-        for (y in 0 until h) {
-            val row = rows[y] as? FloatArray ?: return null
-            if (row.size < w) return null
-            System.arraycopy(row, 0, prob, y * w, w)
-        }
-        return prob
     }
 
     private fun extractLineRects(prob: FloatArray, pre: PreprocessResult): List<RectF> {
@@ -261,17 +199,8 @@ class PaddleTextLineDetector(
         return if (rects.size > limit) "$preview..." else preview
     }
 
-    private fun createSession(): OrtSession {
-        return OnnxRuntimeSupport.getOrCreateSession(
-            cacheDir = context.cacheDir,
-            assetProvider = context.assets::open,
-            assetName = modelAssetName,
-            threadProfile = threadProfile
-        )
-    }
-
     private data class PreprocessResult(
-        val tensor: OnnxTensor,
+        val tensor: FloatArray,
         val outputWidth: Int,
         val outputHeight: Int,
         val ratioW: Float,

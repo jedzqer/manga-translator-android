@@ -75,6 +75,8 @@ class OcrEngineRegistry(
         val hadLoadedEngines = ppOcrV6SmallRec != null ||
             koreanOcr != null ||
             englishLineDetector != null
+        ppOcrV6SmallRec?.close()
+        englishLineDetector?.close()
         ppOcrV6SmallRec = null
         koreanOcr = null
         englishLineDetector = null

@@ -1,0 +1,4 @@
+<resources>
+    <dimen name="main_tab_text_size">14sp</dimen>
+    <dimen name="main_tab_height">48dp</dimen>
+</resources>

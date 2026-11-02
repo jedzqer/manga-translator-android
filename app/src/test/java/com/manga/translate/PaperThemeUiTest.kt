@@ -36,6 +36,22 @@ class PaperThemeUiTest {
     @After
     fun clearPalette() = ThemePaletteRuntime.clear()
 
+    @Test @Config(qualifiers = "ru-sw600dp-w1280dp-h800dp-night-mdpi")
+    fun `tablet tabs fill available width with larger touch targets`() {
+        val context = ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_MangaTranslator)
+        val main = ActivityMainBinding.inflate(LayoutInflater.from(context))
+        listOf(R.string.tab_reading, R.string.tab_library, R.string.tab_settings).forEach {
+            main.mainTabs.addTab(main.mainTabs.newTab().setText(it))
+        }
+        main.root.measure(View.MeasureSpec.makeMeasureSpec(1280, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY))
+        main.root.layout(0, 0, 1280, 800)
+        val strip = main.mainTabs.getChildAt(0) as android.view.ViewGroup
+        assertTrue(main.mainTabs.height >= 64)
+        repeat(3) { assertEquals(main.mainTabs.width / 3.0, strip.getChildAt(it).width.toDouble(), 1.0) }
+        savePreview(main.root, "tablet-ru-dark")
+    }
+
     @Test @Config(qualifiers = "zh-rCN-w320dp-h640dp-notnight-mdpi")
     fun `Chinese paper UI fits a narrow light screen`() = verifyPaperUi("zh-light")
 
@@ -131,6 +147,18 @@ class PaperThemeUiTest {
         savePreview(main.root, "$name-settings")
         settings.root.fullScroll(View.FOCUS_DOWN)
         assertTrue(settings.root.scrollY > 0)
+
+        val readingSettings = library.folderReadingSettings
+        (readingSettings.parent as android.view.ViewGroup).removeView(readingSettings)
+        page.removeAllViews()
+        val readingScroll = android.widget.ScrollView(context)
+        page.addView(readingScroll)
+        readingScroll.addView(readingSettings)
+        readingSettings.visibility = View.VISIBLE
+        measure(main.root)
+        assertTextFits(library.folderBubbleLayoutButton)
+        library.folderBubbleLayoutButton.performClick()
+        savePreview(main.root, "$name-reading-settings")
 
         val translationSettings = library.folderTranslationSettings
         (translationSettings.parent as android.view.ViewGroup).removeView(translationSettings)

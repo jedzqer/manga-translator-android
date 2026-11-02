@@ -29,7 +29,6 @@ internal class NormalBubbleRenderSettingsDialog(
         dialogBinding.normalBubbleFreeOpacityPercentInput.setText(
             fragment.formatNumber(currentSettings.freeBubbleOpacityPercent)
         )
-        dialogBinding.normalBubbleVerticalTextSwitch.isChecked = !currentSettings.useHorizontalText
         dialogBinding.normalBubbleAutoAdaptColorSwitch.isChecked = currentSettings.autoAdaptBubbleColor
         dialogBinding.normalBubbleFreeAutoAdaptColorSwitch.isChecked = currentSettings.autoAdaptFreeBubbleColor
         dialogBinding.normalBubbleTextFillPercentInput.setText(fragment.formatNumber(currentSettings.textFillPercent))
@@ -57,7 +56,7 @@ internal class NormalBubbleRenderSettingsDialog(
                     freeBubbleOpacityPercent = fragment.parseIntInput(
                         dialogBinding.normalBubbleFreeOpacityPercentInput.text?.toString()
                     ) ?: currentSettings.freeBubbleOpacityPercent,
-                    useHorizontalText = !dialogBinding.normalBubbleVerticalTextSwitch.isChecked,
+                    useHorizontalText = currentSettings.useHorizontalText,
                     autoAdaptBubbleColor = dialogBinding.normalBubbleAutoAdaptColorSwitch.isChecked,
                     autoAdaptFreeBubbleColor = dialogBinding.normalBubbleFreeAutoAdaptColorSwitch.isChecked
                 )

@@ -33,7 +33,6 @@ internal class FloatingBubbleRenderSettingsDialog(
             dialogBinding.floatingBubbleShapeInput,
             currentSettings.shape
         )
-        dialogBinding.floatingBubbleVerticalTextSwitch.isChecked = !currentSettings.useHorizontalText
         dialogBinding.floatingBubbleAutoAdaptColorSwitch.isChecked = currentSettings.autoAdaptBubbleColor
         dialogBinding.floatingBubbleTextFillPercentInput.setText(fragment.formatNumber(currentSettings.textFillPercent))
         AlertDialog.Builder(fragment.requireContext())
@@ -54,7 +53,7 @@ internal class FloatingBubbleRenderSettingsDialog(
                         dialogBinding.floatingBubbleShapeInput,
                         currentSettings.shape
                     ),
-                    useHorizontalText = !dialogBinding.floatingBubbleVerticalTextSwitch.isChecked,
+                    useHorizontalText = currentSettings.useHorizontalText,
                     autoAdaptBubbleColor = dialogBinding.floatingBubbleAutoAdaptColorSwitch.isChecked
                 )
                 settingsStore.saveFloatingBubbleRenderSettings(updated)

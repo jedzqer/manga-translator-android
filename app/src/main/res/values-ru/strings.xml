@@ -385,6 +385,11 @@
     <string name="folder_reading_mode_format">Метод чтения: %1$s</string>
     <string name="folder_reading_mode_standard">Постраничное чтение</string>
     <string name="folder_reading_mode_webtoon_scroll">Прокрутка вебтуна</string>
+    <string name="folder_bubble_layout_setting">Расположение текста в облачках</string>
+    <string name="folder_bubble_layout_title">Выберите расположение текста</string>
+    <string name="folder_bubble_layout_format">Расположение текста: %1$s</string>
+    <string name="folder_bubble_layout_vertical">Вертикальное</string>
+    <string name="folder_bubble_layout_horizontal">Горизонтальное</string>
     <string name="folder_language_setting">Настройка языка: %1$s</string>
     <string name="folder_language_setting_title">Выберите язык перевода</string>
     <string name="folder_language_to_target">Перевести на %1$s</string>

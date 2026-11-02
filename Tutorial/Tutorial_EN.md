@@ -52,6 +52,8 @@ For your first run, turn off **Full-text fast translation** and **Vision-languag
 
 > The app automatically switches works that resemble webtoons to **Webtoon Scroll**. Change this in the folder's reading settings when necessary.
 
+In **Reading Settings**, **Bubble Layout** selects horizontal or vertical text. The choice is saved per folder (and shared by chapters in a collection) and applies to both reading and exported images. Floating-window text direction is selected separately when floating translation starts.
+
 ### 4. Read and adjust bubbles
 
 **Normal bubbles** are detected speech-bubble regions in the manga; translations are laid out inside their outlines. **Free-text bubbles** are translation boxes for standalone text outside speech bubbles, such as narration or signs; their layout starts from the detected text region. Manually added boxes follow the normal-bubble sizing rules.

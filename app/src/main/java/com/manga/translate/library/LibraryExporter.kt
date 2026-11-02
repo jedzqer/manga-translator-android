@@ -268,7 +268,7 @@ internal class LibraryExporter(
         } else {
             null
         }
-        val verticalLayoutEnabled = !settingsStore.loadNormalBubbleRenderSettings().useHorizontalText
+        val verticalLayoutEnabled = !preferencesGateway.getUseHorizontalText(folder)
 
         val target = exportTarget(folder, exportFormat, exportTreeUri)
         if (!launchExportTask(target) exportTask@{
@@ -448,7 +448,7 @@ internal class LibraryExporter(
         } else {
             null
         }
-        val verticalLayoutEnabled = !settingsStore.loadNormalBubbleRenderSettings().useHorizontalText
+        val verticalLayoutEnabled = !preferencesGateway.getUseHorizontalText(collectionFolder)
 
         val target = exportTarget(collectionFolder, exportFormat, exportTreeUri)
         if (!launchExportTask(target) {

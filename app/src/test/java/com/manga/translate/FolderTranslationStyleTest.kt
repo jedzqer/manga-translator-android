@@ -21,6 +21,25 @@ class FolderTranslationStyleTest {
     private val gateway = LibraryPreferencesGateway(context, prefs, repository)
 
     @Test
+    fun `text orientation follows collection and survives preference migration`() {
+        val collection = requireNotNull(repository.createCollection("layout_${System.nanoTime()}"))
+        val chapter = requireNotNull(repository.createChildFolder(collection, "chapter"))
+        val target = requireNotNull(repository.createCollection("layout_target_${System.nanoTime()}"))
+        try {
+            val original = gateway.getUseHorizontalText(collection)
+            gateway.setUseHorizontalText(collection, !original)
+            assertEquals(!original, gateway.getUseHorizontalText(chapter))
+            gateway.migrateFolderSettings(collection, target)
+            assertEquals(!original, gateway.getUseHorizontalText(target))
+            gateway.clearFolderSettings(target)
+            assertEquals(original, gateway.getUseHorizontalText(target))
+        } finally {
+            collection.deleteRecursively()
+            target.deleteRecursively()
+        }
+    }
+
+    @Test
     @org.robolectric.annotation.Config(qualifiers = "w320dp-h480dp-night")
     fun `narrow dark dialog preserves draft on cancel and saves local or global selection`() {
         checkDialog()

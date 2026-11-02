@@ -424,18 +424,30 @@ internal class LibraryDialogs {
         context: Context,
         languages: List<TranslationLanguage>,
         currentLanguage: TranslationLanguage,
-        onSelected: (TranslationLanguage) -> Unit
+        useHorizontalText: Boolean,
+        onSelected: (TranslationLanguage, Boolean) -> Unit
     ) {
         val languageNames = languages.map { it.displayName(context) }.toTypedArray()
-        val currentIndex = languages.indexOf(currentLanguage).coerceAtLeast(0)
-        showSingleChoiceConfirmDialog(
-            context,
-            R.string.folder_language_setting_title,
-            languageNames,
-            currentIndex
-        ) {
-            onSelected(languages[it])
+        var selectedIndex = languages.indexOf(currentLanguage).coerceAtLeast(0)
+        val verticalSwitch = androidx.appcompat.widget.SwitchCompat(context).apply {
+            setText(R.string.bubble_vertical_text)
+            isChecked = !useHorizontalText
+            minHeight = dp(context, 48f)
         }
+        val container = LinearLayout(context).apply {
+            val padding = dp(context, 24f)
+            setPadding(padding, 0, padding, 0)
+            addView(verticalSwitch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        AlertDialog.Builder(context)
+            .setTitle(R.string.folder_language_setting_title)
+            .setSingleChoiceItems(languageNames, selectedIndex) { _, which -> selectedIndex = which }
+            .setView(container)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                languages.getOrNull(selectedIndex)?.let { onSelected(it, !verticalSwitch.isChecked) }
+            }
+            .show()
     }
 
     fun showFixedLanguageDialog(context: Context) {
@@ -462,6 +474,25 @@ internal class LibraryDialogs {
         val currentIndex = modes.indexOf(currentMode)
         showSingleChoiceDialog(context, R.string.folder_reading_mode_title, names, currentIndex) {
             onSelected(modes[it])
+        }
+    }
+
+    fun showFolderBubbleLayoutDialog(
+        context: Context,
+        useHorizontalText: Boolean,
+        onSelected: (Boolean) -> Unit
+    ) {
+        val options = arrayOf(
+            context.getString(R.string.folder_bubble_layout_vertical),
+            context.getString(R.string.folder_bubble_layout_horizontal)
+        )
+        showSingleChoiceDialog(
+            context,
+            R.string.folder_bubble_layout_title,
+            options,
+            if (useHorizontalText) 1 else 0
+        ) { selectedIndex ->
+            onSelected(selectedIndex == 1)
         }
     }
 

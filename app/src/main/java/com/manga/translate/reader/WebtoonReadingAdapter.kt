@@ -838,6 +838,7 @@ class WebtoonReadingAdapter(
         fun recycle() {
             bindJob?.cancel()
             overlayReloadJob?.cancel()
+            binding.readingPageImage.dispose()
             boundPath?.let(::unregisterBoundHolder)
             boundPath = null
             boundFile = null

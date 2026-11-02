@@ -136,14 +136,15 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - 云端 OCR 区域处理使用有界 worker，裁剪、编码、请求到图片释放的整个生命周期受并发约束，同时保留共享网络限流；不得为每个区域一次性启动持有图片的等待任务。
 - 漫画库页面 API OCR 与本地 OCR 的批量 API 补充复用 VL 的白底蒙版、着色和 ID 标注，按检测结果中的实际分块发送结构化请求；每个待识别区域只分配到一个块，跨块区域完整保留，响应 ID 必须与当前块一致，结果恢复原页 ID 与几何。任一块失败不得保存本次 OCR 缓存。
 - 长图分块、坐标映射、去重阈值和模型输入细节属于检测模块，不得复制到 Pipeline 或悬浮窗 Service。
-- 本地 OCR 的语言路由、裁剪、行识别和 API fallback 统一在 `OcrSharedTools.kt` 调整。除韩语专用模型和俄语 API OCR 外，本地文字识别统一使用 PP-OCRv6 CPU 推理，不调用 PP-OCRv5 LiteRT。识别引擎由 `OcrEngineRegistry` 共享。日文行检测比较原方向与旋转方向，选中的行框必须映射回原裁剪坐标。
+- 本地 OCR 的语言路由、裁剪、行识别和 API fallback 统一在 `OcrSharedTools.kt` 调整。除韩语专用模型和俄语 API OCR 外，本地文字识别与行检测使用 PP-OCRv6 LiteRT GPU FP32，GPU 初始化或推理失败时回退 CPU 并重试当前输入；创建、推理和释放在同一专用线程执行。识别按行宽选择 320/640/960 模型并按需加载，超宽行完整缩放到 960，CTC 字典使用 `characters.json` 的原始索引。识别引擎由 `OcrEngineRegistry` 共享。日文行检测比较原方向与旋转方向，选中的行框必须映射回原裁剪坐标。
 - AI OCR 补充模式在本地行过滤前检查识别置信度，对低置信度区域发送整块裁剪图；手动框选默认 API OCR 为独立开关，阅读页与悬浮窗共用识别路由。补充请求失败不得保存本次 OCR 缓存；补充模式及 API 配置计入 OCR 缓存匹配，已有翻译结果仍直接读取。
 
 ### 阅读与渲染
 
-- 普通页优先使用 `ARGB_8888`；长图或超高分辨率页面通过 `ReadingRegionImageView` 分块解码，并以源图分辨率作为布局坐标。
+- 普通页优先使用 `ARGB_8888`；长图或超高分辨率页面通过 `ReadingRegionImageView` 适配 Mihon SSIV 分块解码，并以源图分辨率作为布局坐标。SSIV 子视图仅覆盖本地可见区域，保留低分辨率底图并加载清晰瓦片；图片矩阵和手势仍由阅读层统一管理，页面脱离窗口时释放分块资源。
 - 普通气泡设置作用于阅读页、条漫页和导出；悬浮窗气泡设置只作用于 overlay。两套大小、透明度、形状和文字密度设置不得串用。
 - 悬浮窗检测 overlay 是全屏的不可信窗口。Android 12 起窗口 alpha 高于 0.8 时，即使带 `FLAG_NOT_TOUCHABLE` 也会丢弃下层应用的触摸，所以窗口 alpha、可触摸性与手势接管统一由 `DetectionOverlayWindowPolicy` 按 `FloatingOverlayMode`（`FloatingTranslateApiSettings.overlayMode`）决定，不得在 Service 中另写 flags 或 alpha。半透明穿透模式 alpha 固定 0.8；不透明模式仅在有气泡或编辑时 alpha 1.0 并拦截触摸，此时 `FloatingScreenTapDetector` 把单击、双击、三击和长按映射为悬浮球手势配置，目前只执行清屏。不透明模式要求至少一个悬浮球手势为清屏：设置弹窗拒绝保存不满足的组合，导入的不满足配置由 `FloatingTranslateApiSettings.effectiveOverlayMode()` 回退半透明。
+- 普通气泡横竖排版在文件夹或集合的阅读设置中配置，集合内章节共用；阅读和导出使用同一设置，未配置时兼容原全局排版偏好。悬浮窗横竖排版在启动确认中选择并记住上次选择。
 - 全局字体由 `BubbleFontResolver` 管理，普通渲染与悬浮窗共用；上传字体持久化在应用私有 `custom_fonts` 目录。
 - 普通气泡、游离文字气泡和悬浮窗气泡的文字填充比例独立保存，范围为 20%–100%，默认 100%。比例缩放自动适配后的字号，不改变气泡几何；横排、竖排、阅读与导出共用该规则，手动框使用普通气泡比例。
 - `BubbleTextScaling` 和竖排布局是共享算法。修改排版、路径缩放或密度规则时，必须检查 `BubbleRenderer`、`FloatingTranslationView`、`FloatingDetectionOverlayView` 以及对应测试。

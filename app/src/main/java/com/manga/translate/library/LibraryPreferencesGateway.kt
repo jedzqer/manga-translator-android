@@ -1,5 +1,6 @@
 package com.manga.translate.library
 
+import com.manga.translate.di.appContainer
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.BitmapFactory
@@ -80,6 +81,15 @@ internal class LibraryPreferencesGateway(
             vlDirectTranslateKeyPrefix + settingsFolder(folder).absolutePath,
             false
         )
+    }
+
+    fun getUseHorizontalText(folder: File): Boolean = prefs.getBoolean(
+        horizontalTextKeyPrefix + settingsFolder(folder).absolutePath,
+        context.appContainer.settingsStore.loadNormalBubbleRenderSettings().useHorizontalText
+    )
+
+    fun setUseHorizontalText(folder: File, enabled: Boolean) {
+        prefs.edit { putBoolean(horizontalTextKeyPrefix + settingsFolder(folder).absolutePath, enabled) }
     }
 
     fun getReadingMode(folder: File): FolderReadingMode {
@@ -426,6 +436,7 @@ internal class LibraryPreferencesGateway(
         private const val vlDirectTranslateKeyPrefix = "vl_direct_translate_enabled_"
         private const val vlFullVisualKeyPrefix = "vl_full_visual_enabled_"
         private const val onlyTranslateBubblesKeyPrefix = "only_translate_bubbles_enabled_"
+        private const val horizontalTextKeyPrefix = "reading_horizontal_text_"
         private const val readingModeKeyPrefix = "reading_mode_"
         private const val folderTagsKeyPrefix = "folder_tags_"
         private const val folderStatusKeyPrefix = "folder_status_"
@@ -440,6 +451,7 @@ internal class LibraryPreferencesGateway(
             vlFullVisualKeyPrefix,
             onlyTranslateBubblesKeyPrefix,
             readingModeKeyPrefix,
+            horizontalTextKeyPrefix,
             folderStatusKeyPrefix,
             folderImageCountKeyPrefix,
             folderChapterCountKeyPrefix

@@ -77,16 +77,16 @@
 ### 模型与资源
 将以下模型文件放入 `assets/` 对应子目录：
 - `models/detection/mixed-dual-s-e5_float16.tflite`（气泡/文字双标签分割，YOLO26s-seg，1472×1472 TFLite FP16）
-- `models/detection/PP-OCRv6_det_mobile_infer.onnx`（OCR 区域内部的 Paddle 文字行检测）
-- `models/ocr/PP-OCRv6_small_rec.onnx`（日文、英文、中文及中英混合 OCR）
+- `models/detection/ppocrv6_small_det_640_fp32.tflite`（OCR 区域内部的 Paddle 文字行检测）
+- `models/ocr/ppocrv6_small_rec_{320,640,960}_fp32.tflite` + `models/ocr/characters.json`（日文、英文、中文及中英混合 OCR）
 - `models/ocr/korean_PP-OCRv5_mobile_rec.onnx`、`models/ocr/korean_PP-OCRv5_mobile_rec_dict.txt`（韩文 OCR 与字符表）
-- `models/detection/PP-OCRv6_det_mobile_infer.onnx`（英文行检测）
+
+通用 OCR 与行检测使用 LiteRT GPU FP32，失败后在 CPU 重试。识别模型按行宽按需加载 320/640/960，超宽行完整缩放到 960；字典保留原始 CTC 索引。韩文仍使用 ONNX。
+应用保留居中补边、轴对齐行框和 Android 图像缩放；不声明与上游 OpenCV/PyTorch 整条流程逐像素一致。
 
 模型下载链接：
 - 普通气泡与游离文字检测模型：YOLO26s 双标签文本块检测模型（随应用 assets 提供）
-- 文字检测模型：PaddleOCR PP-OCRv6 mobile det
-- 通用识别模型：https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx
-- 英文检测模型：https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx
+- 通用识别模型：https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT
 - 韩文 OCR 模型：https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx
 
 提示词、字体与 OCR 配置位于 `assets/` 子目录中，名称需与代码保持一致。

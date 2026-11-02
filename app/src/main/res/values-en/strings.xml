@@ -384,6 +384,11 @@
     <string name="folder_reading_mode_format">Reading method: %1$s</string>
     <string name="folder_reading_mode_standard">Paged Reading</string>
     <string name="folder_reading_mode_webtoon_scroll">Webtoon Scroll</string>
+    <string name="folder_bubble_layout_setting">Bubble Layout</string>
+    <string name="folder_bubble_layout_title">Choose Bubble Layout</string>
+    <string name="folder_bubble_layout_format">Bubble layout: %1$s</string>
+    <string name="folder_bubble_layout_vertical">Vertical layout</string>
+    <string name="folder_bubble_layout_horizontal">Horizontal layout</string>
     <string name="folder_language_setting">Language setting: %1$s</string>
     <string name="folder_language_setting_title">Choose Translation Language</string>
     <string name="folder_language_to_target">Translate to %1$s</string>

@@ -76,16 +76,16 @@ Join the QQ group for questions and discussion: `1080302768`
 ### Models and Assets
 Place the following model files into the corresponding subdirectories under `assets/`:
 - `models/detection/mixed-dual-s-e5_float16.tflite` (YOLO26s-seg bubble/text segmenter at 1472x1472, TFLite FP16)
-- `models/detection/PP-OCRv6_det_mobile_infer.onnx` (Paddle text-line detection inside OCR regions)
-- `models/ocr/PP-OCRv6_small_rec.onnx` (Japanese, English, Chinese, and mixed OCR)
+- `models/detection/ppocrv6_small_det_640_fp32.tflite` (Paddle text-line detection inside OCR regions)
+- `models/ocr/ppocrv6_small_rec_{320,640,960}_fp32.tflite` + `models/ocr/characters.json` (Japanese, English, Chinese, and mixed OCR)
 - `models/ocr/korean_PP-OCRv5_mobile_rec.onnx` and `models/ocr/korean_PP-OCRv5_mobile_rec_dict.txt` (Korean OCR and character dictionary)
-- `models/detection/PP-OCRv6_det_mobile_infer.onnx` (English line detection)
+
+General OCR and line detection use LiteRT GPU FP32 with CPU fallback. Recognition loads 320/640/960 models on demand by line aspect ratio; wider lines are scaled in full to 960. The dictionary retains its original CTC indices. Korean recognition still uses ONNX.
+The app retains centered letterboxing, axis-aligned line boxes and Android image resizing; it does not claim pixel parity with the upstream OpenCV/PyTorch pipeline.
 
 Model download links:
 - Speech-bubble and free-text detection model: YOLO26s dual-label text block detector (bundled in app assets)
-- Text detection model: PaddleOCR PP-OCRv6 mobile det
-- General recognition model: https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx
-- English detection model: https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx
+- General recognition model: https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT
 - Korean OCR model: https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx
 
 Prompts, fonts, and OCR configuration files are located in subdirectories under `assets/`, and their names must stay consistent with the code.

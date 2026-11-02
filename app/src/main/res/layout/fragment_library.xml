@@ -709,6 +709,16 @@
                         android:text="@string/folder_reading_mode_setting"
                         android:textAlignment="center"
                         android:textAllCaps="false" />
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:id="@+id/folder_bubble_layout_button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:gravity="center"
+                        android:maxWidth="360dp"
+                        android:text="@string/folder_bubble_layout_setting"
+                        android:textAlignment="center"
+                        android:textAllCaps="false" />
                 </LinearLayout>
 
                 <LinearLayout
