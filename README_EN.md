@@ -172,8 +172,6 @@ The bundled model was trained with Ultralytics YOLO26s-seg and therefore inherit
 
 Third-party models are not distributed with this repository and keep their own licenses: the PP-OCRv6 LiteRT models and the Korean OCR model are Apache-2.0.
 
-Releases published earlier under MIT (v3.8.0 and before) remain usable under MIT; this change applies to later code.
-
 ## Community
 
 [Discord server](https://discord.gg/qxfC2kqfr)

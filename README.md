@@ -172,8 +172,6 @@ curl -fL -o ocr/korean_PP-OCRv5_mobile_rec.onnx $kr/inference.onnx
 
 第三方模型不随本仓库分发，许可归各自作者：PP-OCRv6 LiteRT 模型与韩文 OCR 模型均为 Apache-2.0。
 
-更早以 MIT 发布的版本（v3.8.0 及之前）依旧按当时的 MIT 许可可用，本次变更只约束其后的代码。
-
 ## 交流
 
 QQ群：1080302768
