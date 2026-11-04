@@ -123,9 +123,9 @@ Debug APKs are written to `app/build/outputs/apk/debug/`; release APKs go to `ap
 
 ### Models and Assets
 
-The in-house bubble/text segmentation model ships with this repository, no extra download needed:
+The bubble/text segmentation model that ships with this repository needs no extra download:
 
-- `assets/models/detection/mixed-dual-s-e5_float16.tflite`: dual-label (bubble / free text) instance segmentation, trained with Ultralytics YOLO26s-seg on a mix of annotated manga pages and synthetic manga data, 1472x1472 input, TFLite FP16, about 21 MB, released under AGPL-3.0 like the rest of this project
+- `assets/models/detection/mixed-dual-s-e5_float16.tflite`: dual-label (bubble / free text) instance segmentation, trained with Ultralytics YOLO26s-seg on annotated data, 1472x1472 input, TFLite FP16, about 21 MB, released under AGPL-3.0 like the rest of this project
 - SHA-256: `d030134cb00fb178a6433a8f2cfe5680c0bf34365ec64e0f6e5d0f28ec252c76`
 
 All other models are third-party models and are not distributed with this repository. Download them yourself and place them at the paths below before building:
@@ -159,16 +159,16 @@ Built-in prompts live in `assets/prompts/`, with variants for all five UI langua
 ## Acknowledgements
 
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): OCR models.
-- [Ultralytics](https://github.com/ultralytics/ultralytics): YOLO26s-seg training framework, used to train the in-house bubble/text segmentation model (AGPL-3.0).
+- [Ultralytics](https://github.com/ultralytics/ultralytics): YOLO26s-seg training framework, used to train the segmentation model bundled with this repository (AGPL-3.0).
 - [LiteRT Community](https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT): PP-OCRv6 LiteRT models.
 - [Mihon SSIV](https://github.com/mihonapp/subsampling-scale-image-view): tiled image display.
 - All contributors and users for their support.
 
 ## License
 
-This project's source code and the in-house segmentation model `assets/models/detection/mixed-dual-s-e5_float16.tflite` are released under [AGPL-3.0](./LICENSE), Copyright (C) 2026 jedzqer. If you distribute a modified version, or offer this app as a network service, you must publish the complete corresponding source code under AGPL-3.0, including the model and related training and inference scripts.
+This project's source code and the segmentation model `assets/models/detection/mixed-dual-s-e5_float16.tflite` bundled with this repository are released under [AGPL-3.0](./LICENSE), Copyright (C) 2026 jedzqer. If you distribute a modified version, or offer this app as a network service, you must publish the complete corresponding source code under AGPL-3.0, including the model and related training and inference scripts.
 
-The in-house model was trained with Ultralytics YOLO26s-seg and therefore inherits AGPL-3.0; using this app in a closed-source or commercial setting requires an Ultralytics Enterprise License.
+The bundled model was trained with Ultralytics YOLO26s-seg and therefore inherits AGPL-3.0; using this app in a closed-source or commercial setting requires an Ultralytics Enterprise License.
 
 Third-party models are not distributed with this repository and keep their own licenses: the PP-OCRv6 LiteRT models and the Korean OCR model are Apache-2.0.
 

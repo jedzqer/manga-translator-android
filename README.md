@@ -123,9 +123,9 @@ Debug APK 位于 `app/build/outputs/apk/debug/`，Release APK 位于 `app/build/
 
 ### 模型与资源
 
-自研的气泡/文字分割模型随本仓库提供，无需额外下载：
+随本仓库提供的气泡/文字分割模型，无需额外下载：
 
-- `assets/models/detection/mixed-dual-s-e5_float16.tflite`：双标签（气泡 / 游离文字）实例分割，基于 Ultralytics YOLO26s-seg 训练（真实漫画标注 + 合成漫画数据混合），1472×1472 输入，TFLite FP16，约 21 MB，与本项目源码同为 AGPL-3.0
+- `assets/models/detection/mixed-dual-s-e5_float16.tflite`：双标签（气泡 / 游离文字）实例分割，基于 Ultralytics YOLO26s-seg 在标注数据上训练，1472×1472 输入，TFLite FP16，约 21 MB，与本项目源码同为 AGPL-3.0
 - SHA-256：`d030134cb00fb178a6433a8f2cfe5680c0bf34365ec64e0f6e5d0f28ec252c76`
 
 其余模型都是第三方模型，不随开源仓库分发，构建前请自行下载并放到对应路径：
@@ -159,16 +159,16 @@ curl -fL -o ocr/korean_PP-OCRv5_mobile_rec.onnx $kr/inference.onnx
 ## 致谢
 
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)：OCR 模型。
-- [Ultralytics](https://github.com/ultralytics/ultralytics)：YOLO26s-seg 训练框架，自研气泡/文字分割模型由此训练（AGPL-3.0）。
+- [Ultralytics](https://github.com/ultralytics/ultralytics)：YOLO26s-seg 训练框架，随仓库提供的分割模型由此训练（AGPL-3.0）。
 - [LiteRT Community](https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT)：PP-OCRv6 LiteRT 模型。
 - [Mihon SSIV](https://github.com/mihonapp/subsampling-scale-image-view)：大图分块显示。
 - 所有贡献者与用户的支持。
 
 ## 许可证
 
-本项目源码与 `assets/models` 下的自研分割模型 `mixed-dual-s-e5_float16.tflite` 均按 [AGPL-3.0](./LICENSE) 发布，Copyright (C) 2026 jedzqer。分发修改版，或通过网络向他人提供本应用服务时，需按 AGPL-3.0 公开完整对应源码，包括模型与相关训练、推理脚本。
+本项目源码与随仓库提供的分割模型 `mixed-dual-s-e5_float16.tflite` 均按 [AGPL-3.0](./LICENSE) 发布，Copyright (C) 2026 jedzqer。分发修改版，或通过网络向他人提供本应用服务时，需按 AGPL-3.0 公开完整对应源码，包括模型与相关训练、推理脚本。
 
-自研模型基于 Ultralytics YOLO26s-seg 训练，因此沿用 AGPL-3.0；如在闭源或商业环境中使用本应用，需自行向 Ultralytics 取得企业许可。
+随仓库提供的分割模型基于 Ultralytics YOLO26s-seg 训练，因此沿用 AGPL-3.0；如在闭源或商业环境中使用本应用，需自行向 Ultralytics 取得企业许可。
 
 第三方模型不随本仓库分发，许可归各自作者：PP-OCRv6 LiteRT 模型与韩文 OCR 模型均为 Apache-2.0。
 
