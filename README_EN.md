@@ -123,30 +123,56 @@ Debug APKs are written to `app/build/outputs/apk/debug/`; release APKs go to `ap
 
 ### Models and Assets
 
-Model resources live in `assets/`. Before building, make sure these files are present:
+The in-house bubble/text segmentation model ships with this repository, no extra download needed:
 
-- `models/detection/mixed-dual-s-e5_float16.tflite` (YOLO26s-seg bubble/text segmenter at 1472x1472, TFLite FP16)
-- `models/detection/ppocrv6_small_det_640_fp32.tflite` (Paddle text-line detection inside OCR regions)
-- `models/ocr/ppocrv6_small_rec_{320,640,960}_fp32.tflite` + `models/ocr/characters.json` (Japanese, English, Chinese, and mixed OCR)
-- `models/ocr/korean_PP-OCRv5_mobile_rec.onnx` and `models/ocr/korean_PP-OCRv5_mobile_rec_dict.txt` (Korean OCR and character dictionary)
+- `assets/models/detection/mixed-dual-s-e5_float16.tflite`: dual-label (bubble / free text) instance segmentation, trained with Ultralytics YOLO26s-seg on a mix of annotated manga pages and synthetic manga data, 1472x1472 input, TFLite FP16, about 21 MB, released under AGPL-3.0 like the rest of this project
+- SHA-256: `d030134cb00fb178a6433a8f2cfe5680c0bf34365ec64e0f6e5d0f28ec252c76`
+
+All other models are third-party models and are not distributed with this repository. Download them yourself and place them at the paths below before building:
+
+- `assets/models/detection/ppocrv6_small_det_640_fp32.tflite`: Paddle text-line detection inside OCR regions
+- `assets/models/ocr/ppocrv6_small_rec_{320,640,960}_fp32.tflite` and `assets/models/ocr/characters.json`: Japanese, English, Chinese, and mixed OCR
+- `assets/models/ocr/korean_PP-OCRv5_mobile_rec.onnx` and `assets/models/ocr/korean_PP-OCRv5_mobile_rec_dict.txt`: Korean OCR and character dictionary
+
+Download them from the upstream repositories yourself; upstream filenames match:
+
+```bash
+cd assets/models
+litert=https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT/resolve/main
+curl -fL -o detection/ppocrv6_small_det_640_fp32.tflite $litert/ppocrv6_small_det_640_fp32.tflite
+for w in 320 640 960; do curl -fL -o ocr/ppocrv6_small_rec_${w}_fp32.tflite $litert/ppocrv6_small_rec_${w}_fp32.tflite; done
+curl -fL -o ocr/characters.json $litert/characters.json
+kr=https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx/resolve/main
+curl -fL -o ocr/korean_PP-OCRv5_mobile_rec.onnx $kr/inference.onnx
+```
+
+- PP-OCRv6 LiteRT models: https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT
+- Korean OCR model: https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx (rename `inference.onnx` to `korean_PP-OCRv5_mobile_rec.onnx`; write the `PostProcess.character_dict` entries of `inference.yml` one per line to `korean_PP-OCRv5_mobile_rec_dict.txt`, 11945 lines)
+
+Without the third-party models the project still compiles, but local detection or OCR fails at runtime because the assets are missing.
 
 General OCR and line detection use LiteRT GPU FP32 with CPU fallback. Recognition loads 320/640/960 models on demand by line aspect ratio; wider lines are scaled in full to 960. The dictionary retains its original CTC indices. Korean recognition still uses ONNX.
 The app retains centered letterboxing, axis-aligned line boxes and Android image resizing; it does not claim pixel parity with the upstream OpenCV/PyTorch pipeline.
-
-Model download links:
-
-- Speech-bubble and free-text detection model: YOLO26s dual-label text block detector (bundled in app assets)
-- General recognition model: https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT
-- Korean OCR model: https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx
 
 Built-in prompts live in `assets/prompts/`, with variants for all five UI languages. Asset filenames must match the code.
 
 ## Acknowledgements
 
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): OCR models.
+- [Ultralytics](https://github.com/ultralytics/ultralytics): YOLO26s-seg training framework, used to train the in-house bubble/text segmentation model (AGPL-3.0).
 - [LiteRT Community](https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT): PP-OCRv6 LiteRT models.
 - [Mihon SSIV](https://github.com/mihonapp/subsampling-scale-image-view): tiled image display.
 - All contributors and users for their support.
+
+## License
+
+This project's source code and the in-house segmentation model `assets/models/detection/mixed-dual-s-e5_float16.tflite` are released under [AGPL-3.0](./LICENSE), Copyright (C) 2026 jedzqer. If you distribute a modified version, or offer this app as a network service, you must publish the complete corresponding source code under AGPL-3.0, including the model and related training and inference scripts.
+
+The in-house model was trained with Ultralytics YOLO26s-seg and therefore inherits AGPL-3.0; using this app in a closed-source or commercial setting requires an Ultralytics Enterprise License.
+
+Third-party models are not distributed with this repository and keep their own licenses: the PP-OCRv6 LiteRT models and the Korean OCR model are Apache-2.0.
+
+Releases published earlier under MIT (v3.8.0 and before) remain usable under MIT; this change applies to later code.
 
 ## Community
 

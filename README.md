@@ -123,30 +123,56 @@ Debug APK 位于 `app/build/outputs/apk/debug/`，Release APK 位于 `app/build/
 
 ### 模型与资源
 
-模型资源位于 `assets/`，构建前请确认以下文件齐全：
+自研的气泡/文字分割模型随本仓库提供，无需额外下载：
 
-- `models/detection/mixed-dual-s-e5_float16.tflite`（气泡/文字双标签分割，YOLO26s-seg，1472×1472 TFLite FP16）
-- `models/detection/ppocrv6_small_det_640_fp32.tflite`（OCR 区域内部的 Paddle 文字行检测）
-- `models/ocr/ppocrv6_small_rec_{320,640,960}_fp32.tflite` + `models/ocr/characters.json`（日文、英文、中文及中英混合 OCR）
-- `models/ocr/korean_PP-OCRv5_mobile_rec.onnx`、`models/ocr/korean_PP-OCRv5_mobile_rec_dict.txt`（韩文 OCR 与字符表）
+- `assets/models/detection/mixed-dual-s-e5_float16.tflite`：双标签（气泡 / 游离文字）实例分割，基于 Ultralytics YOLO26s-seg 训练（真实漫画标注 + 合成漫画数据混合），1472×1472 输入，TFLite FP16，约 21 MB，与本项目源码同为 AGPL-3.0
+- SHA-256：`d030134cb00fb178a6433a8f2cfe5680c0bf34365ec64e0f6e5d0f28ec252c76`
+
+其余模型都是第三方模型，不随开源仓库分发，构建前请自行下载并放到对应路径：
+
+- `assets/models/detection/ppocrv6_small_det_640_fp32.tflite`：OCR 区域内部的 Paddle 文字行检测
+- `assets/models/ocr/ppocrv6_small_rec_{320,640,960}_fp32.tflite` 与 `assets/models/ocr/characters.json`：日文、英文、中文及中英混合 OCR
+- `assets/models/ocr/korean_PP-OCRv5_mobile_rec.onnx` 与 `assets/models/ocr/korean_PP-OCRv5_mobile_rec_dict.txt`：韩文 OCR 与字符表
+
+也可以直接从上游仓库下载，下载到的文件名与上游一致：
+
+```bash
+cd assets/models
+litert=https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT/resolve/main
+curl -fL -o detection/ppocrv6_small_det_640_fp32.tflite $litert/ppocrv6_small_det_640_fp32.tflite
+for w in 320 640 960; do curl -fL -o ocr/ppocrv6_small_rec_${w}_fp32.tflite $litert/ppocrv6_small_rec_${w}_fp32.tflite; done
+curl -fL -o ocr/characters.json $litert/characters.json
+kr=https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx/resolve/main
+curl -fL -o ocr/korean_PP-OCRv5_mobile_rec.onnx $kr/inference.onnx
+```
+
+- PP-OCRv6 LiteRT 模型：https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT
+- 韩文 OCR 模型：https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx （`inference.onnx` 改名为 `korean_PP-OCRv5_mobile_rec.onnx`；字符表取 `inference.yml` 中 `PostProcess.character_dict`，逐行写成 `korean_PP-OCRv5_mobile_rec_dict.txt`，共 11945 行）
+
+缺第三方模型时工程仍可编译，但运行到本地检测或 OCR 会因缺少 assets 文件失败。
 
 通用 OCR 与行检测使用 LiteRT GPU FP32，失败后在 CPU 重试。识别模型按行宽按需加载 320/640/960，超宽行完整缩放到 960；字典保留原始 CTC 索引。韩文仍使用 ONNX。
 应用保留居中补边、轴对齐行框和 Android 图像缩放；不声明与上游 OpenCV/PyTorch 整条流程逐像素一致。
-
-模型下载链接：
-
-- 普通气泡与游离文字检测模型：YOLO26s 双标签文本块检测模型（随应用 assets 提供）
-- 通用识别模型：https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT
-- 韩文 OCR 模型：https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx
 
 内置提示词位于 `assets/prompts/`，包含五种界面语言的变体；资源文件名需与代码保持一致。
 
 ## 致谢
 
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)：OCR 模型。
+- [Ultralytics](https://github.com/ultralytics/ultralytics)：YOLO26s-seg 训练框架，自研气泡/文字分割模型由此训练（AGPL-3.0）。
 - [LiteRT Community](https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT)：PP-OCRv6 LiteRT 模型。
 - [Mihon SSIV](https://github.com/mihonapp/subsampling-scale-image-view)：大图分块显示。
 - 所有贡献者与用户的支持。
+
+## 许可证
+
+本项目源码与 `assets/models` 下的自研分割模型 `mixed-dual-s-e5_float16.tflite` 均按 [AGPL-3.0](./LICENSE) 发布，Copyright (C) 2026 jedzqer。分发修改版，或通过网络向他人提供本应用服务时，需按 AGPL-3.0 公开完整对应源码，包括模型与相关训练、推理脚本。
+
+自研模型基于 Ultralytics YOLO26s-seg 训练，因此沿用 AGPL-3.0；如在闭源或商业环境中使用本应用，需自行向 Ultralytics 取得企业许可。
+
+第三方模型不随本仓库分发，许可归各自作者：PP-OCRv6 LiteRT 模型与韩文 OCR 模型均为 Apache-2.0。
+
+更早以 MIT 发布的版本（v3.8.0 及之前）依旧按当时的 MIT 许可可用，本次变更只约束其后的代码。
 
 ## 交流
 

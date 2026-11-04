@@ -51,6 +51,16 @@ Thumbs.db
 # Test assets
 test.webp
 
+# Third-party models are not distributed with this repository;
+# download them from the upstream links in README.md
+assets/models/detection/ppocrv6_small_det_640_fp32.tflite
+assets/models/ocr/ppocrv6_small_rec_320_fp32.tflite
+assets/models/ocr/ppocrv6_small_rec_640_fp32.tflite
+assets/models/ocr/ppocrv6_small_rec_960_fp32.tflite
+assets/models/ocr/characters.json
+assets/models/ocr/korean_PP-OCRv5_mobile_rec.onnx
+assets/models/ocr/korean_PP-OCRv5_mobile_rec_dict.txt
+
 # Misc
 *.swp
 *.swo
