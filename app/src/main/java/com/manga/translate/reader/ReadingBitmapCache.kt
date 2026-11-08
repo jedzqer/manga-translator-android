@@ -10,8 +10,6 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * A holder cannot recycle a bitmap directly once it is shared with the cache. Leases keep
  * track of active users so an evicted bitmap is recycled only after the last holder releases it.
- * Tiled images are deliberately excluded: their decoder and tile cache already have their own
- * lifecycle and caching policy.
  */
 class ReadingBitmapCache(
     maxSizeKb: Int = defaultMaxSizeKb()
@@ -19,7 +17,8 @@ class ReadingBitmapCache(
     private data class CacheKey(
         val path: String,
         val lastModified: Long,
-        val length: Long
+        val length: Long,
+        val variant: String
     )
 
     private class Entry(
@@ -61,12 +60,14 @@ class ReadingBitmapCache(
 
     suspend fun acquire(
         imageFile: File,
+        variant: String = "",
         decode: suspend () -> DecodedReadingBitmap?
     ): Lease? {
         val key = CacheKey(
             path = imageFile.absolutePath,
             lastModified = imageFile.lastModified(),
-            length = imageFile.length()
+            length = imageFile.length(),
+            variant = variant
         )
         synchronized(lock) {
             cache.get(key)?.let { entry ->
@@ -78,9 +79,7 @@ class ReadingBitmapCache(
         val decoded = decode() ?: return null
         val bitmap = decoded.bitmap
         if (bitmap == null || decoded.isTiled) {
-            // The tiled drawable owns a region source, not a whole bitmap. Its view closes
-            // that source when the lease is released, so there is nothing for this cache to do.
-            return Lease(decoded) { }
+            return Lease(decoded) { decoded.drawable.close() }
         }
 
         synchronized(lock) {
@@ -130,7 +129,8 @@ class ReadingBitmapCache(
 
     private fun recycleIfUnused(entry: Entry) {
         if (entry.evicted && entry.references == 0) {
-            entry.decoded.bitmap.recycleSafely()
+            // RenderThread may still reference a bitmap after the last View detaches.
+            // Dropping the cache entry lets Android release it when rendering is finished.
         }
     }
 
@@ -138,7 +138,7 @@ class ReadingBitmapCache(
         fun defaultMaxSizeKb(): Int {
             val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024L)
                 .coerceAtLeast(1L)
-            // Keep enough room for one or two useful pages without competing with tile caches.
+            // Keep enough room for one or two useful pages within the reading memory budget.
             return (maxMemoryKb / 10L).toInt().coerceIn(16 * 1024, 64 * 1024)
         }
     }

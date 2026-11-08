@@ -12,9 +12,6 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
-        maven("https://jitpack.io") {
-            content { includeGroup("com.github.mihonapp") }
-        }
         google()
         mavenCentral()
         maven("https://maven.aliyun.com/repository/google")

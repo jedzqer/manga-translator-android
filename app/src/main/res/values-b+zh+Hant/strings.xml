@@ -722,4 +722,6 @@
     <string name="model_context_save_failed">儲存失敗或目前模型設定已變更，請重新開啟後再試。</string>
     <string name="model_context_missing_identity">請先填寫模型名稱和介面位址。</string>
     <string name="llm_param_max_output_tokens">單次請求輸出上限（token）</string>
+    <string name="reading_page_jump_title">跳轉到指定頁面</string>
+    <string name="reading_page_jump_value">第 %1$d / %2$d 頁</string>
 </resources>

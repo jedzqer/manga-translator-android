@@ -36,11 +36,13 @@ internal fun resolveHorizontalEdgeSwipeDirection(
 
 class ReadingImageTransformController(
     context: Context,
-    private val imageView: ReadingRegionImageView,
+    private val imageView: ImageView,
     private val hasBubbleAt: (x: Float, y: Float) -> Boolean,
     private val onMatrixUpdated: () -> Unit,
     private val allowPanWhenOverflowing: Boolean = true,
-    private val onHorizontalEdgeSwipe: ((Int) -> Unit)? = null
+    private val onHorizontalEdgeSwipe: ((Int) -> Unit)? = null,
+    private val onUnconsumedVerticalDrag: ((Float) -> Float)? = null,
+    private val canScrollVertically: () -> Boolean = { false }
 ) {
     private val baseMatrix = Matrix()
     private val imageMatrix = Matrix()
@@ -155,14 +157,22 @@ class ReadingImageTransformController(
     }
 
     fun handleTouch(event: MotionEvent): Boolean {
-        if (!hasContent()) return false
+        // A new stream may arrive without the previous UP/CANCEL (window changes,
+        // parent interception). Never carry a consumed gesture into the next one.
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            isScaling = false
+            scaleHandled = false
+            isPanning = false
+        }
         scaleDetector.onTouchEvent(event)
-        if (event.pointerCount > 1) {
+        if (!hasContent()) return false
+        if (event.pointerCount > 1 && event.actionMasked != MotionEvent.ACTION_CANCEL) {
             return true
         }
         val zoomed = imageUserScale > minScale + 0.01f
-        val overflowAxes = if (allowPanWhenOverflowing) computeOverflowAxes() else OverflowAxes()
-        val allowPan = (zoomed || overflowAxes.any) && !hasBubbleAt(event.x, event.y)
+        val overflowAxes = if (zoomed || allowPanWhenOverflowing) computeOverflowAxes() else OverflowAxes()
+        val containerCanScroll = canScrollVertically()
+        val allowPan = (zoomed || overflowAxes.any || containerCanScroll) && !hasBubbleAt(event.x, event.y)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 startTouchX = event.x
@@ -184,7 +194,8 @@ class ReadingImageTransformController(
                     val movedY = event.y - startTouchY
                     if (!isPanning) {
                         val canPanHorizontally = canPanHorizontally(movedX, overflowAxes)
-                        val canPanVertically = verticalPanEnabled && overflowAxes.vertical
+                        val canPanVertically = containerCanScroll || ((verticalPanEnabled || zoomed) &&
+                            (overflowAxes.vertical || (zoomed && onUnconsumedVerticalDrag != null)))
                         val horizontalIntent =
                             abs(movedX) > panTouchSlop && abs(movedX) >= abs(movedY)
                         val verticalIntent =
@@ -210,6 +221,7 @@ class ReadingImageTransformController(
                         } else {
                             null
                         }
+                        val topBeforePan = currentImageTop()
                         imageMatrix.postTranslate(dx, dy)
                         fixTranslation()
                         if (imageLeftBeforePan != null) {
@@ -218,7 +230,12 @@ class ReadingImageTransformController(
                         }
                         applyImageMatrix()
                         lastTouchX = event.x
-                        lastTouchY = event.y
+                        val unconsumedDy = if (panVertical) dy - (currentImageTop() - topBeforePan) else 0f
+                        val scrollOffset = if (abs(unconsumedDy) > 0.5f) {
+                            onUnconsumedVerticalDrag?.invoke(unconsumedDy) ?: 0f
+                        } else 0f
+                        // Scrolling the parent also moves this view's local touch coordinates.
+                        lastTouchY = event.y + scrollOffset
                         return true
                     }
                 }
@@ -350,6 +367,12 @@ class ReadingImageTransformController(
             imageRight = imageRect.right,
             viewportWidth = viewWidth
         )
+    }
+
+    private fun currentImageTop(): Float {
+        imageRect.set(0f, 0f, contentWidth.toFloat(), contentHeight.toFloat())
+        imageMatrix.mapRect(imageRect)
+        return imageRect.top
     }
 
     private fun currentImageLeft(): Float {

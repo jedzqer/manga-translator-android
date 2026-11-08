@@ -3,7 +3,7 @@
     android:id="@+id/reading_page_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:clipChildren="false">
+    android:clipChildren="true">
 
     <FrameLayout
         android:id="@+id/reading_page_placeholder"
@@ -21,7 +21,7 @@
             android:textSize="13sp" />
     </FrameLayout>
 
-    <com.manga.translate.reader.ReadingRegionImageView
+    <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/reading_page_image"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

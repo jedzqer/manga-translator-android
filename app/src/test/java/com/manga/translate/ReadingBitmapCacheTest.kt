@@ -42,11 +42,11 @@ class ReadingBitmapCacheTest {
         assertFalse(bitmap.isRecycled)
         second?.close()
         cache.clear()
-        assertTrue(bitmap.isRecycled)
+        assertFalse(bitmap.isRecycled)
     }
 
     @Test
-    fun `clearing cache waits for active lease before recycling`() = runBlocking {
+    fun `clearing cache never recycles a bitmap retained by hardware rendering`() = runBlocking {
         val cache = ReadingBitmapCache(maxSizeKb = 1024)
         val bitmap = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
         val lease = cache.acquire(File("page.jpg")) { decoded(bitmap) }
@@ -55,7 +55,7 @@ class ReadingBitmapCacheTest {
         assertFalse(bitmap.isRecycled)
 
         lease?.close()
-        assertTrue(bitmap.isRecycled)
+        assertFalse(bitmap.isRecycled)
     }
 
     private fun decoded(bitmap: Bitmap): DecodedReadingBitmap {

@@ -684,4 +684,6 @@ Grupo de comunicação e feedback: %2$s</string>
     <string name="model_context_save_failed">Não foi possível salvar ou a configuração do modelo mudou. Reabra a janela e tente novamente.</string>
     <string name="model_context_missing_identity">Preencha primeiro o nome do modelo e o endereço da API.</string>
     <string name="llm_param_max_output_tokens">Limite de saída por solicitação (tokens)</string>
+    <string name="reading_page_jump_title">Ir para a página</string>
+    <string name="reading_page_jump_value">Página %1$d de %2$d</string>
 </resources>

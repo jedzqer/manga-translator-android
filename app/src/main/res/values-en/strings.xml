@@ -684,4 +684,6 @@ Communication and feedback group: %2$s</string>
     <string name="model_context_save_failed">Could not save, or the model settings changed. Reopen this dialog and try again.</string>
     <string name="model_context_missing_identity">Enter a model name and endpoint first.</string>
     <string name="llm_param_max_output_tokens">Output limit per request (tokens)</string>
+    <string name="reading_page_jump_title">Jump to page</string>
+    <string name="reading_page_jump_value">Page %1$d of %2$d</string>
 </resources>

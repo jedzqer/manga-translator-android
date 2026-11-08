@@ -73,7 +73,10 @@ class ReadingScrollView @JvmOverloads constructor(
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-        return scrollEnabled && super.onInterceptTouchEvent(ev)
+        // The overlay owns the entire gesture, including vertical drags. Intercepting
+        // here cancels its scale/tap detectors and prevents a drag becoming a pinch.
+        // It delegates unconsumed vertical movement back through scrollBy instead.
+        return false
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {

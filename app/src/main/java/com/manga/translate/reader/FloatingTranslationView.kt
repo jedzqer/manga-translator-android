@@ -174,8 +174,6 @@ class FloatingTranslationView @JvmOverloads constructor(
     private var cachedTypeface: Typeface? = null
     private var cachedTypefaceSignature: String? = null
     private val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
-    private val doubleTapTimeout = ViewConfiguration.getDoubleTapTimeout().toLong()
-    private val doubleTapSlop = ViewConfiguration.get(context).scaledDoubleTapSlop.toFloat()
     private val longPressRunnable = Runnable {
         val identity = activeId ?: return@Runnable
         if (!editMode || dragging) return@Runnable
@@ -183,9 +181,10 @@ class FloatingTranslationView @JvmOverloads constructor(
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         onBubbleLongPress?.invoke(identity.bubbleId)
     }
-    private var lastTapTime = 0L
-    private var lastTapX = 0f
-    private var lastTapY = 0f
+    private val readingTapDetector = ReadingTapDetector(context,
+        onTap = { x -> if (!editMode && !touchPassthroughEnabled) { onTap?.invoke(x); performClick() } },
+        onDoubleTap = { x, y -> if (!editMode && !touchPassthroughEnabled) onDoubleTap?.invoke(x, y) }
+    )
     private var pendingSwipeDirection: Int? = null
     private var hadMultiplePointers = false
     private var interactionActive = false
@@ -221,6 +220,7 @@ class FloatingTranslationView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        readingTapDetector.cancel()
         typefaceLoadJob?.cancel()
         viewJob.cancel()
         removeCallbacks(longPressRunnable)
@@ -338,6 +338,7 @@ class FloatingTranslationView @JvmOverloads constructor(
 
     fun setEditMode(enabled: Boolean) {
         if (editMode == enabled) return
+        readingTapDetector.cancel()
         editMode = enabled
         if (!enabled) {
             setCreateBubbleMode(false)
@@ -498,6 +499,7 @@ class FloatingTranslationView @JvmOverloads constructor(
         if (createBubbleMode && editMode) {
             return handleCreateTouch(event)
         }
+        if (!editMode) readingTapDetector.onTouchEvent(event) else readingTapDetector.cancel()
         val allowParentScrollInEditMode = editMode && editScrollThroughEnabled
         val transformHandled = onTransformTouch?.invoke(event) == true
         if (transformHandled) {
@@ -513,7 +515,21 @@ class FloatingTranslationView @JvmOverloads constructor(
                     hadMultiplePointers = true
                 }
             }
-            parent?.requestDisallowInterceptTouchEvent(true)
+            val finished = event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            if (finished) {
+                removeCallbacks(longPressRunnable)
+                endInteraction()
+                pendingSwipeDirection = null
+                dragging = false
+                activeId = null
+                resizeDragId = null
+                resizeDragActive = false
+                resizeDragBaseRect = null
+                resizeDragWorkingRect.setEmpty()
+                pendingResizeEntry = null
+            }
+            parent?.requestDisallowInterceptTouchEvent(!finished)
             swipeTriggered = true
             return true
         }
@@ -686,20 +702,6 @@ class FloatingTranslationView @JvmOverloads constructor(
                         }
                         activeId = null
                         return true
-                    }
-                    val now = event.eventTime
-                    val isDoubleTap = now - lastTapTime <= doubleTapTimeout &&
-                        abs(event.x - lastTapX) <= doubleTapSlop &&
-                        abs(event.y - lastTapY) <= doubleTapSlop
-                    if (isDoubleTap) {
-                        lastTapTime = 0L
-                        onDoubleTap?.invoke(event.x, event.y)
-                    } else {
-                        lastTapTime = now
-                        lastTapX = event.x
-                        lastTapY = event.y
-                        onTap?.invoke(event.x)
-                        performClick()
                     }
                 }
                 val direction = pendingSwipeDirection

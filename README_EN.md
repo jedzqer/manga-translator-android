@@ -161,7 +161,6 @@ Built-in prompts live in `assets/prompts/`, with variants for all five UI langua
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): OCR models.
 - [Ultralytics](https://github.com/ultralytics/ultralytics): YOLO26s-seg training framework, used to train the segmentation model bundled with this repository (AGPL-3.0).
 - [LiteRT Community](https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT): PP-OCRv6 LiteRT models.
-- [Mihon SSIV](https://github.com/mihonapp/subsampling-scale-image-view): tiled image display.
 - All contributors and users for their support.
 
 ## License

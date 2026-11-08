@@ -3,8 +3,8 @@ package com.manga.translate.reader
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BitmapRegionDecoder
-import android.graphics.Rect
 import android.os.Build
+import android.os.Build.VERSION_CODES
 import com.manga.translate.detection.shouldUseLongImageTiling
 import com.manga.translate.platform.ImageProcessingGuards
 import kotlin.math.max
@@ -16,43 +16,14 @@ data class DecodedReadingBitmap(
     val sourceHeight: Int,
     val displayWidth: Int,
     val displayHeight: Int,
-    val isTiled: Boolean,
-    val regionSource: ReadingRegionImageSource? = null
+    val isTiled: Boolean
 )
-
-data class ReadingRegionImageSource(
-    val imageFile: java.io.File,
-    val sourceWidth: Int,
-    val sourceHeight: Int,
-    /**
-     * Coordinate-system sample for ImageView display space.
-     * Tiled path prefers 1 so zoom can request full-resolution tiles.
-     */
-    val layoutSampleSize: Int
-)
-
-internal data class ReadingSourceTile(
-    val left: Int,
-    val top: Int,
-    val right: Int,
-    val bottom: Int
-) {
-    val height: Int
-        get() = bottom - top
-
-    fun toRect(): Rect = Rect(left, top, right, bottom)
-}
 
 object ReadingBitmapDecoder {
-    // Keep extra detail for the first paint. Tiled paths can request sharper data later,
-    // but whole-image pages have no later refinement pass once their bitmap is displayed.
+    // Keep extra detail for zooming, within whole-image memory and texture limits.
     private const val INITIAL_DETAIL_MULTIPLIER = 3
     private const val MAX_LONG_EDGE = 8192
-    private const val MAX_FULL_DECODE_PIXELS = 12_000_000
     private const val MAX_TOTAL_PIXELS = 16_777_216 // ~16MP hard cap for whole-image decode
-    private const val TILE_DECODE_MIN_SOURCE_HEIGHT = 6144
-    private const val TILE_OUTPUT_PIXEL_BUDGET = 4_194_304 // ~4MP per tile plan unit
-    private const val TILE_DETAIL_MULTIPLIER = 1.5f
 
     suspend fun decode(imageFile: java.io.File, targetWidth: Int, targetHeight: Int): DecodedReadingBitmap? {
         val safeTargetWidth = targetWidth.coerceAtLeast(1)
@@ -65,22 +36,24 @@ object ReadingBitmapDecoder {
         val sourceHeight = bounds.outHeight
         if (sourceWidth <= 0 || sourceHeight <= 0) return null
 
-        if (shouldUseTiledDecode(sourceWidth, sourceHeight) && canOpenRegionDecoder(imageFile)) {
-            return DecodedReadingBitmap(
-                drawable = ReadingTiledBitmapDrawable.empty(sourceWidth, sourceHeight),
-                bitmap = null,
-                sourceWidth = sourceWidth,
-                sourceHeight = sourceHeight,
-                displayWidth = sourceWidth,
-                displayHeight = sourceHeight,
-                isTiled = true,
-                regionSource = ReadingRegionImageSource(
-                    imageFile = imageFile,
+        if (shouldUseLongImageTiling(sourceWidth, sourceHeight)) {
+            val decoder = runCatching { createRegionDecoder(imageFile) }.getOrNull()
+            if (decoder != null) {
+                val tileSample = calculateTileSampleSize(sourceWidth, safeTargetWidth)
+                val displayWidth = ceilDiv(sourceWidth, tileSample)
+                val displayHeight = ceilDiv(sourceHeight, tileSample)
+                return DecodedReadingBitmap(
+                    drawable = ReadingTiledBitmapDrawable.regionBacked(
+                        decoder, sourceWidth, sourceHeight, tileSample
+                    ),
+                    bitmap = null,
                     sourceWidth = sourceWidth,
                     sourceHeight = sourceHeight,
-                    layoutSampleSize = 1
+                    displayWidth = displayWidth,
+                    displayHeight = displayHeight,
+                    isTiled = true
                 )
-            )
+            }
         }
 
         val sampleSize = calculateInSampleSize(
@@ -89,12 +62,41 @@ object ReadingBitmapDecoder {
             targetWidth = safeTargetWidth * INITIAL_DETAIL_MULTIPLIER,
             targetHeight = safeTargetHeight * INITIAL_DETAIL_MULTIPLIER
         )
-        val bitmap = decodeWholeImage(imageFile, sourceWidth, sourceHeight, sampleSize) ?: return null
-        return toDecodedReadingBitmap(
-            bitmap = bitmap,
-            sourceWidth = sourceWidth,
-            sourceHeight = sourceHeight
-        )
+        val bitmap = decodeWholeImage(imageFile, sourceWidth, sourceHeight, sampleSize)
+        if (bitmap != null) {
+            return toDecodedReadingBitmap(bitmap, sourceWidth, sourceHeight)
+        }
+        return null
+    }
+
+    /** Decode one bounded webtoon segment; source dimensions always describe the original page. */
+    suspend fun decodeRegion(
+        imageFile: java.io.File,
+        top: Int,
+        bottom: Int,
+        targetWidth: Int
+    ): DecodedReadingBitmap? {
+        val decoder = runCatching { createRegionDecoder(imageFile) }.getOrNull() ?: return null
+        try {
+            val width = decoder.width
+            val height = decoder.height
+            if (top < 0 || bottom > height || bottom <= top) return null
+            val sample = calculateInSampleSize(width, bottom - top,
+                targetWidth.coerceAtLeast(1) * INITIAL_DETAIL_MULTIPLIER, MAX_LONG_EDGE)
+            val bitmap = ImageProcessingGuards.withDecodePermit(
+                ceilDiv(width, sample), ceilDiv(bottom - top, sample), "WebtoonSegment"
+            ) {
+                runCatching {
+                    decoder.decodeRegion(android.graphics.Rect(0, top, width, bottom), BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    })
+                }.getOrNull()
+            } ?: return null
+            return toDecodedReadingBitmap(bitmap, width, height)
+        } finally {
+            decoder.recycle()
+        }
     }
 
     private suspend fun decodeWholeImage(
@@ -157,8 +159,6 @@ object ReadingBitmapDecoder {
         targetWidth: Int,
         targetHeight: Int
     ): Int {
-        val preserveReadableWidth = shouldUseLongImageTiling(sourceWidth, sourceHeight)
-        val minReadableWidth = (targetWidth / INITIAL_DETAIL_MULTIPLIER).coerceAtLeast(1)
         var sample = 1
         while (
             sourceWidth / (sample * 2) >= targetWidth &&
@@ -167,113 +167,38 @@ object ReadingBitmapDecoder {
             sample *= 2
         }
         while (
-            sourceWidth / (sample * 2) >= MAX_LONG_EDGE ||
-            sourceHeight / (sample * 2) >= MAX_LONG_EDGE
+            ceilDiv(sourceWidth, sample) > MAX_LONG_EDGE ||
+            ceilDiv(sourceHeight, sample) > MAX_LONG_EDGE
         ) {
-            if (preserveReadableWidth && sourceWidth / (sample * 2) < minReadableWidth) {
-                break
-            }
             sample *= 2
         }
         while (
             sourceWidth.toLong() * sourceHeight.toLong() / (sample.toLong() * sample.toLong())
             > MAX_TOTAL_PIXELS
         ) {
-            if (preserveReadableWidth && sourceWidth / (sample * 2) < minReadableWidth) {
-                break
-            }
             sample *= 2
         }
         return max(sample, 1)
     }
 
-    /**
-     * Decode sample for region tiles with modest detail headroom under current zoom.
-     * layout maps source -> display by layoutSampleSize; displayScale is screen px per display px.
-     */
-    fun calculateDecodeSampleSize(layoutSampleSize: Int, displayScale: Float): Int {
-        val safeLayout = layoutSampleSize.coerceAtLeast(1)
-        val scale = displayScale.coerceAtLeast(0.05f)
-        val target = safeLayout / (scale * TILE_DETAIL_MULTIPLIER)
+    private fun calculateTileSampleSize(sourceWidth: Int, targetWidth: Int): Int {
+        val desiredWidth = (targetWidth * INITIAL_DETAIL_MULTIPLIER).coerceAtLeast(1)
         var sample = 1
-        while (sample * 2 <= target + 0.001f) {
-            sample *= 2
-        }
-        return sample.coerceAtLeast(1)
+        while (ceilDiv(sourceWidth, sample * 2) >= desiredWidth) sample *= 2
+        return sample
     }
 
-    internal fun planSourceTiles(
-        sourceWidth: Int,
-        sourceHeight: Int,
-        sampleSize: Int
-    ): List<ReadingSourceTile> {
-        if (sourceWidth <= 0 || sourceHeight <= 0 || sampleSize <= 0) return emptyList()
-        val sourceTileHeight = computeSourceTileHeight(
-            sourceWidth = sourceWidth,
-            sourceHeight = sourceHeight,
-            sampleSize = sampleSize
-        )
-        val tiles = ArrayList<ReadingSourceTile>()
-        var sourceTop = 0
-        while (sourceTop < sourceHeight) {
-            val sourceBottom = minOf(sourceTop + sourceTileHeight, sourceHeight)
-            tiles += ReadingSourceTile(
-                left = 0,
-                top = sourceTop,
-                right = sourceWidth,
-                bottom = sourceBottom
-            )
-            sourceTop = sourceBottom
-        }
-        return tiles
-    }
-
-    internal fun shouldUseTiledDecode(sourceWidth: Int, sourceHeight: Int): Boolean {
-        if (sourceWidth <= 0 || sourceHeight <= 0) return false
-        if (shouldUseLongImageTiling(sourceWidth, sourceHeight)) return true
-        if (sourceHeight >= TILE_DECODE_MIN_SOURCE_HEIGHT) return true
-        if (max(sourceWidth, sourceHeight) > MAX_LONG_EDGE) return true
-        val pixels = sourceWidth.toLong() * sourceHeight.toLong()
-        return pixels > MAX_FULL_DECODE_PIXELS
-    }
-
-    private fun canOpenRegionDecoder(imageFile: java.io.File): Boolean {
-        return runCatching {
-            createBitmapRegionDecoder(imageFile).use { true }
-        }.getOrDefault(false)
-    }
-
-    private fun computeSourceTileHeight(
-        sourceWidth: Int,
-        sourceHeight: Int,
-        sampleSize: Int
-    ): Int {
-        val safeWidth = sourceWidth.coerceAtLeast(1)
-        val sampledBudget = TILE_OUTPUT_PIXEL_BUDGET.toLong() * sampleSize.toLong() * sampleSize.toLong()
-        val rawHeight = (sampledBudget / safeWidth).toInt()
-        val roundedHeight = (rawHeight / sampleSize).coerceAtLeast(1) * sampleSize
-        return roundedHeight.coerceAtLeast(sampleSize * 256).coerceAtMost(sourceHeight)
-    }
-
-    private fun createBitmapRegionDecoder(imageFile: java.io.File): BitmapRegionDecoder {
-        val path = imageFile.absolutePath
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            BitmapRegionDecoder.newInstance(path)
+    private fun createRegionDecoder(imageFile: java.io.File): BitmapRegionDecoder {
+        return if (Build.VERSION.SDK_INT >= VERSION_CODES.S) {
+            BitmapRegionDecoder.newInstance(imageFile.absolutePath)
         } else {
             @Suppress("DEPRECATION")
-            BitmapRegionDecoder.newInstance(path, false)
+            BitmapRegionDecoder.newInstance(imageFile.absolutePath, false)
         }
     }
 
     private fun ceilDiv(value: Int, divisor: Int): Int {
-        return (value + divisor - 1) / divisor
+        return ((value.toLong() + divisor - 1) / divisor).toInt()
     }
 
-    private inline fun <T> BitmapRegionDecoder.use(block: (BitmapRegionDecoder) -> T): T {
-        try {
-            return block(this)
-        } finally {
-            if (!isRecycled) recycle()
-        }
-    }
 }

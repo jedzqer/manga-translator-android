@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.core.graphics.createBitmap
 import androidx.test.core.app.ApplicationProvider
+import com.manga.translate.platform.PdfImageCodec
 import com.manga.translate.platform.PdfOriginalImageExtractor
 import com.manga.translate.platform.resolvePdfImportRenderScale
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -127,6 +128,24 @@ class PdfImageCodecTest {
             pdfFile.delete()
             outputDir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun `long PDF retains horizontal detail with bounded contiguous strips`() {
+        val page = PdfImageCodec.planImportPage(281, 93473)
+        assertEquals(1171, page.width)
+        assertEquals(300f / 72f, page.renderScale, 0.001f)
+        val strips = page.strips().toList()
+        assertEquals(0, strips.first().top)
+        assertEquals(page.height, strips.sumOf { it.height })
+        strips.zipWithNext().forEach { (first, next) ->
+            assertEquals(first.top + first.height, next.top)
+        }
+        assertTrue(strips.all { it.height <= 4096 && it.height.toLong() * page.width <= 8_388_608 })
+        assertTrue(PdfImageCodec.PdfImportPlan(listOf(page)).peakBytes < 20L * 1024 * 1024)
+        val names = strips.map { page.fileName(0, it.index) } + "0002.jpg"
+        assertEquals(names, names.sorted())
+        assertEquals(names.size, names.toSet().size)
     }
 
     private fun createJpeg(width: Int, height: Int): ByteArray {

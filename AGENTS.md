@@ -84,7 +84,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 |---|---|
 | 应用入口 | `app/MangaTranslateApp.kt`、`app/MainActivity.kt`、`di/AppContainer.kt` |
 | 漫画库 | `library/LibraryFragment.kt`、`LibraryViewModel.kt`、`LibraryPageLoader.kt`、`LibraryRepository.kt`、`LibraryImportExportCoordinator.kt`、`LibraryPreferencesGateway.kt` |
-| 阅读 | `reader/ReadingFragment.kt`、`ReadingSessionViewModel.kt`、`ReadingPageTransitionController.kt`、`ReadingBitmapDecoder.kt`、`ReadingRegionImageView.kt`、`WebtoonReadingAdapter.kt` |
+| 阅读 | `reader/ReadingFragment.kt`、`ReadingSessionViewModel.kt`、`ReadingPageTransitionController.kt`、`ReadingBitmapDecoder.kt`、`WebtoonReadingAdapter.kt` |
 | 翻译主流程 | `translation/TranslationPipeline.kt`、`FolderTranslationCoordinator.kt`、`TextBubbleTranslationCoordinator.kt` |
 | 页面检测 | `detection/PageRegionDetector.kt`、`BubbleDetector.kt`、`TextBlockMerger.kt` |
 | OCR | `ocr/OcrSharedTools.kt`、`OcrEngine.kt`、`PPOcrV6SmallRec.kt`、`KoreanOcr.kt`、`EnglishLineDetector.kt` |
@@ -141,7 +141,9 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 ### 阅读与渲染
 
-- 普通页优先使用 `ARGB_8888`；长图或超高分辨率页面通过 `ReadingRegionImageView` 适配 Mihon SSIV 分块解码，并以源图分辨率作为布局坐标。SSIV 子视图仅覆盖本地可见区域，保留低分辨率底图并加载清晰瓦片；图片矩阵和手势仍由阅读层统一管理，页面脱离窗口时释放分块资源。
+- PDF 导入优先直接提取完整单图页；无法直提的超长竖页按横向清晰度确定渲染比例，顺序渲染为有界高度的独立图片，内存预估按单片位图计算。分片共享页面变换并保持顺序，已有导入文件及译文不自动替换。
+- 阅读页面通过普通 `ImageView` 显示整图解码结果，优先使用 `ARGB_8888`；长图和高分辨率页面同样按尺寸与像素预算采样，不返回无内容的占位 drawable。图片矩阵、滚动和缩放手势由阅读层统一管理，显示坐标与源图坐标按实际采样尺寸映射。
+- 条漫长图按源图坐标拆为高度受限的阅读片段，独立区域解码；不得用极高 View 承载整页。译文保留原页坐标并在片段边界裁切，阅读位置仍按原页记录。缩放和平移由条漫列表统一处理，不得各片段独立缩放；进入编辑时恢复原始比例。已交给 View 的位图在缓存淘汰时不得主动回收，以免硬件绘制仍引用它。
 - 普通气泡设置作用于阅读页、条漫页和导出；悬浮窗气泡设置只作用于 overlay。两套大小、透明度、形状和文字密度设置不得串用。
 - 悬浮窗检测 overlay 是全屏的不可信窗口。Android 12 起窗口 alpha 高于 0.8 时，即使带 `FLAG_NOT_TOUCHABLE` 也会丢弃下层应用的触摸，所以窗口 alpha、可触摸性与手势接管统一由 `DetectionOverlayWindowPolicy` 按 `FloatingOverlayMode`（`FloatingTranslateApiSettings.overlayMode`）决定，不得在 Service 中另写 flags 或 alpha。半透明穿透模式 alpha 固定 0.8；不透明模式仅在有气泡或编辑时 alpha 1.0 并拦截触摸，此时 `FloatingScreenTapDetector` 把单击、双击、三击和长按映射为悬浮球手势配置，目前只执行清屏。不透明模式要求至少一个悬浮球手势为清屏：设置弹窗拒绝保存不满足的组合，导入的不满足配置由 `FloatingTranslateApiSettings.effectiveOverlayMode()` 回退半透明。
 - 普通气泡横竖排版在文件夹或集合的阅读设置中配置，集合内章节共用；阅读和导出使用同一设置，未配置时兼容原全局排版偏好。悬浮窗横竖排版在启动确认中选择并记住上次选择。

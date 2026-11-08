@@ -8,7 +8,6 @@ import android.util.Size
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewGroup
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
@@ -94,13 +93,15 @@ class WebtoonReadingAdapter(
 
     data class WebtoonDisplayItem(
         val imageFile: File,
-        val imageIndex: Int
+        val imageIndex: Int,
+        val sourceTop: Int = 0,
+        val sourceBottom: Int = 0
     ) {
         val path: String
             get() = imageFile.absolutePath
 
         val stableKey: String
-            get() = path
+            get() = "$path:$sourceTop:$sourceBottom"
     }
 
     private companion object {
@@ -123,7 +124,8 @@ class WebtoonReadingAdapter(
     )
     private val runtimeCacheLimit = computeRuntimeCacheLimit()
     private val rememberedPageHeights = LruMap<String, Int>(runtimeCacheLimit)
-    private val sourceSizeCache = LruMap<String, Size>(runtimeCacheLimit)
+    private val sourceSizeCache = mutableMapOf<String, Size>()
+    private var viewportWidth = 1080
     private val translationCache = LruMap<String, TranslationResult?>(runtimeCacheLimit)
     private val boundHolders = mutableMapOf<String, MutableSet<WebtoonPageViewHolder>>()
     private val translationLoadLock = Any()
@@ -143,6 +145,8 @@ class WebtoonReadingAdapter(
     private var lockedPageOffsets: Map<Int, Pair<Float, Float>> = emptyMap()
     private var sourceSizePrefetchJob: Job? = null
 
+    var onPageTap: ((Float) -> Unit)? = null
+    var onVerticalScroll: ((Int) -> Unit)? = null
     var onLockedBubbleOffsetChanged: ((Int, Float, Float) -> Unit)? = null
     var onLockedBubbleRemove: ((Int) -> Unit)? = null
     var onLockedBubbleTap: ((Int) -> Unit)? = null
@@ -432,19 +436,10 @@ class WebtoonReadingAdapter(
                     }
                 }
                 if (sizes.isEmpty()) continue
-                val updatedPositions = ArrayList<Int>(sizes.size)
-                sizes.forEach { (path, size) ->
-                    sourceSizeCache.put(path, size)
-                    val position = displayItems.indexOfFirst { it.path == path }
-                    if (position >= 0) {
-                        updatedPositions.add(position)
-                    }
-                }
-                if (updatedPositions.isNotEmpty()) {
-                    val minPos = updatedPositions.min()
-                    val maxPos = updatedPositions.max()
-                    notifyItemRangeChanged(minPos, maxPos - minPos + 1, PAYLOAD_PLACEHOLDER_ONLY)
-                }
+                onDisplayStructureChanging?.invoke()
+                sizes.forEach { (path, size) -> sourceSizeCache[path] = size }
+                rebuildDisplayItems()
+                onDisplayStructureChanged?.invoke()
             }
         }
     }
@@ -476,9 +471,72 @@ class WebtoonReadingAdapter(
     private fun buildDisplayItems(images: List<File>): List<WebtoonDisplayItem> {
         val result = ArrayList<WebtoonDisplayItem>(images.size)
         images.forEachIndexed { index, imageFile ->
-            result += WebtoonDisplayItem(imageFile, index)
+            val size = sourceSizeCache[imageFile.absolutePath]
+            if (size == null) {
+                result += WebtoonDisplayItem(imageFile, index)
+            } else {
+                WebtoonSegments.ranges(size.width, size.height, viewportWidth).forEach { range ->
+                    result += WebtoonDisplayItem(imageFile, index, range.first, range.last + 1)
+                }
+            }
         }
         return result
+    }
+
+    private fun rebuildDisplayItems() {
+        val previous = displayItems
+        val next = buildDisplayItems(items)
+        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = previous.size
+            override fun getNewListSize() = next.size
+            override fun areItemsTheSame(old: Int, new: Int) = previous[old].stableKey == next[new].stableKey
+            override fun areContentsTheSame(old: Int, new: Int) = previous[old] == next[new]
+        })
+        displayItems = next
+        diff.dispatchUpdatesTo(this)
+    }
+
+    private val viewportLayoutListener = View.OnLayoutChangeListener { view, left, _, right, _, _, _, _, _ ->
+        val width = right - left - view.paddingLeft - view.paddingRight
+        if (width > 0 && width != viewportWidth) {
+            view.post {
+                if (width != viewportWidth) {
+                    onDisplayStructureChanging?.invoke()
+                    viewportWidth = width
+                    rebuildDisplayItems()
+                    onDisplayStructureChanged?.invoke()
+                }
+            }
+        }
+    }
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        viewportWidth = recyclerView.width.takeIf { it > 0 }
+            ?: recyclerView.resources.displayMetrics.widthPixels
+        recyclerView.addOnLayoutChangeListener(viewportLayoutListener)
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        recyclerView.removeOnLayoutChangeListener(viewportLayoutListener)
+        super.onDetachedFromRecyclerView(recyclerView)
+    }
+
+    // Viewport offsets remain relative to the original page, not the current segment.
+    fun pageOffsetForPosition(position: Int, localOffset: Int): Int {
+        val item = displayItems.getOrNull(position) ?: return localOffset
+        val size = sourceSizeCache[item.path] ?: return localOffset
+        return localOffset - (item.sourceTop.toDouble() * viewportWidth / size.width).roundToInt()
+    }
+
+    fun positionForPageOffset(imageIndex: Int, pageOffset: Int): Pair<Int, Int> {
+        val range = adapterPositionRangeForImageIndex(imageIndex) ?: return imageIndex to pageOffset
+        val first = displayItems[range.first]
+        val size = sourceSizeCache[first.path] ?: return range.first to pageOffset
+        val sourceY = -pageOffset.toDouble() * size.width / viewportWidth
+        val position = range.firstOrNull { displayItems[it].sourceBottom > sourceY } ?: range.last
+        val top = (displayItems[position].sourceTop.toDouble() * viewportWidth / size.width).roundToInt()
+        return position to (pageOffset + top)
     }
 
     private fun computeRuntimeCacheLimit(): Int {
@@ -507,13 +565,15 @@ class WebtoonReadingAdapter(
         private val imageTransformController = ReadingImageTransformController(
             context = binding.root.context,
             imageView = binding.readingPageImage,
-            hasBubbleAt = { x, y -> binding.readingPageOverlay.hasBubbleAt(x, y) },
+            hasBubbleAt = { x, y -> isLockedEditPage() && binding.readingPageOverlay.hasBubbleAt(x, y) },
             onMatrixUpdated = { updateOverlayDisplayRect() },
-            allowPanWhenOverflowing = false
+            allowPanWhenOverflowing = false,
+            onUnconsumedVerticalDrag = { dy ->
+                val before = itemView.top
+                if (!isLockedEditPage()) onVerticalScroll?.invoke(-dy.toInt())
+                (before - itemView.top).toFloat()
+            }
         )
-        private val touchSlop = ViewConfiguration.get(binding.root.context).scaledTouchSlop.toFloat()
-        private val doubleTapTimeout = ViewConfiguration.getDoubleTapTimeout().toLong()
-        private val doubleTapSlop = ViewConfiguration.get(binding.root.context).scaledDoubleTapSlop.toFloat()
         private var bindJob: Job? = null
         private var overlayReloadJob: Job? = null
         private var boundPath: String? = null
@@ -526,12 +586,10 @@ class WebtoonReadingAdapter(
         private var currentImageHeight: Int = 0
         private var currentBaseTranslation: TranslationResult? = null
         private var previousPageTranslation: TranslationResult? = null
-        private var downX = 0f
-        private var downY = 0f
-        private var touchMoved = false
-        private var lastTapTime = 0L
-        private var lastTapX = 0f
-        private var lastTapY = 0f
+        private val readingTapDetector = ReadingTapDetector(binding.root.context,
+            onTap = { x -> if (!isLockedEditPage()) onPageTap?.invoke(x) },
+            onDoubleTap = { x, y -> if (!isLockedEditPage()) toggleDoubleTapZoom(x, y) }
+        )
 
         /** Public accessor for the currently bound image path. */
         val boundImagePath: String?
@@ -540,7 +598,6 @@ class WebtoonReadingAdapter(
         private fun releaseCurrentHolderBitmap() {
             binding.readingPageOverlay.setSourceBitmap(null)
             binding.readingPageOverlay.setSourceImageFile(null)
-            binding.readingPageImage.setRegionSource(null)
             binding.readingPageImage.setImageDrawable(null)
             imageTransformController.setCurrentBitmap(null)
             currentBitmapLease?.close()
@@ -593,7 +650,7 @@ class WebtoonReadingAdapter(
             val visibleTopFraction = (visibleTop - itemTopInRecycler) / itemHeight
             val visibleBottomFraction = (visibleBottom - itemTopInRecycler) / itemHeight
             val imageHeight = currentImageHeight.toFloat()
-            val centerY = ((visibleTopFraction + visibleBottomFraction) / 2f) * imageHeight
+            val centerY = segmentTop() + ((visibleTopFraction + visibleBottomFraction) / 2f) * segmentHeight()
             return centerY.coerceIn(0f, imageHeight)
         }
 
@@ -611,8 +668,10 @@ class WebtoonReadingAdapter(
             if (!matrix.invert(inverse)) return null
             val point = floatArrayOf(localX, localY)
             inverse.mapPoints(point)
-            val imageX = point[0].coerceIn(0f, currentImageWidth.toFloat())
-            val imageY = point[1].coerceIn(0f, currentImageHeight.toFloat())
+            val decoded = currentDecodedImage ?: return null
+            val imageX = (point[0] * currentImageWidth / decoded.displayWidth).coerceIn(0f, currentImageWidth.toFloat())
+            val imageY = (segmentTop() + point[1] * segmentHeight() / decoded.displayHeight)
+                .coerceIn(0f, currentImageHeight.toFloat())
             return imageX to imageY
         }
 
@@ -636,12 +695,7 @@ class WebtoonReadingAdapter(
             currentImageHeight = 0
             currentBaseTranslation = null
             previousPageTranslation = null
-            downX = 0f
-            downY = 0f
-            touchMoved = false
-            lastTapTime = 0L
-            lastTapX = 0f
-            lastTapY = 0f
+            readingTapDetector.cancel()
             registerBoundHolder(imageFile.absolutePath)
             binding.readingPageOverlay.setEditMode(false)
             binding.readingPageOverlay.setTouchPassthroughEnabled(true)
@@ -708,55 +762,8 @@ class WebtoonReadingAdapter(
         fun getResizeModeBubbleId(): Int? = binding.readingPageOverlay.getResizeModeBubbleId()
 
         fun handleTouchEvent(event: MotionEvent): Boolean {
-            val transformHandled = imageTransformController.handleTouch(event)
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = event.x
-                    downY = event.y
-                    touchMoved = false
-                    return transformHandled || isZoomed()
-                }
-
-                MotionEvent.ACTION_MOVE -> {
-                    if (!touchMoved &&
-                        (kotlin.math.abs(event.x - downX) > touchSlop ||
-                            kotlin.math.abs(event.y - downY) > touchSlop)
-                    ) {
-                        touchMoved = true
-                    }
-                    return transformHandled || isZoomed()
-                }
-
-                MotionEvent.ACTION_POINTER_DOWN,
-                MotionEvent.ACTION_POINTER_UP -> {
-                    return transformHandled || isZoomed()
-                }
-
-                MotionEvent.ACTION_UP -> {
-                    if (!touchMoved && !isLockedEditPage()) {
-                        val now = event.eventTime
-                        val isDoubleTap = now - lastTapTime <= doubleTapTimeout &&
-                            kotlin.math.abs(event.x - lastTapX) <= doubleTapSlop &&
-                            kotlin.math.abs(event.y - lastTapY) <= doubleTapSlop
-                        if (isDoubleTap) {
-                            lastTapTime = 0L
-                            touchMoved = false
-                            return toggleDoubleTapZoom(event.x, event.y)
-                        }
-                        lastTapTime = now
-                        lastTapX = event.x
-                        lastTapY = event.y
-                    }
-                    touchMoved = false
-                    return transformHandled || isZoomed()
-                }
-
-                MotionEvent.ACTION_CANCEL -> {
-                    touchMoved = false
-                    return transformHandled || isZoomed()
-                }
-            }
-            return transformHandled || isZoomed()
+            readingTapDetector.onTouchEvent(event)
+            return false // The RecyclerView owns zoom and pan across every segment.
         }
 
         private fun loadPage(item: WebtoonDisplayItem) {
@@ -765,12 +772,13 @@ class WebtoonReadingAdapter(
                 val imageFile = item.imageFile
                 val imagePath = imageFile.absolutePath
                 val targetWidth = resolveTargetWidth()
-                val targetHeight = resolveTargetHeight()
                 val decodedDeferred = async(Dispatchers.IO) {
                     var lease: ReadingBitmapCache.Lease? = null
                     try {
-                        lease = bitmapCache.acquire(imageFile) {
-                            ReadingBitmapDecoder.decode(imageFile, targetWidth, targetHeight)
+                        lease = bitmapCache.acquire(imageFile, "${item.sourceTop}:${item.sourceBottom}:$targetWidth") {
+                            if (item.sourceBottom > item.sourceTop) {
+                                ReadingBitmapDecoder.decodeRegion(imageFile, item.sourceTop, item.sourceBottom, targetWidth)
+                            } else null // Wait for bounds before allocating any image or tall View.
                         }
                         lease
                     } finally {
@@ -809,12 +817,11 @@ class WebtoonReadingAdapter(
                 val previousBitmapLease = currentBitmapLease
                 currentDecodedImage = decoded
                 currentBitmapLease = decodedLease
-                currentBitmap = decoded.bitmap
+                currentBitmap = if (item.sourceTop == 0 && item.sourceBottom == decoded.sourceHeight) decoded.bitmap else null
                 currentImageWidth = decoded.sourceWidth
                 currentImageHeight = decoded.sourceHeight
                 currentBaseTranslation = normalizeTranslation(currentBaseTranslation)
                 updatePageHeightForImage(decoded.sourceWidth, decoded.sourceHeight)
-                binding.readingPageImage.setRegionSource(decoded.regionSource)
                 binding.readingPageImage.setImageDrawable(decoded.drawable)
                 if (previousBitmapLease !== decodedLease) {
                     binding.readingPageOverlay.setSourceBitmap(null)
@@ -836,9 +843,9 @@ class WebtoonReadingAdapter(
         }
 
         fun recycle() {
+            readingTapDetector.cancel()
             bindJob?.cancel()
             overlayReloadJob?.cancel()
-            binding.readingPageImage.dispose()
             boundPath?.let(::unregisterBoundHolder)
             boundPath = null
             boundFile = null
@@ -885,7 +892,7 @@ class WebtoonReadingAdapter(
             val metrics = binding.root.resources.displayMetrics
             val width = binding.root.width.takeIf { it > 0 } ?: metrics.widthPixels
             val size = sourceSizeCache[item.path]
-            val displaySourceHeight = size?.height ?: 0
+            val displaySourceHeight = if (item.sourceBottom > 0) item.sourceBottom - item.sourceTop else 0
             val estimated = size
                 ?.takeIf { it.width > 0 && it.height > 0 }
                 ?.takeIf { displaySourceHeight > 0 }
@@ -893,8 +900,7 @@ class WebtoonReadingAdapter(
                     (width.toFloat() * displaySourceHeight / it.width).roundToInt()
                 }
                 ?: (width * DEFAULT_PLACEHOLDER_HEIGHT_RATIO).toInt()
-            val minHeight = (metrics.density * 240f).toInt()
-            return estimated.coerceAtLeast(minHeight)
+            return estimated.coerceAtLeast(1).coerceAtMost(WebtoonSegments.MAX_VIEW_HEIGHT)
         }
 
         private fun updatePlaceholderHeight(height: Int) {
@@ -915,7 +921,7 @@ class WebtoonReadingAdapter(
         private fun updatePageHeightForImage(sourceWidth: Int, sourceHeight: Int) {
             if (sourceWidth <= 0 || sourceHeight <= 0) return
             val targetWidth = resolveTargetWidth()
-            val targetHeight = (targetWidth.toFloat() * sourceHeight / sourceWidth)
+            val targetHeight = (targetWidth.toFloat() * segmentHeight() / sourceWidth)
                 .roundToInt()
                 .coerceAtLeast(1)
             updateViewHeight(binding.root, targetHeight)
@@ -930,6 +936,12 @@ class WebtoonReadingAdapter(
             params.height = height
             view.layoutParams = params
         }
+
+        private fun segmentTop(): Int = boundItem?.sourceTop ?: 0
+
+        private fun segmentHeight(): Int = boundItem?.let {
+            if (it.sourceBottom > it.sourceTop) it.sourceBottom - it.sourceTop else currentImageHeight
+        } ?: currentImageHeight
 
         private fun bindOverlay(translation: TranslationResult?) {
             val width = binding.readingPageImage.width.toFloat()
@@ -1007,7 +1019,9 @@ class WebtoonReadingAdapter(
         }
 
         private fun toggleDoubleTapZoom(x: Float, y: Float): Boolean {
-            return imageTransformController.toggleDoubleTapZoom(x, y)
+            val list = itemView.parent as? WebtoonRecyclerView ?: return false
+            list.toggleZoomAtContentPoint(x + itemView.left, y + itemView.top)
+            return true
         }
 
         private fun updateOverlayDisplayRect(
@@ -1016,6 +1030,9 @@ class WebtoonReadingAdapter(
         ) {
             val rect = imageTransformController.computeImageDisplayRect()
                 ?: RectF(0f, 0f, fallbackWidth, fallbackHeight)
+            val scaleY = rect.height() / segmentHeight().coerceAtLeast(1)
+            rect.top -= segmentTop() * scaleY
+            rect.bottom = rect.top + currentImageHeight * scaleY
             binding.readingPageOverlay.setDisplayRect(rect)
         }
 

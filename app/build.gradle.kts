@@ -21,8 +21,8 @@ android {
         applicationId = "com.manga.translate.v3"
         minSdk = 24
         targetSdk = 37
-        versionCode = 126
-        versionName = "3.8.0"
+        versionCode = 128
+        versionName = "3.8.2"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -113,10 +113,6 @@ kotlin {
 }
 
 dependencies {
-    implementation("com.github.mihonapp:subsampling-scale-image-view:72a0537151") {
-        // Keep the app's Kotlin runtime aligned with its compiler.
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
-    }
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.14.0")

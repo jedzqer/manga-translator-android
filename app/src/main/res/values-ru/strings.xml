@@ -685,4 +685,6 @@
     <string name="model_context_save_failed">Не удалось сохранить, либо настройки модели изменились. Откройте окно заново и повторите попытку.</string>
     <string name="model_context_missing_identity">Сначала укажите название модели и адрес API.</string>
     <string name="llm_param_max_output_tokens">Лимит вывода на запрос (токены)</string>
+    <string name="reading_page_jump_title">Перейти к странице</string>
+    <string name="reading_page_jump_value">Страница %1$d из %2$d</string>
 </resources>

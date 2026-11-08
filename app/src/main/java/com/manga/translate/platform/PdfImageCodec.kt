@@ -33,12 +33,19 @@ private const val PDF_IMPORT_MIN_RENDER_SCALE = 2f
  */
 internal fun resolvePdfImportRenderScale(pageWidth: Int, pageHeight: Int): Float {
     require(pageWidth > 0 && pageHeight > 0)
-    val longEdge = maxOf(pageWidth, pageHeight).toFloat()
+    // A webtoon's total height must not reduce its horizontal reading detail.
+    val longEdge = if (isLongPdfPage(pageWidth, pageHeight)) pageWidth.toFloat()
+        else maxOf(pageWidth, pageHeight).toFloat()
     return (PDF_IMPORT_TARGET_LONG_EDGE / longEdge)
         .coerceIn(PDF_IMPORT_MIN_RENDER_SCALE, PDF_IMPORT_DPI / PDF_POINTS_PER_INCH)
 }
 
+private fun isLongPdfPage(width: Int, height: Int): Boolean =
+    height.toLong() >= width.toLong() * 3 && height > 4096
+
 internal object PdfImageCodec {
+    private const val IMPORT_STRIP_MAX_HEIGHT = 4096
+    private const val IMPORT_STRIP_MAX_PIXELS = 8_388_608
     private const val IMPORT_FILE_NAME_WIDTH = 4
     private const val MAX_IMPORT_PAGE_COUNT = 750
     private const val MINIMUM_FREE_SPACE_BYTES = 100L * 1024 * 1024
@@ -124,36 +131,32 @@ internal object PdfImageCodec {
                         val page = renderer.openPage(index)
                         try {
                             val size = pageSizes[index]
-                            val bitmap = createBitmap(
-                                size.width,
-                                size.height,
-                                Bitmap.Config.ARGB_8888
-                            )
-                            try {
-                                bitmap.eraseColor(0xFFFFFFFF.toInt())
-                                val matrix = Matrix().apply {
-                                    setScale(size.renderScale, size.renderScale)
-                                }
-                                page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                                val fileName = "${(index + 1).toString().padStart(IMPORT_FILE_NAME_WIDTH, '0')}.png"
-                                val destination = File(outputDir, fileName)
-                                val temporary = File(outputDir, ".$fileName.tmp")
+                            for (strip in size.strips()) {
+                                currentCoroutineContext().ensureActive()
+                                val bitmap = createBitmap(size.width, strip.height, Bitmap.Config.ARGB_8888)
                                 try {
-                                    FileOutputStream(temporary).use { output ->
-                                        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-                                            throw IllegalStateException("Failed to encode PDF page ${index + 1}")
+                                    bitmap.eraseColor(0xFFFFFFFF.toInt())
+                                    page.render(bitmap, null, size.renderMatrix(strip.top), PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                                    val fileName = size.fileName(index, strip.index)
+                                    val destination = File(outputDir, fileName)
+                                    val temporary = File(outputDir, ".$fileName.tmp")
+                                    try {
+                                        FileOutputStream(temporary).use { output ->
+                                            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                                                throw IllegalStateException("Failed to encode PDF page ${index + 1}")
+                                            }
                                         }
+                                        currentCoroutineContext().ensureActive()
+                                        if (!temporary.renameTo(destination)) {
+                                            throw IllegalStateException("Failed to commit PDF page ${index + 1}")
+                                        }
+                                    } finally {
+                                        temporary.delete()
                                     }
-                                    currentCoroutineContext().ensureActive()
-                                    if (!temporary.renameTo(destination)) {
-                                        throw IllegalStateException("Failed to commit PDF page ${index + 1}")
-                                    }
+                                    imported += 1
                                 } finally {
-                                    temporary.delete()
+                                    bitmap.recycle()
                                 }
-                                imported += 1
-                            } finally {
-                                bitmap.recycle()
                             }
                         } finally {
                             page.close()
@@ -176,16 +179,22 @@ internal object PdfImageCodec {
             currentCoroutineContext().ensureActive()
             val page = renderer.openPage(index)
             try {
-                val scale = resolvePdfImportRenderScale(page.width, page.height)
-                val width = scaledDimension(page.width, scale)
-                val height = scaledDimension(page.height, scale)
-                val pixels = width.toLong() * height.toLong()
-                pages += ImportPageSize(width, height, pixels, scale)
+                pages += planImportPage(page.width, page.height)
             } finally {
                 page.close()
             }
         }
         return pages
+    }
+
+    internal fun planImportPage(pageWidth: Int, pageHeight: Int): ImportPageSize {
+        val scale = resolvePdfImportRenderScale(pageWidth, pageHeight)
+        val width = scaledDimension(pageWidth, scale)
+        val height = scaledDimension(pageHeight, scale)
+        val stripHeight = if (isLongPdfPage(pageWidth, pageHeight)) {
+            minOf(height, IMPORT_STRIP_MAX_HEIGHT, (IMPORT_STRIP_MAX_PIXELS / width).coerceAtLeast(1))
+        } else height
+        return ImportPageSize(width, height, width.toLong() * height, scale, stripHeight)
     }
 
     private fun scaledDimension(value: Int, scale: Float): Int {
@@ -221,11 +230,44 @@ internal object PdfImageCodec {
 
         val peakBytes: Long
             get() = peakBytesOverride ?: pageSizes.maxOfOrNull { size ->
-                DeviceResourcePolicy.estimateBitmapBytes(size.width, size.height)
+                DeviceResourcePolicy.estimateBitmapBytes(size.width, size.stripHeight)
             } ?: 0L
     }
 
-    internal data class ImportPageSize(val width: Int, val height: Int, val pixels: Long, val renderScale: Float)
+    internal data class ImportStrip(val index: Int, val top: Int, val height: Int)
+
+    internal data class ImportPageSize(
+        val width: Int,
+        val height: Int,
+        val pixels: Long,
+        val renderScale: Float,
+        val stripHeight: Int = height
+    ) {
+        fun strips(): Sequence<ImportStrip> = sequence {
+            var top = 0
+            var index = 0
+            while (top < height) {
+                val currentHeight = minOf(stripHeight, height - top)
+                yield(ImportStrip(index++, top, currentHeight))
+                top += currentHeight
+            }
+        }
+
+        // Translate in output pixels AFTER scaling, so adjacent strips use one shared
+        // page transform with no independently rounded PDF-point boundaries.
+        fun renderMatrix(top: Int): Matrix = Matrix().apply {
+            setScale(renderScale, renderScale)
+            postTranslate(0f, -top.toFloat())
+        }
+
+        fun fileName(pageIndex: Int, stripIndex: Int): String {
+            val page = (pageIndex + 1).toString().padStart(IMPORT_FILE_NAME_WIDTH, '0')
+            val suffix = if (stripHeight < height) {
+                "_" + (stripIndex + 1).toString().padStart(10, '0')
+            } else ""
+            return "$page$suffix.png"
+        }
+    }
 
     private data class PdfImageInfo(
         val width: Int,

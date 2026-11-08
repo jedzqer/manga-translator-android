@@ -14,6 +14,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -95,6 +97,8 @@ class ReadingFragment : Fragment() {
     private var readingDisplayMode = ReadingDisplayMode.FIT_WIDTH
     private var folderReadingMode = FolderReadingMode.STANDARD
     private var isEditMode = false
+    private var readingControlsVisible = true
+    private var pageJumpDialog: AlertDialog? = null
     private var createBubbleShape = ManualBubbleShape.RECTANGLE
     private lateinit var emptyBubbleCoordinator: ReadingEmptyBubbleCoordinator
     private var emptyBubbleJob: Job? = null
@@ -135,6 +139,10 @@ class ReadingFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        readingControlsVisible = savedInstanceState?.getBoolean("readingControlsVisible", readingControlsVisible) ?: readingControlsVisible
+        binding.readingPageInfo.setOnClickListener { showPageJumpDialog() }
+        binding.readingRoot.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updatePageInfoWidth() }
+        binding.readingEditControls.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updatePageInfoWidth() }
         pageTransitions = ReadingPageTransitionController(binding, ::currentReadingPageAnimationMode) {
             if (currentDecodedImage != null) updateOverlay(currentTranslation, currentBitmap)
         }
@@ -196,6 +204,8 @@ class ReadingFragment : Fragment() {
         webtoonAdapter.onLockedBubbleLongPress = { bubbleId ->
             showBubbleActionDialog(bubbleId)
         }
+        webtoonAdapter.onPageTap = ::handleTap
+        webtoonAdapter.onVerticalScroll = { dy -> binding.readingWebtoonList.scrollBy(0, dy) }
         binding.readingWebtoonList.layoutManager = webtoonLayoutManager
         binding.readingWebtoonList.adapter = webtoonAdapter
         binding.readingWebtoonList.setItemViewCacheSize(resolveWebtoonItemViewCacheSize())
@@ -248,8 +258,15 @@ class ReadingFragment : Fragment() {
         imageTransformController = ReadingImageTransformController(
             context = requireContext(),
             imageView = binding.readingImage,
-            hasBubbleAt = { x, y -> binding.translationOverlay.hasBubbleAt(x, y) },
+            hasBubbleAt = { x, y -> isEditMode && binding.translationOverlay.hasBubbleAt(x, y) },
             onMatrixUpdated = { updateOverlayDisplayRect() },
+            onUnconsumedVerticalDrag = { dy ->
+                val scroll = binding.readingScrollContainer
+                val before = scroll.scrollY
+                if (!isEditMode && hasCurrentPageVerticalOverflow) scroll.scrollBy(0, -dy.toInt())
+                (scroll.scrollY - before).toFloat()
+            },
+            canScrollVertically = { binding.readingScrollContainer.scrollEnabled },
             onHorizontalEdgeSwipe = ::handleSwipe
         )
         binding.translationOverlay.onTap = { x ->
@@ -262,6 +279,9 @@ class ReadingFragment : Fragment() {
             handleSwipe(direction)
         }
         binding.translationOverlay.onTransformTouch = { event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && imageTransformController.isZoomed()) {
+                binding.translationOverlay.parent?.requestDisallowInterceptTouchEvent(true)
+            }
             imageTransformController.handleTouch(event)
         }
         binding.translationOverlay.onBubbleRemove = { bubbleId ->
@@ -369,7 +389,14 @@ class ReadingFragment : Fragment() {
         (activity as? MainActivity)?.setPagerSwipeEnabled(true)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean("readingControlsVisible", readingControlsVisible)
+    }
+
     override fun onDestroyView() {
+        pageJumpDialog?.dismiss()
+        pageJumpDialog = null
         saveCoordinator?.let { coordinator ->
             lifecycleScope.launch { coordinator.flush() }
         }
@@ -403,7 +430,6 @@ class ReadingFragment : Fragment() {
     private fun releaseCurrentStandardBitmap() {
         binding.translationOverlay.setSourceBitmap(null)
         binding.translationOverlay.setSourceImageFile(null)
-        binding.readingImage.setRegionSource(null)
         binding.readingImage.setImageDrawable(null)
         imageTransformController.setCurrentBitmap(null)
         currentBitmapLease?.close()
@@ -453,7 +479,7 @@ class ReadingFragment : Fragment() {
         val previousDisplayedIndex = displayedPageIndex
         val previousPageSnapshot = captureCurrentPageSnapshot()
         binding.readingEmptyHint.visibility = View.GONE
-        binding.readingPageInfo.visibility = View.VISIBLE
+        binding.readingPageInfo.visibility = if (readingControlsVisible) View.VISIBLE else View.GONE
         updateEditButtonState()
         exitBubbleResizeMode()
         binding.readingPageInfo.text = getString(
@@ -498,7 +524,6 @@ class ReadingFragment : Fragment() {
             binding.readingImage.translationX = 0f
             if (decoded != null) {
                 val previousBitmapLease = currentBitmapLease
-                binding.readingImage.setRegionSource(decoded.regionSource)
                 binding.readingImage.setImageDrawable(decoded.drawable)
                 currentDecodedImage = decoded
                 currentBitmapLease = decodedLease
@@ -615,7 +640,7 @@ class ReadingFragment : Fragment() {
             return
         }
         binding.readingEmptyHint.visibility = View.GONE
-        binding.readingPageInfo.visibility = View.VISIBLE
+        binding.readingPageInfo.visibility = if (readingControlsVisible) View.VISIBLE else View.GONE
         updateEditButtonState()
         val bubbleRenderSettings = settingsStore.loadNormalBubbleRenderSettings()
         webtoonAdapter.submit(
@@ -632,10 +657,8 @@ class ReadingFragment : Fragment() {
                 webtoonProgrammaticScroll = false
                 return@post
             }
-            val adapterPosition = webtoonAdapter.adapterPositionForImageIndex(targetIndex)
-                .takeIf { it != RecyclerView.NO_POSITION }
-                ?: targetIndex
-            webtoonLayoutManager.scrollToPositionWithOffset(adapterPosition, viewport?.topOffset ?: 0)
+            val (position, offset) = webtoonAdapter.positionForPageOffset(targetIndex, viewport?.topOffset ?: 0)
+            webtoonLayoutManager.scrollToPositionWithOffset(position, offset)
             updateWebtoonPageInfo()
             persistWebtoonProgress()
             startWebtoonTranslationWatcher()
@@ -881,24 +904,70 @@ class ReadingFragment : Fragment() {
         }
     }
 
+    private fun updatePageInfoWidth() {
+        if (_binding == null) return
+        val available = binding.readingRoot.width - binding.readingEditControls.measuredWidth - (36 * resources.displayMetrics.density).toInt()
+        val maxWidth = minOf((binding.readingRoot.width * 0.6f).toInt(), available).coerceAtLeast(0)
+        if (binding.readingPageInfo.maxWidth != maxWidth) binding.readingPageInfo.maxWidth = maxWidth
+    }
+
     private fun handleTap(x: Float) {
-        if (isEditMode) return
-        if (folderReadingMode == FolderReadingMode.WEBTOON_SCROLL) return
-        if (isCurrentImageLong) return
-        if (imageTransformController.isZoomed()) return
+        if (isEditMode || _binding == null) return
         val width = binding.readingRoot.width
         if (width <= 0) return
         val ratio = x / width
-        when {
-            ratio < 0.33f -> {
-                persistCurrentTranslation()
-                readingSessionViewModel.prev()
-            }
-            ratio > 0.67f -> {
-                persistCurrentTranslation()
-                readingSessionViewModel.next()
-            }
+        if (ratio in 0.33f..0.67f) {
+            readingControlsVisible = !readingControlsVisible
+            binding.readingPageInfo.visibility = if (readingControlsVisible) View.VISIBLE else View.GONE
+            updateEditButtonState()
+        } else {
+            val session = readingSessionViewModel.state.value
+            val currentIndex = if (folderReadingMode == FolderReadingMode.WEBTOON_SCROLL) {
+                session.viewport?.imageIndex ?: session.index
+            } else session.index
+            persistCurrentTranslation()
+            readingSessionViewModel.moveTo(currentIndex + if (ratio < 0.33f) -1 else 1)
         }
+    }
+
+    private fun showPageJumpDialog() {
+        if (isEditMode || pageJumpDialog != null) return
+        val session = readingSessionViewModel.state.value
+        if (session.images.isEmpty()) return
+        val content = layoutInflater.inflate(R.layout.dialog_reading_page_jump, null)
+        val slider = content.findViewById<SeekBar>(R.id.reading_page_jump_slider)
+        val label = content.findViewById<TextView>(R.id.reading_page_jump_value)
+        val initialIndex = if (folderReadingMode == FolderReadingMode.WEBTOON_SCROLL) {
+            session.viewport?.imageIndex ?: session.index
+        } else session.index
+        slider.max = session.images.lastIndex
+        slider.progress = initialIndex.coerceIn(0, session.images.lastIndex)
+        slider.isEnabled = session.images.size > 1
+        fun updateLabel() {
+            label.text = getString(R.string.reading_page_jump_value, slider.progress + 1, session.images.size)
+        }
+        updateLabel()
+        slider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) = updateLabel()
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+        })
+        pageJumpDialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.reading_page_jump_title)
+            .setView(content)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val current = readingSessionViewModel.state.value
+                if (current.currentFolder?.absolutePath == session.currentFolder?.absolutePath &&
+                    current.images.map { it.absolutePath } == session.images.map { it.absolutePath } && !isEditMode) {
+                    persistCurrentTranslation()
+                    readingSessionViewModel.moveTo(slider.progress)
+                }
+            }
+            .create().also { dialog ->
+                dialog.setOnDismissListener { pageJumpDialog = null }
+                dialog.show()
+            }
     }
 
     private fun handleSwipe(direction: Int) {
@@ -929,7 +998,7 @@ class ReadingFragment : Fragment() {
     }
 
     private fun applyReadingImageLayerMode(decoded: DecodedReadingBitmap?) {
-        // 长图通过区域瓦片解码，不再持有整张大 bitmap，无需软件层（软件层会导致撑高后 OOM）。
+        // Decoding bounds the bitmap size; avoid a software layer as tall as the entire page.
         binding.readingImage.setLayerType(View.LAYER_TYPE_NONE, null)
     }
 
@@ -1006,14 +1075,12 @@ class ReadingFragment : Fragment() {
                                 webtoonProgrammaticScroll = false
                                 return@post
                             }
-                            val adapterPosition = webtoonAdapter.adapterPositionForImageIndex(targetIndex)
-                                .takeIf { it != RecyclerView.NO_POSITION }
-                                ?: targetIndex
                             val targetOffset = entryAnchor
                                 ?.takeIf { it.imageIndex == targetIndex }
                                 ?.topOffset
                                 ?: 0
-                            webtoonLayoutManager.scrollToPositionWithOffset(adapterPosition, targetOffset)
+                            val (position, offset) = webtoonAdapter.positionForPageOffset(targetIndex, targetOffset)
+                            webtoonLayoutManager.scrollToPositionWithOffset(position, offset)
                             updateWebtoonPageInfo()
                             persistWebtoonProgress()
                             binding.readingWebtoonList.post {
@@ -1048,6 +1115,7 @@ class ReadingFragment : Fragment() {
             }
         }
         isEditMode = nextEnabled
+        binding.readingWebtoonList.zoomEnabled = !nextEnabled
         binding.translationOverlay.setEditMode(nextEnabled && folderReadingMode != FolderReadingMode.WEBTOON_SCROLL)
         syncWebtoonEditSession()
         updateReadingInteractionState()
@@ -1086,7 +1154,7 @@ class ReadingFragment : Fragment() {
             updateReadingInteractionState()
             return
         }
-        binding.readingEditControls.visibility = View.VISIBLE
+        binding.readingEditControls.visibility = if (readingControlsVisible || isEditMode) View.VISIBLE else View.GONE
         val button = binding.readingEditButton
         val density = resources.displayMetrics.density
         if (isEditMode) {
@@ -1469,7 +1537,7 @@ class ReadingFragment : Fragment() {
         if (imageIndex == RecyclerView.NO_POSITION) return
         val offset = webtoonLayoutManager.findViewByPosition(adapterPosition)?.top
             ?.minus(binding.readingWebtoonList.paddingTop) ?: 0
-        readingSessionViewModel.recordViewport(imageIndex, offset)
+        readingSessionViewModel.recordViewport(imageIndex, webtoonAdapter.pageOffsetForPosition(adapterPosition, offset))
         readingProgressStore.save(folder, imageIndex)
     }
 
@@ -1481,19 +1549,17 @@ class ReadingFragment : Fragment() {
         if (imageIndex == RecyclerView.NO_POSITION) return null
         val view = webtoonLayoutManager.findViewByPosition(adapterPosition)
         val topOffset = view?.top?.minus(binding.readingWebtoonList.paddingTop) ?: 0
-        return WebtoonScrollAnchor(imageIndex, topOffset)
+        return WebtoonScrollAnchor(imageIndex, webtoonAdapter.pageOffsetForPosition(adapterPosition, topOffset))
     }
 
     private fun restorePendingWebtoonScrollAnchor() {
         val anchor = pendingWebtoonScrollAnchor ?: return
         pendingWebtoonScrollAnchor = null
         if (!isAdded || _binding == null || folderReadingMode != FolderReadingMode.WEBTOON_SCROLL) return
-        val adapterPosition = webtoonAdapter.adapterPositionForImageIndex(anchor.imageIndex)
-            .takeIf { it != RecyclerView.NO_POSITION }
-            ?: return
         binding.readingWebtoonList.post {
             if (!isAdded || _binding == null || folderReadingMode != FolderReadingMode.WEBTOON_SCROLL) return@post
-            webtoonLayoutManager.scrollToPositionWithOffset(adapterPosition, anchor.topOffset)
+            val (position, offset) = webtoonAdapter.positionForPageOffset(anchor.imageIndex, anchor.topOffset)
+            webtoonLayoutManager.scrollToPositionWithOffset(position, offset)
         }
     }
 
@@ -1524,7 +1590,7 @@ class ReadingFragment : Fragment() {
                 imageIndex.coerceIn(0, total - 1)
             }
         }
-        binding.readingPageInfo.visibility = View.VISIBLE
+        binding.readingPageInfo.visibility = if (readingControlsVisible) View.VISIBLE else View.GONE
         binding.readingPageInfo.text = getString(
             R.string.reading_page_info,
             folder.name,

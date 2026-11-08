@@ -37,19 +37,46 @@ class PaperThemeUiTest {
     fun clearPalette() = ThemePaletteRuntime.clear()
 
     @Test @Config(qualifiers = "ru-sw600dp-w1280dp-h800dp-night-mdpi")
-    fun `tablet tabs fill available width with larger touch targets`() {
-        val context = ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_MangaTranslator)
-        val main = ActivityMainBinding.inflate(LayoutInflater.from(context))
-        listOf(R.string.tab_reading, R.string.tab_library, R.string.tab_settings).forEach {
-            main.mainTabs.addTab(main.mainTabs.newTab().setText(it))
+    fun `tablet tabs use full height across themes and window widths`() {
+        val themes = listOf(
+            R.style.Theme_MangaTranslator,
+            R.style.Theme_MangaTranslator_Pastel,
+            R.style.Theme_MangaTranslator_DeepSea,
+            R.style.Theme_MangaTranslator_Custom_Light,
+            R.style.Theme_MangaTranslator_Custom_Dark
+        )
+        for (theme in themes) {
+            ThemePaletteRuntime.clear()
+            if (theme == R.style.Theme_MangaTranslator_Custom_Light ||
+                theme == R.style.Theme_MangaTranslator_Custom_Dark) {
+                ThemePaletteRuntime.activate(CustomThemeColors.DEFAULT)
+            }
+            val context = ContextThemeWrapper(RuntimeEnvironment.getApplication(), theme)
+            for (width in listOf(600, 800, 1280)) {
+                val main = ActivityMainBinding.inflate(LayoutInflater.from(context))
+                listOf(R.string.tab_reading, R.string.tab_library, R.string.tab_settings).forEach {
+                    main.mainTabs.addTab(main.mainTabs.newTab().setText(it))
+                }
+                CustomThemeUiApplier.apply(main.root)
+                main.root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY))
+                main.root.layout(0, 0, width, 800)
+                val strip = main.mainTabs.getChildAt(0) as android.view.ViewGroup
+                assertTrue(main.mainTabs.height >= 48)
+                assertEquals("No unused space below the tab strip", main.mainTabs.height,
+                    strip.height + main.mainTabs.paddingTop + main.mainTabs.paddingBottom)
+                repeat(3) {
+                    val tab = strip.getChildAt(it) as android.view.ViewGroup
+                    assertEquals(main.mainTabs.width / 3.0, tab.width.toDouble(), 1.0)
+                    assertEquals(main.mainTabs.height, tab.height)
+                    repeat(tab.childCount) { child ->
+                        (tab.getChildAt(child) as? TextView)?.let(::assertTextFits)
+                    }
+                }
+                assertTabIndicatorContained(main.mainTabs)
+                savePreview(main.root, "tablet-$theme-$width")
+            }
         }
-        main.root.measure(View.MeasureSpec.makeMeasureSpec(1280, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY))
-        main.root.layout(0, 0, 1280, 800)
-        val strip = main.mainTabs.getChildAt(0) as android.view.ViewGroup
-        assertTrue(main.mainTabs.height >= 64)
-        repeat(3) { assertEquals(main.mainTabs.width / 3.0, strip.getChildAt(it).width.toDouble(), 1.0) }
-        savePreview(main.root, "tablet-ru-dark")
     }
 
     @Test @Config(qualifiers = "zh-rCN-w320dp-h640dp-notnight-mdpi")

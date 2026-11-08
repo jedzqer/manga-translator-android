@@ -161,7 +161,6 @@ curl -fL -o ocr/korean_PP-OCRv5_mobile_rec.onnx $kr/inference.onnx
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)：OCR 模型。
 - [Ultralytics](https://github.com/ultralytics/ultralytics)：YOLO26s-seg 训练框架，随仓库提供的分割模型由此训练（AGPL-3.0）。
 - [LiteRT Community](https://huggingface.co/litert-community/PP-OCRv6-Small-LiteRT)：PP-OCRv6 LiteRT 模型。
-- [Mihon SSIV](https://github.com/mihonapp/subsampling-scale-image-view)：大图分块显示。
 - 所有贡献者与用户的支持。
 
 ## 许可证

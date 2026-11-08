@@ -48,7 +48,8 @@ internal class ReadingPageTransitionController(
         binding.readingTransitionImage.visibility = View.VISIBLE
         binding.readingTransitionImage.translationX = 0f
         binding.readingTransitionImage.alpha = 1f
-        binding.translationOverlay.visibility = View.INVISIBLE
+        // Keep the gesture target attached while hiding only its drawing.
+        binding.translationOverlay.alpha = 0f
         binding.readingImage.translationX = parallaxOffset
         binding.readingImage.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         binding.readingTransitionImage.setLayerType(View.LAYER_TYPE_HARDWARE, null)
@@ -85,12 +86,14 @@ internal class ReadingPageTransitionController(
         if (released) return
         binding.readingImage.animate().cancel()
         binding.readingTransitionImage.animate().cancel()
+        finish()
     }
 
     fun finish() {
         if (released) return
         binding.readingImage.animate().setListener(null)
         binding.readingTransitionImage.animate().setListener(null)
+        binding.translationOverlay.alpha = 1f
         binding.readingImage.translationX = 0f
         binding.readingImage.alpha = 1f
         binding.readingTransitionImage.translationX = 0f
