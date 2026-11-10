@@ -14,6 +14,7 @@ enum class ThemeMode(
     LIGHT("light", AppCompatDelegate.MODE_NIGHT_NO, R.string.theme_light),
     PASTEL("pastel", AppCompatDelegate.MODE_NIGHT_NO, R.string.theme_pastel),
     DEEP_SEA("deep_sea", AppCompatDelegate.MODE_NIGHT_NO, R.string.theme_deep_sea),
+    RETRO("retro", AppCompatDelegate.MODE_NIGHT_NO, R.string.theme_retro),
     CUSTOM("custom", AppCompatDelegate.MODE_NIGHT_NO, R.string.theme_custom);
 
     companion object {

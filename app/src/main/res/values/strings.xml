@@ -89,6 +89,7 @@
     <string name="theme_light">白色</string>
     <string name="theme_pastel">粉彩</string>
     <string name="theme_deep_sea">深海</string>
+    <string name="theme_retro">复古 Windows 95</string>
     <string name="theme_custom">自定义</string>
     <string name="custom_theme_title">自定义主题色</string>
     <string name="custom_theme_colors_button">自定义颜色</string>
@@ -527,7 +528,8 @@
     <string name="export_done">导出完成</string>
     <string name="export_failed">导出失败</string>
     <string name="export_permission_denied">未授予存储权限，无法导出</string>
-    <string name="export_directory_required">请在内部储存/Documents/manga-translator 选择导出目录</string>
+    <string name="export_directory_required">请在内部储存/Documents/manga-translate 选择导出目录</string>
+    <string name="file_picker_unavailable">无法打开系统文件选择器，请检查系统是否停用了文件管理/文件选择器</string>
     <string name="export_success_title">导出成功</string>
     <string name="export_success_message">文件已导出到：%1$s</string>
     <string name="export_options_title">导出参数</string>

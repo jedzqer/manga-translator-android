@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.provider.DocumentsContract
 import androidx.core.content.edit
 import androidx.documentfile.provider.DocumentFile
 import com.manga.translate.model.FolderReadingMode
@@ -314,20 +313,23 @@ internal class LibraryPreferencesGateway(
     }
 
     fun buildExportInitialUri(): Uri? {
+        getExportTreeUri()?.takeIf(::hasExportPermission)?.let { return it }
+        val authority = ExportInitialUriPolicy.EXTERNAL_STORAGE_AUTHORITY
+        val docId = ExportInitialUriPolicy.selectDocId { candidate ->
+            val uri = ExportInitialUriPolicy.buildTreeUri(authority, candidate)
+            uri != null && exportDirectoryExists(uri)
+        }
+        val initialUri = docId?.let { ExportInitialUriPolicy.buildTreeUri(authority, it) }
+        AppLogger.log("Library", "Export picker initial uri=${initialUri ?: "none"}")
+        return initialUri
+    }
+
+    private fun exportDirectoryExists(treeUri: Uri): Boolean {
         return try {
-            DocumentsContract.buildTreeDocumentUri(
-                "com.android.externalstorage.documents",
-                "primary:Documents/manga-translator"
-            )
-        } catch (_: Exception) {
-            try {
-                DocumentsContract.buildTreeDocumentUri(
-                    "com.android.externalstorage.documents",
-                    "primary:Documents"
-                )
-            } catch (_: Exception) {
-                null
-            }
+            DocumentFile.fromTreeUri(context, treeUri)?.exists() == true
+        } catch (e: Exception) {
+            AppLogger.log("Library", "Probe export directory failed: $treeUri", e)
+            false
         }
     }
 

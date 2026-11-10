@@ -169,7 +169,7 @@ class FloatingControllerUiTest {
         try {
             val service = controller.get()
             val settings = SettingsStore(service)
-            for (mode in listOf(ThemeMode.LIGHT, ThemeMode.DARK, ThemeMode.PASTEL, ThemeMode.DEEP_SEA, ThemeMode.CUSTOM)) {
+            for (mode in listOf(ThemeMode.LIGHT, ThemeMode.DARK, ThemeMode.PASTEL, ThemeMode.DEEP_SEA, ThemeMode.RETRO, ThemeMode.CUSTOM)) {
                 settings.saveThemeMode(mode)
                 val context = createFloatingControllerContext(service, settings)
                 assertEquals(if (mode == ThemeMode.DARK) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO,

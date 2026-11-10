@@ -42,6 +42,7 @@ class PaperThemeUiTest {
             R.style.Theme_MangaTranslator,
             R.style.Theme_MangaTranslator_Pastel,
             R.style.Theme_MangaTranslator_DeepSea,
+            R.style.Theme_MangaTranslator_Retro,
             R.style.Theme_MangaTranslator_Custom_Light,
             R.style.Theme_MangaTranslator_Custom_Dark
         )
@@ -88,6 +89,10 @@ class PaperThemeUiTest {
     @Test @Config(qualifiers = "en-w320dp-h640dp-notnight-mdpi")
     fun `English action labels wrap without overlapping`() = verifyPaperUi("en-light")
 
+    @Test @Config(qualifiers = "zh-rCN-w320dp-h640dp-notnight-mdpi")
+    fun `Chinese retro UI renders with classic Windows 95 colors`() =
+        verifyPaperUi("zh-retro", R.style.Theme_MangaTranslator_Retro)
+
     @Test @Config(qualifiers = "pt-rBR-w320dp-h640dp-notnight-mdpi")
     fun `Portuguese paper UI remains scrollable`() = verifyPaperUi("pt-light")
 
@@ -118,13 +123,13 @@ class PaperThemeUiTest {
         assertTrue(ColorUtils.calculateContrast(palette.heroText, palette.heroStart) >= 4.5)
     }
 
-    private fun verifyPaperUi(name: String) {
+    private fun verifyPaperUi(name: String, theme: Int = R.style.Theme_MangaTranslator) {
         ThemePaletteRuntime.clear()
-        val context = ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_MangaTranslator)
+        val context = ContextThemeWrapper(RuntimeEnvironment.getApplication(), theme)
         val inflater = LayoutInflater.from(context)
         val main = ActivityMainBinding.inflate(inflater)
         val controller = Robolectric.buildActivity(AppCompatActivity::class.java)
-        controller.get().setTheme(R.style.Theme_MangaTranslator)
+        controller.get().setTheme(theme)
         controller.setup().get().setContentView(main.root)
         listOf(R.string.tab_reading, R.string.tab_library, R.string.tab_settings).forEach {
             main.mainTabs.addTab(main.mainTabs.newTab().setText(it))

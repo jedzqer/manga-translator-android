@@ -23,6 +23,7 @@ out/
 .claude/
 .kilo/
 .codex
+.pi
 
 # Kotlin/Java
 *.class

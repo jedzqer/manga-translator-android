@@ -84,18 +84,27 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val themeMode = settingsStore.loadThemeMode()
-        if (themeMode == ThemeMode.PASTEL) {
-            setTheme(R.style.Theme_MangaTranslator_Pastel)
-        } else if (themeMode == ThemeMode.DEEP_SEA) {
-            setTheme(R.style.Theme_MangaTranslator_DeepSea)
-        } else if (themeMode == ThemeMode.CUSTOM) {
-            val palette = ThemePaletteRuntime.activate(settingsStore.loadCustomThemeColors())
-            setTheme(
-                if (palette.isDark) R.style.Theme_MangaTranslator_Custom_Dark
-                else R.style.Theme_MangaTranslator_Custom_Light
-            )
-        } else {
-            ThemePaletteRuntime.clear()
+        when (themeMode) {
+            ThemeMode.PASTEL -> {
+                ThemePaletteRuntime.clear()
+                setTheme(R.style.Theme_MangaTranslator_Pastel)
+            }
+            ThemeMode.DEEP_SEA -> {
+                ThemePaletteRuntime.clear()
+                setTheme(R.style.Theme_MangaTranslator_DeepSea)
+            }
+            ThemeMode.RETRO -> {
+                ThemePaletteRuntime.clear()
+                setTheme(R.style.Theme_MangaTranslator_Retro)
+            }
+            ThemeMode.CUSTOM -> {
+                val palette = ThemePaletteRuntime.activate(settingsStore.loadCustomThemeColors())
+                setTheme(
+                    if (palette.isDark) R.style.Theme_MangaTranslator_Custom_Dark
+                    else R.style.Theme_MangaTranslator_Custom_Light
+                )
+            }
+            else -> ThemePaletteRuntime.clear()
         }
         AppCompatDelegate.setDefaultNightMode(themeMode.nightMode)
         super.onCreate(savedInstanceState)
@@ -271,6 +280,7 @@ class MainActivity : AppCompatActivity() {
         return when (settingsStore.loadThemeMode()) {
             ThemeMode.PASTEL -> ContextCompat.getColor(this, R.color.pastel_button_text)
             ThemeMode.DEEP_SEA -> ContextCompat.getColor(this, R.color.deep_sea_button_text)
+            ThemeMode.RETRO -> ContextCompat.getColor(this, R.color.retro_button_text)
             ThemeMode.CUSTOM -> ThemePaletteRuntime.customPalette?.buttonText
                 ?: ContextCompat.getColor(this, R.color.light_button_text)
             else -> if (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==

@@ -79,6 +79,7 @@
     <string name="theme_light">Светлая</string>
     <string name="theme_pastel">Пастель</string>
     <string name="theme_deep_sea">Глубокое море</string>
+    <string name="theme_retro">Ретро Windows 95</string>
     <string name="theme_custom">Своя</string>
     <string name="custom_theme_title">Своя цветовая тема</string>
     <string name="custom_theme_colors_button">Настроить цвета</string>
@@ -496,7 +497,8 @@
     <string name="export_done">Экспорт завершен</string>
     <string name="export_failed">Экспорт не удался</string>
     <string name="export_permission_denied">Разрешение на хранение не предоставлено, экспорт невозможен.</string>
-    <string name="export_directory_required">Пожалуйста, сохраните файл внутри/Documents/manga-translator и выберите каталог для экспорта.</string>
+    <string name="export_directory_required">Выберите каталог для экспорта: внутренняя память/Documents/manga-translate.</string>
+    <string name="file_picker_unavailable">Не удалось открыть системный выбор файлов. Проверьте, не отключено ли приложение «Файлы» в настройках системы.</string>
     <string name="export_success_title">Экспорт выполнен успешно</string>
     <string name="export_success_message">Файл экспортирован в: %1$s.</string>
     <string name="export_options_title">Экспорт параметров</string>

@@ -18,9 +18,14 @@ internal fun createFloatingControllerContext(context: Context, settings: Setting
         else -> Configuration.UI_MODE_NIGHT_NO
     }
     configuration.uiMode = (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+    if (mode != ThemeMode.CUSTOM) {
+        // Do not let a previously active custom palette tint another theme.
+        ThemePaletteRuntime.clear()
+    }
     val theme = when (mode) {
         ThemeMode.PASTEL -> R.style.Theme_MangaTranslator_Pastel
         ThemeMode.DEEP_SEA -> R.style.Theme_MangaTranslator_DeepSea
+        ThemeMode.RETRO -> R.style.Theme_MangaTranslator_Retro
         ThemeMode.CUSTOM -> if (ThemePaletteRuntime.activate(settings.loadCustomThemeColors()).isDark) {
             R.style.Theme_MangaTranslator_Custom_Dark
         } else {

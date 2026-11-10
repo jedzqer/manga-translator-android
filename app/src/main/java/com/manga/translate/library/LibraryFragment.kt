@@ -304,6 +304,23 @@ class LibraryFragment : Fragment() {
         }
     }
 
+    /**
+     * Document pickers come from the system or an OEM file manager. A missing or broken picker
+     * activity would otherwise crash the app with nothing shown to the user, so report it instead.
+     */
+    private fun launchDocumentPicker(action: String, onFailure: () -> Unit = {}, launch: () -> Unit) {
+        try {
+            launch()
+        } catch (e: Exception) {
+            AppLogger.log("Library", "Launch $action picker failed", e)
+            onFailure()
+            if (isAdded) {
+                Toast.makeText(requireContext(), R.string.file_picker_unavailable, Toast.LENGTH_LONG)
+                    .show()
+            }
+        }
+    }
+
     private val pickImages = registerForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { uris ->
@@ -376,6 +393,7 @@ class LibraryFragment : Fragment() {
                 }
             }
         } else {
+            AppLogger.log("Library", "Export picker returned no directory")
             importExportCoordinator.handleExportTreeCanceled()
         }
     }
@@ -1340,7 +1358,7 @@ class LibraryFragment : Fragment() {
             onFolderSelected = {
                 pendingChapterImportParent = parentFolder
                 importExportCoordinator.requestImportDirectory { initialUri ->
-                    pickChapterImportTree.launch(initialUri)
+                    launchDocumentPicker("chapter import") { pickChapterImportTree.launch(initialUri) }
                 }
             },
             onArchiveSelected = {
@@ -1359,7 +1377,7 @@ class LibraryFragment : Fragment() {
 
     private fun importFromEhViewer() {
         importExportCoordinator.requestImportDirectory { initialUri ->
-            pickImportTree.launch(initialUri)
+            launchDocumentPicker("import") { pickImportTree.launch(initialUri) }
         }
     }
 
@@ -1697,13 +1715,21 @@ class LibraryFragment : Fragment() {
             images = images,
             exportThreads = exportThreads,
             exportFormat = exportFormat,
-            requestExportDirectoryPermission = { initialUri -> pickExportTree.launch(initialUri) },
+            requestExportDirectoryPermission = { initialUri ->
+                launchDocumentPicker("export", ::onExportPickerUnavailable) {
+                    pickExportTree.launch(initialUri)
+                }
+            },
             requestLegacyPermission = {
                 requestStoragePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
             },
             onExitSelectionMode = { selectionController.exitSelectionMode() },
             onSetExportEnabled = { enabled -> _binding?.folderExport?.isEnabled = enabled }
         )
+    }
+
+    private fun onExportPickerUnavailable() {
+        importExportCoordinator.handleExportTreeCanceled()
     }
 
     private fun exportCollection() {
@@ -1750,7 +1776,11 @@ class LibraryFragment : Fragment() {
             chapterImages = chapterImages,
             exportThreads = exportThreads,
             exportFormat = exportFormat,
-            requestExportDirectoryPermission = { initialUri -> pickExportTree.launch(initialUri) },
+            requestExportDirectoryPermission = { initialUri ->
+                launchDocumentPicker("export", ::onExportPickerUnavailable) {
+                    pickExportTree.launch(initialUri)
+                }
+            },
             requestLegacyPermission = {
                 requestStoragePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
             },

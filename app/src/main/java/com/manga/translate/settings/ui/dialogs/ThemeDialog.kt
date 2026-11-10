@@ -34,6 +34,7 @@ internal class ThemeDialog(
             ThemeMode.LIGHT to dialogBinding.themeLightRadio,
             ThemeMode.PASTEL to dialogBinding.themePastelRadio,
             ThemeMode.DEEP_SEA to dialogBinding.themeDeepSeaRadio,
+            ThemeMode.RETRO to dialogBinding.themeRetroRadio,
             ThemeMode.CUSTOM to dialogBinding.themeCustomRadio
         )
         modeButtons[settingsStore.loadThemeMode()]?.isChecked = true

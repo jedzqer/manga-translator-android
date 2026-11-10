@@ -75,6 +75,32 @@
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
+
+    <style name="Theme.MangaTranslator.Retro" parent="Theme.MangaTranslator">
+        <item name="colorPrimary">@color/retro_title_bar</item>
+        <item name="colorPrimaryDark">@color/retro_title_bar</item>
+        <item name="colorAccent">@color/retro_title_bar</item>
+        <item name="android:colorBackground">@color/retro_desktop</item>
+        <item name="surfaceColor">@color/retro_surface</item>
+        <item name="surfaceAltColor">@color/retro_surface_alt</item>
+        <item name="buttonFillColor">@color/retro_button</item>
+        <item name="buttonFillPressedColor">@color/retro_button_pressed</item>
+        <item name="buttonTextColor">@color/retro_button_text</item>
+        <item name="dialogTextColor">@color/retro_foreground</item>
+        <item name="dialogHintTextColor">@color/retro_muted_text</item>
+        <item name="outlineColor">@color/retro_outline</item>
+        <item name="mutedTextColor">@color/retro_muted_text</item>
+        <item name="heroStartColor">@color/retro_title_bar</item>
+        <item name="heroEndColor">@color/retro_title_bar</item>
+        <item name="stickerAccentColor">@color/retro_highlight</item>
+        <item name="cardStripeColor">@color/retro_title_bar</item>
+        <item name="heroTextColor">@color/retro_highlight</item>
+        <item name="android:windowBackground">@color/retro_desktop</item>
+        <item name="android:statusBarColor">@color/retro_title_bar</item>
+        <item name="android:navigationBarColor">@color/retro_button</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
     <style name="Theme.MangaTranslator.Custom.Light" parent="Theme.MangaTranslator" />
     <style name="Theme.MangaTranslator.Custom.Dark" parent="Theme.MangaTranslator" />
 </resources>

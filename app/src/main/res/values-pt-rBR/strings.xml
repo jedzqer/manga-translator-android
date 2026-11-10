@@ -78,6 +78,7 @@
     <string name="theme_light">Claro</string>
     <string name="theme_pastel">Pastel</string>
     <string name="theme_deep_sea">Mar profundo</string>
+    <string name="theme_retro">Retrô Windows 95</string>
     <string name="theme_custom">Personalizado</string>
     <string name="custom_theme_title">Cores do tema personalizado</string>
     <string name="custom_theme_colors_button">Personalizar cores</string>
@@ -495,7 +496,8 @@
     <string name="export_done">Exportação concluída</string>
     <string name="export_failed">Falha na exportação</string>
     <string name="export_permission_denied">Permissão de armazenamento não concedida; não é possível exportar</string>
-    <string name="export_directory_required">Selecione o diretório de exportação em Armazenamento interno/Documents/manga-translator.</string>
+    <string name="export_directory_required">Selecione o diretório de exportação em Armazenamento interno/Documents/manga-translate.</string>
+    <string name="file_picker_unavailable">Não foi possível abrir o seletor de arquivos do sistema. Verifique se o app Arquivos está desativado nas configurações do sistema.</string>
     <string name="export_success_title">Exportação bem-sucedida</string>
     <string name="export_success_message">Arquivo exportado para: %1$s</string>
     <string name="export_options_title">Parâmetros de exportação</string>
