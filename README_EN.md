@@ -165,7 +165,7 @@ Built-in prompts live in `assets/prompts/`, with variants for all five UI langua
 
 ## License
 
-This project's source code and the segmentation model `assets/models/detection/mixed-dual-s-e5_float16.tflite` bundled with this repository are released under [AGPL-3.0](./LICENSE), Copyright (C) 2026 jedzqer. If you distribute a modified version, or offer this app as a network service, you must publish the complete corresponding source code under AGPL-3.0, including the model and related training and inference scripts.
+This project's source code and the segmentation model `assets/models/detection/mixed-dual-s-e5_float16.tflite` bundled with this repository are released under [AGPL-3.0](./LICENSE), Copyright (C) 2026 jedzqer. If you distribute a modified version, or offer this app as a network service, you must make the complete corresponding source code available under AGPL-3.0. Before redistributing the model or using it in a closed-source commercial setting, evaluate and meet your obligations under AGPL-3.0 and the Ultralytics license terms.
 
 The bundled model was trained with Ultralytics YOLO26s-seg and therefore inherits AGPL-3.0; using this app in a closed-source or commercial setting requires an Ultralytics Enterprise License.
 

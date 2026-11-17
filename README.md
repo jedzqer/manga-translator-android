@@ -165,7 +165,7 @@ curl -fL -o ocr/korean_PP-OCRv5_mobile_rec.onnx $kr/inference.onnx
 
 ## 许可证
 
-本项目源码与随仓库提供的分割模型 `mixed-dual-s-e5_float16.tflite` 均按 [AGPL-3.0](./LICENSE) 发布，Copyright (C) 2026 jedzqer。分发修改版，或通过网络向他人提供本应用服务时，需按 AGPL-3.0 公开完整对应源码，包括模型与相关训练、推理脚本。
+本项目源码与随仓库提供的分割模型 `mixed-dual-s-e5_float16.tflite` 均按 [AGPL-3.0](./LICENSE) 发布，Copyright (C) 2026 jedzqer。分发修改版，或通过网络向他人提供本应用服务时，需按 AGPL-3.0 公开对应的完整源码。再分发模型或将其用于闭源商业场景前，请按 AGPL-3.0 与 Ultralytics 的许可条款自行评估并履行相应义务。
 
 随仓库提供的分割模型基于 Ultralytics YOLO26s-seg 训练，因此沿用 AGPL-3.0；如在闭源或商业环境中使用本应用，需自行向 Ultralytics 取得企业许可。
 
