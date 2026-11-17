@@ -104,7 +104,7 @@ def verify():
         bundle.writestr('verification.json', json.dumps(summary, indent=2) + '\n')
     print(f"PASS: {asset_count} assets, JNI retention, obfuscation, ABI and version checked.")
     print(f"Archive: {archive}")
-    print("Device checks remain necessary; see dev_doc/Release构建与混淆.md")
+    print("Device checks remain necessary: verify JNI execution and UI on an arm64 device.")
 
 
 if __name__ == '__main__':
