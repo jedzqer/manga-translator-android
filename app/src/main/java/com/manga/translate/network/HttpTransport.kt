@@ -14,10 +14,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.Dispatcher
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 
@@ -27,7 +25,6 @@ import org.json.JSONObject
  * 响应消费完成后才恢复协程，确保取消覆盖响应体读取。
  */
 internal class HttpTransport(httpClient: OkHttpClient = OkHttpClient()) {
-    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     // Business-level limiters own concurrency, as they did with synchronous calls.
     // Do not silently introduce OkHttp's default five-request per-host queue.
     private val baseHttpClient = httpClient.newBuilder()
@@ -50,7 +47,7 @@ internal class HttpTransport(httpClient: OkHttpClient = OkHttpClient()) {
     ): Request {
         val requestBuilder = Request.Builder()
             .url(endpoint)
-            .post(payload.toString().toRequestBody(jsonMediaType))
+            .post(JsonRequestBody.prepare(payload))
             .header("Content-Type", "application/json")
         if (settings.apiFormat.usesOpenAiAuth) {
             requestBuilder.header("Authorization", "Bearer ${settings.apiKey}")

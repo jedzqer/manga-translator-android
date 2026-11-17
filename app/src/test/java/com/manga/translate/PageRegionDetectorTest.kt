@@ -30,6 +30,7 @@ import com.manga.translate.detection.remapTileMaskContourToPage
 import com.manga.translate.detection.shouldDeduplicateTileCandidates
 import com.manga.translate.detection.shouldFilterLongImageRegion
 import com.manga.translate.detection.shouldFilterTextRectByBubble
+import com.manga.translate.detection.shouldFilterTextRectByBubbles
 import com.manga.translate.detection.shouldDiscardReplayTileTopFragments
 import com.manga.translate.detection.shouldTreatRectsAsSameBubbleForDedup
 import com.manga.translate.detection.shouldUnionTileBubbleCandidates
@@ -726,6 +727,29 @@ class PageRegionDetectorTest {
 
         assertFalse(shouldFilterTextRectByBubble(adjacentText, bubble, 0.2f))
         assertTrue(shouldFilterTextRectByBubble(containedText, bubble, 0.2f))
+    }
+
+    @Test
+    fun `text spanning connected balloons is suppressed even with low individual IoU`() {
+        val text = RectF(40f, 90f, 160f, 110f)
+        val bubbles = listOf(RectF(0f, 0f, 100f, 200f), RectF(100f, 0f, 200f, 200f))
+        assertTrue(bubbles.none { shouldFilterTextRectByBubble(text, it, 0.2f) })
+        assertTrue(shouldFilterTextRectByBubbles(text, bubbles, 0.2f))
+        // A small detector gap is tolerated, but most of the text must be covered.
+        assertTrue(shouldFilterTextRectByBubbles(text, listOf(
+            RectF(0f, 0f, 90f, 200f), RectF(110f, 0f, 200f, 200f)
+        ), 0.2f))
+    }
+
+    @Test
+    fun `multi balloon suppression excludes gaps and does not double count overlap`() {
+        val text = RectF(0f, 90f, 100f, 110f)
+        val separated = listOf(RectF(-100f, 0f, 20f, 200f), RectF(80f, 0f, 200f, 200f))
+        val overlapping = listOf(RectF(-100f, 0f, 55f, 200f), RectF(-90f, 0f, 60f, 200f))
+        assertFalse(shouldFilterTextRectByBubbles(text, separated, 0.2f))
+        assertFalse(shouldFilterTextRectByBubbles(text, overlapping, 0.2f))
+        assertFalse(shouldFilterTextRectByBubbles(text, emptyList(), 0.2f))
+        assertFalse(shouldFilterTextRectByBubbles(text, listOf(RectF(0f, 110f, 100f, 200f)), 0.2f))
     }
 
     @Test

@@ -32,6 +32,8 @@ internal class FolderTranslationScheduler(
     private val pageExecutor: FolderPageTranslationExecutor,
     private val glossaryLifecycle: FolderTranslationGlossary
 ) {
+    private val resultCommitter = PageResultCommitter(translationPipeline, progressStore)
+
     suspend fun executePreparedStandardPages(
         pages: List<File>,
         preparedPages: List<PreparedStandardPage?>,
@@ -95,7 +97,7 @@ internal class FolderTranslationScheduler(
 
                 if (prepared == null) {
                     hasFailures.set(true)
-                    recordPageFailure(folder, image, null)
+                    resultCommitter.recordFailure(folder, image, null)
                     reportPageProcessed(failed = true)
                     return@forEachBounded
                 }
@@ -149,30 +151,11 @@ internal class FolderTranslationScheduler(
                     failureMessage = e.message
                     null
                 }
-                val pageFailed = if (execution?.result != null) {
-                    translationPipeline.saveResult(image, execution.result)
-                    val savedStatus = execution.result.metadata.status
-                    progressStore.update(
-                        folder,
-                        image.name,
-                        if (savedStatus == PageTranslationStatus.SKIPPED) {
-                            PageProgressStatus.SKIPPED
-                        } else {
-                            PageProgressStatus.SAVED
-                        }
-                    )
-                    false
-                } else if (execution?.recoveredFromModelError == true) {
-                    progressStore.update(folder, image.name, PageProgressStatus.SKIPPED)
-                    false
-                } else {
+                val pageFailed = resultCommitter.commit(
+                    folder, image, execution, failureMessage ?: requestException.get()?.message
+                )
+                if (pageFailed) {
                     hasFailures.set(true)
-                    recordPageFailure(
-                        folder,
-                        image,
-                        failureMessage ?: requestException.get()?.message
-                    )
-                    true
                 }
                 reportPageProcessed(pageFailed)
             }
@@ -269,30 +252,11 @@ internal class FolderTranslationScheduler(
                     failureMessage = e.message
                     null
                 }
-                val pageFailed = if (execution?.result != null) {
-                    translationPipeline.saveResult(page.imageFile, execution.result)
-                    val savedStatus = execution.result.metadata.status
-                    progressStore.update(
-                        folder,
-                        page.imageFile.name,
-                        if (savedStatus == PageTranslationStatus.SKIPPED) {
-                            PageProgressStatus.SKIPPED
-                        } else {
-                            PageProgressStatus.SAVED
-                        }
-                    )
-                    false
-                } else if (execution?.recoveredFromModelError == true) {
-                    progressStore.update(folder, page.imageFile.name, PageProgressStatus.SKIPPED)
-                    false
-                } else {
+                val pageFailed = resultCommitter.commit(
+                    folder, page.imageFile, execution, failureMessage ?: requestException.get()?.message
+                )
+                if (pageFailed) {
                     hasFailures.set(true)
-                    recordPageFailure(
-                        folder,
-                        page.imageFile,
-                        failureMessage ?: requestException.get()?.message
-                    )
-                    true
                 }
                 reportPageProcessed(pageFailed)
             }
@@ -412,23 +376,7 @@ internal class FolderTranslationScheduler(
                     currentCoroutineContext().ensureActive()
                     val image = pages[index]
                     val execution = executions.getOrNull(position)
-                    val result = execution?.result
-                    val failed = result == null && execution?.recoveredFromModelError != true
-                    if (result != null) {
-                        translationPipeline.saveResult(image, result)
-                        progressStore.update(
-                            folder, image.name,
-                            if (result.metadata.status == PageTranslationStatus.SKIPPED) {
-                                PageProgressStatus.SKIPPED
-                            } else {
-                                PageProgressStatus.SAVED
-                            }
-                        )
-                    } else if (!failed) {
-                        progressStore.update(folder, image.name, PageProgressStatus.SKIPPED)
-                    } else {
-                        recordPageFailure(folder, image, failureMessage)
-                    }
+                    val failed = resultCommitter.commit(folder, image, execution, failureMessage)
                     progressMutex.withLock {
                         if (failed) failedCount++
                         onCountUpdated(++processedCount, failedCount)
@@ -441,27 +389,15 @@ internal class FolderTranslationScheduler(
     }
 
     suspend fun recordPageFailure(folder: File, image: File, errorMessage: String?) {
-        progressStore.update(folder, image.name, PageProgressStatus.FAILED, errorMessage)
-        val existing = translationPipeline.loadAnyTranslation(image)
-        if (existing != null && existing.metadata.status == PageTranslationStatus.SUCCESS) {
-            return
-        }
-        if (existing != null && existing.metadata.isManual()) {
-            return
-        }
-        if (existing == null) {
-            // No prior translation file; progress.json alone records the failure.
-            return
-        }
-        val placeholder = existing.copy(
-            metadata = existing.metadata.copy(status = PageTranslationStatus.FAILED)
-        )
-        try {
-            translationPipeline.saveResult(image, placeholder)
-        } catch (e: Exception) {
-            AppLogger.log("Library", "Failed to record FAILED status for ${image.name}", e)
-        }
+        resultCommitter.recordFailure(folder, image, errorMessage)
     }
+
+    suspend fun commitPageResult(
+        folder: File,
+        image: File,
+        execution: PageTranslationExecutionResult?,
+        errorMessage: String?
+    ): Boolean = resultCommitter.commit(folder, image, execution, errorMessage)
 
     suspend fun markPageAborted(
         folder: File,

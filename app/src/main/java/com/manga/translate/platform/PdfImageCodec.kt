@@ -44,8 +44,8 @@ private fun isLongPdfPage(width: Int, height: Int): Boolean =
     height.toLong() >= width.toLong() * 3 && height > 4096
 
 internal object PdfImageCodec {
-    private const val IMPORT_STRIP_MAX_HEIGHT = 4096
-    private const val IMPORT_STRIP_MAX_PIXELS = 8_388_608
+    private const val IMPORT_STRIP_MAX_HEIGHT = 16_384
+    private const val IMPORT_STRIP_MAX_PIXELS = 33_554_432
     private const val IMPORT_FILE_NAME_WIDTH = 4
     private const val MAX_IMPORT_PAGE_COUNT = 750
     private const val MINIMUM_FREE_SPACE_BYTES = 100L * 1024 * 1024
@@ -66,12 +66,13 @@ internal object PdfImageCodec {
     private const val EXPORT_PROBE_BUDGET_COPIES = 2
 
     /**
-     * Estimate the peak decode memory a PDF import would need, based on actual page
-     * dimensions rather than the source file size (a small PDF can still contain huge
-     * pages). Reused by the import memory warning so the estimate matches what
-     * [renderPdfToImages] will actually allocate. Returns null if the PDF cannot be opened.
+     * Estimate additional working memory for the import warning: destination bitmap,
+     * intersecting source images, encoding and document overhead. Image metadata is
+     * inspected without decoding pixels. This is a conservative heuristic, not a bound
+     * on native allocations or process PSS. Returns null if the PDF cannot be opened.
      */
     suspend fun estimateImportPlan(
+        context: Context,
         contentResolver: ContentResolver,
         uri: Uri
     ): PdfImportPlan? {
@@ -83,9 +84,15 @@ internal object PdfImageCodec {
             return PdfImportPlan(emptyList(), Long.MAX_VALUE)
         } ?: return null
         return descriptor.use { pfd ->
+            var originalImageExtractor: PdfOriginalImageExtractor? = null
             try {
+                originalImageExtractor = PdfOriginalImageExtractor.open(context, contentResolver, uri)
                 PdfRenderer(pfd).use { renderer ->
-                    PdfImportPlan(inspectImportPages(renderer))
+                    val sizes = inspectImportPages(renderer)
+                    val estimates = if (originalImageExtractor == null) emptyList() else sizes.mapIndexed { index, size ->
+                        originalImageExtractor.estimatePagePeakBytes(index, size)
+                    }
+                    PdfImportPlan(sizes, pagePeakBytes = estimates)
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -93,14 +100,17 @@ internal object PdfImageCodec {
                 PdfImportPlan(emptyList(), Long.MAX_VALUE)
             } catch (_: Exception) {
                 null
+            } finally {
+                originalImageExtractor?.close()
             }
         }
     }
 
     suspend fun estimateImportPeakBytes(
+        context: Context,
         contentResolver: ContentResolver,
         uri: Uri
-    ): Long? = estimateImportPlan(contentResolver, uri)?.peakBytes
+    ): Long? = estimateImportPlan(context, contentResolver, uri)?.peakBytes
 
     suspend fun renderPdfToImages(
         context: Context,
@@ -128,38 +138,38 @@ internal object PdfImageCodec {
                             imported += 1
                             continue
                         }
-                        val page = renderer.openPage(index)
-                        try {
-                            val size = pageSizes[index]
-                            for (strip in size.strips()) {
-                                currentCoroutineContext().ensureActive()
-                                val bitmap = createBitmap(size.width, strip.height, Bitmap.Config.ARGB_8888)
-                                try {
-                                    bitmap.eraseColor(0xFFFFFFFF.toInt())
+                        val size = pageSizes[index]
+                        for (strip in size.strips()) {
+                            currentCoroutineContext().ensureActive()
+                            val bitmap = createBitmap(size.width, strip.height, Bitmap.Config.ARGB_8888)
+                            try {
+                                bitmap.eraseColor(0xFFFFFFFF.toInt())
+                                // PdfRenderer retains decoded source images for the lifetime of
+                                // a page. Close each strip's page before encoding so those native
+                                // caches cannot accumulate across a long page's strips.
+                                renderer.openPage(index).use { page ->
                                     page.render(bitmap, null, size.renderMatrix(strip.top), PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                                    val fileName = size.fileName(index, strip.index)
-                                    val destination = File(outputDir, fileName)
-                                    val temporary = File(outputDir, ".$fileName.tmp")
-                                    try {
-                                        FileOutputStream(temporary).use { output ->
-                                            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-                                                throw IllegalStateException("Failed to encode PDF page ${index + 1}")
-                                            }
-                                        }
-                                        currentCoroutineContext().ensureActive()
-                                        if (!temporary.renameTo(destination)) {
-                                            throw IllegalStateException("Failed to commit PDF page ${index + 1}")
-                                        }
-                                    } finally {
-                                        temporary.delete()
-                                    }
-                                    imported += 1
-                                } finally {
-                                    bitmap.recycle()
                                 }
+                                val fileName = size.fileName(index, strip.index)
+                                val destination = File(outputDir, fileName)
+                                val temporary = File(outputDir, ".$fileName.tmp")
+                                try {
+                                    FileOutputStream(temporary).use { output ->
+                                        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                                            throw IllegalStateException("Failed to encode PDF page ${index + 1}")
+                                        }
+                                    }
+                                    currentCoroutineContext().ensureActive()
+                                    if (!temporary.renameTo(destination)) {
+                                        throw IllegalStateException("Failed to commit PDF page ${index + 1}")
+                                    }
+                                } finally {
+                                    temporary.delete()
+                                }
+                                imported += 1
+                            } finally {
+                                bitmap.recycle()
                             }
-                        } finally {
-                            page.close()
                         }
                     }
                     imported
@@ -223,15 +233,16 @@ internal object PdfImageCodec {
 
     internal data class PdfImportPlan(
         val pageSizes: List<ImportPageSize>,
-        private val peakBytesOverride: Long? = null
+        private val peakBytesOverride: Long? = null,
+        private val pagePeakBytes: List<Long> = emptyList()
     ) {
         val reusable: Boolean
             get() = peakBytesOverride == null
 
         val peakBytes: Long
-            get() = peakBytesOverride ?: pageSizes.maxOfOrNull { size ->
-                DeviceResourcePolicy.estimateBitmapBytes(size.width, size.stripHeight)
-            } ?: 0L
+            get() = peakBytesOverride ?: if (pagePeakBytes.size == pageSizes.size) {
+                pagePeakBytes.maxOrNull() ?: 0L
+            } else pageSizes.maxOfOrNull { PdfImportMemoryEstimator.renderBytes(it) } ?: 0L
     }
 
     internal data class ImportStrip(val index: Int, val top: Int, val height: Int)

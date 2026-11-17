@@ -3,7 +3,6 @@ package com.manga.translate.library
 import com.manga.translate.model.FolderItem
 import com.manga.translate.model.FolderStatus
 import com.manga.translate.model.ImageItem
-import com.manga.translate.model.PageTranslationStatus
 import com.manga.translate.storage.TranslationStore
 import java.io.File
 import kotlinx.coroutines.currentCoroutineContext
@@ -26,20 +25,60 @@ internal class LibraryPageLoader(
     private val translationStore: TranslationStore
 ) {
     suspend fun loadContent(folder: File): FolderContent {
-        return if (repository.isCollectionFolder(folder)) {
-            val items = buildFolderItems(repository.listChildFolders(folder))
-            computeAndCacheFolderStats(folder, isCollection = true)
-            preferencesGateway.setCachedFolderStatus(folder, resolveFolderStatus(items.map { it.status }))
-            FolderContent.Chapters(items)
-        } else {
-            val items = repository.listImages(folder).map {
-                ImageItem(file = it, translated = isImageTranslated(it, folder))
+        if (repository.isCollectionFolder(folder)) {
+            // Opening a collection must not inspect every chapter's translation files.
+            return FolderContent.Chapters(buildFolderPreviewItems(repository.listChildFolders(folder)))
+        }
+        val cached = translationStore.displayStatusCache.load(folder)
+        val items = repository.listImages(folder).map { image ->
+            val entry = cached[image.name]
+            ImageItem(image, entry?.translated ?: false, statusLoaded = entry != null)
+        }
+        preferencesGateway.setCachedFolderStats(folder, items.size)
+        return FolderContent.Images(items)
+    }
+
+    suspend fun refreshContent(folder: File, content: FolderContent, publish: suspend (FolderContent) -> Unit) {
+        when (content) {
+            is FolderContent.Chapters -> {
+                val items = content.items.map { item ->
+                    currentCoroutineContext().ensureActive()
+                    if (item.statsLoaded) item else loadAndCacheFolderStats(item)
+                }
+                preferencesGateway.setCachedFolderStats(folder, items.sumOf { it.imageCount }, items.size)
+                if (items.all { it.statusLoaded }) {
+                    preferencesGateway.setCachedFolderStatus(folder, resolveFolderStatus(items.map { it.status }))
+                }
+                if (items != content.items) publish(FolderContent.Chapters(items))
             }
-            preferencesGateway.setCachedFolderStats(folder, items.size)
-            preferencesGateway.setCachedFolderStatus(folder, resolveFolderStatus(items.map {
-                if (it.translated) FolderStatus.TRANSLATED else FolderStatus.UNTRANSLATED
-            }))
-            FolderContent.Images(items)
+            is FolderContent.Images -> {
+                val cached = translationStore.displayStatusCache.load(folder)
+                val entries = mutableMapOf<String, com.manga.translate.storage.LibraryStatusCache.Entry>()
+                val items = content.items.toMutableList()
+                var nextPublication = 64
+                for (index in items.indices) {
+                    currentCoroutineContext().ensureActive()
+                    val image = items[index].file
+                    val file = translationStore.translationFileFor(image)
+                    val modified = file.lastModified()
+                    val size = file.length()
+                    val entry = cached[image.name]?.takeIf { it.modified == modified && it.size == size }
+                        ?: com.manga.translate.storage.LibraryStatusCache.Entry(modified, size, isImageTranslated(image))
+                    entries[image.name] = entry
+                    items[index] = ImageItem(image, entry.translated)
+                    // Geometric checkpoints avoid copying and diffing the full list once per small batch.
+                    if (index + 1 == nextPublication && index < items.lastIndex) {
+                        publish(FolderContent.Images(items.toList()))
+                        nextPublication *= 4
+                    }
+                }
+                currentCoroutineContext().ensureActive()
+                translationStore.displayStatusCache.save(folder, entries)
+                preferencesGateway.setCachedFolderStatus(folder, resolveFolderStatus(items.map {
+                    if (it.translated) FolderStatus.TRANSLATED else FolderStatus.UNTRANSLATED
+                }))
+                publish(FolderContent.Images(items.toList()))
+            }
         }
     }
 
@@ -87,41 +126,6 @@ internal class LibraryPageLoader(
         )
     }
 
-    private suspend fun buildFolderItems(folders: List<File>): List<FolderItem> {
-        val items = ArrayList<FolderItem>(folders.size)
-        for (folder in folders) {
-            currentCoroutineContext().ensureActive()
-            items += buildFolderItem(folder)
-        }
-        return items
-    }
-
-    private fun buildFolderItem(folder: File): FolderItem {
-        val isCollection = repository.isCollectionFolder(folder)
-        val chapters = if (isCollection) repository.listChildFolders(folder) else emptyList()
-        val images = if (isCollection) {
-            chapters.flatMap { repository.listImages(it) }
-        } else {
-            repository.listImages(folder)
-        }
-        val (imageCount, chapterCount) = computeAndCacheFolderStats(folder, isCollection)
-        return FolderItem(
-            folder = folder,
-            imageCount = imageCount,
-            chapterCount = chapterCount,
-            isCollection = isCollection,
-            status = resolveFolderStatus(folder, images),
-            customTags = preferencesGateway.getFolderTags(folder)
-                .sortedWith(String.CASE_INSENSITIVE_ORDER)
-        )
-    }
-
-    private fun resolveFolderStatus(folder: File, images: List<File>): FolderStatus {
-        if (images.isEmpty()) return FolderStatus.UNTRANSLATED
-        val allTranslated = images.all { image -> isImageTranslated(image, folder) }
-        return if (allTranslated) FolderStatus.TRANSLATED else FolderStatus.UNTRANSLATED
-    }
-
     private fun resolveFolderStatus(statuses: List<FolderStatus>): FolderStatus {
         return if (statuses.isNotEmpty() && statuses.all { it == FolderStatus.TRANSLATED }) {
             FolderStatus.TRANSLATED
@@ -130,11 +134,8 @@ internal class LibraryPageLoader(
         }
     }
 
-    private fun isImageTranslated(image: File, folder: File): Boolean {
-        // Align list/folder badges with engine skip rules: only SUCCESS or manual counts.
-        val result = translationStore.load(image) ?: return false
-        if (result.metadata.isManual()) return true
-        return result.metadata.status == PageTranslationStatus.SUCCESS
+    private fun isImageTranslated(image: File): Boolean {
+        return translationStore.isTranslatedForDisplay(image)
     }
 
 }

@@ -542,7 +542,7 @@
     <string name="translation_result_batch_task_label">Tarefas de tradução para %1$d pastas</string>
     <string name="export_keepalive_title">Exportação em andamento</string>
     <string name="reading_empty">Selecione uma pasta para iniciar a leitura</string>
-    <string name="reading_page_info">%1$s (%2$d/%3$d)</string>
+    <string name="reading_page_number">(%1$d/%2$d)</string>
     <string name="reading_edit_bubbles">Editar balões</string>
     <string name="reading_confirm_edit">Concluir edição</string>
     <string name="reading_cancel_edit">Cancelar edição</string>
@@ -688,4 +688,5 @@ Grupo de comunicação e feedback: %2$s</string>
     <string name="llm_param_max_output_tokens">Limite de saída por solicitação (tokens)</string>
     <string name="reading_page_jump_title">Ir para a página</string>
     <string name="reading_page_jump_value">Página %1$d de %2$d</string>
+    <string name="image_status_pending">Ainda não verificado</string>
 </resources>

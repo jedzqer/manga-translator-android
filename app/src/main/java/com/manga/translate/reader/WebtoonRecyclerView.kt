@@ -24,6 +24,11 @@ class WebtoonRecyclerView @JvmOverloads constructor(
             field = value
             if (!value) setContentScale(1f, 0f, 0f)
         }
+    // Capture before RecyclerView handles DOWN and changes SETTLING to DRAGGING/IDLE.
+    // Keep this for the whole stream: UP must not become a delayed page tap.
+    internal var isStoppingScrollGesture = false
+        private set
+
     private val baseBottomPadding = paddingBottom
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private var downX = 0f
@@ -81,6 +86,9 @@ class WebtoonRecyclerView @JvmOverloads constructor(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            isStoppingScrollGesture = scrollState == SCROLL_STATE_SETTLING
+        }
         if (!zoomEnabled) return super.dispatchTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             downX = event.x; downY = event.y

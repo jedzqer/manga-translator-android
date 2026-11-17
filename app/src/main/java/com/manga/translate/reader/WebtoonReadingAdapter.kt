@@ -113,7 +113,7 @@ class WebtoonReadingAdapter(
     }
 
     private var items: List<File> = emptyList()
-    private var displayItems: List<WebtoonDisplayItem> = emptyList()
+    private var displayItems: MutableList<WebtoonDisplayItem> = mutableListOf()
     private var verticalLayoutEnabled: Boolean = true
     private var bubbleRenderSettings = NormalBubbleRenderSettings(
         shrinkPercent = 0,
@@ -260,25 +260,26 @@ class WebtoonReadingAdapter(
             ?.firstOrNull()
     }
 
+    private fun lowerBoundForImage(imageIndex: Int): Int {
+        var low = 0
+        var high = displayItems.size
+        while (low < high) {
+            val middle = (low + high) ushr 1
+            if (displayItems[middle].imageIndex < imageIndex) low = middle + 1 else high = middle
+        }
+        return low
+    }
+
     fun adapterPositionForImageIndex(imageIndex: Int): Int {
         if (imageIndex < 0) return RecyclerView.NO_POSITION
-        return displayItems.indexOfFirst { it.imageIndex == imageIndex }
+        val position = lowerBoundForImage(imageIndex)
+        return if (displayItems.getOrNull(position)?.imageIndex == imageIndex) position else RecyclerView.NO_POSITION
     }
 
     fun adapterPositionRangeForImageIndex(imageIndex: Int): IntRange? {
-        if (imageIndex < 0) return null
-        var first = RecyclerView.NO_POSITION
-        var last = RecyclerView.NO_POSITION
-        displayItems.forEachIndexed { index, item ->
-            if (item.imageIndex != imageIndex) return@forEachIndexed
-            if (first == RecyclerView.NO_POSITION) first = index
-            last = index
-        }
-        return if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) {
-            null
-        } else {
-            first..last
-        }
+        val first = adapterPositionForImageIndex(imageIndex)
+        if (first == RecyclerView.NO_POSITION) return null
+        return first until lowerBoundForImage(imageIndex + 1)
     }
 
     fun imageIndexForAdapterPosition(adapterPosition: Int): Int {
@@ -420,14 +421,15 @@ class WebtoonReadingAdapter(
 
     private fun prefetchSourceSizes(images: List<File>) {
         sourceSizePrefetchJob?.cancel()
-        val uncached = images.filterNot { sourceSizeCache.containsKey(it.absolutePath) }
+        val uncached = images.withIndex().filterNot { sourceSizeCache.containsKey(it.value.absolutePath) }
         if (uncached.isEmpty()) return
         sourceSizePrefetchJob = scope.launch {
             val activePathsSnapshot = items.mapTo(hashSetOf()) { it.absolutePath }
             for (batch in uncached.chunked(SOURCE_SIZE_BATCH_SIZE)) {
                 ensureActive()
                 val sizes = withContext(Dispatchers.IO) {
-                    batch.mapNotNull { imageFile ->
+                    batch.mapNotNull { (_, imageFile) ->
+                        ensureActive()
                         if (imageFile.absolutePath !in activePathsSnapshot) {
                             null
                         } else {
@@ -438,7 +440,9 @@ class WebtoonReadingAdapter(
                 if (sizes.isEmpty()) continue
                 onDisplayStructureChanging?.invoke()
                 sizes.forEach { (path, size) -> sourceSizeCache[path] = size }
-                rebuildDisplayItems()
+                val firstImage = batch.first().index
+                val lastImage = batch.last().index
+                rebuildDisplayRange(firstImage, lastImage + 1)
                 onDisplayStructureChanged?.invoke()
             }
         }
@@ -468,19 +472,45 @@ class WebtoonReadingAdapter(
         }
     }
 
-    private fun buildDisplayItems(images: List<File>): List<WebtoonDisplayItem> {
+    private fun buildDisplayItems(images: List<File>, startIndex: Int = 0): MutableList<WebtoonDisplayItem> {
         val result = ArrayList<WebtoonDisplayItem>(images.size)
         images.forEachIndexed { index, imageFile ->
             val size = sourceSizeCache[imageFile.absolutePath]
             if (size == null) {
-                result += WebtoonDisplayItem(imageFile, index)
+                result += WebtoonDisplayItem(imageFile, startIndex + index)
             } else {
                 WebtoonSegments.ranges(size.width, size.height, viewportWidth).forEach { range ->
-                    result += WebtoonDisplayItem(imageFile, index, range.first, range.last + 1)
+                    result += WebtoonDisplayItem(imageFile, startIndex + index, range.first, range.last + 1)
                 }
             }
         }
         return result
+    }
+
+    /** Only the newly measured pages change; avoid a whole-book diff for every batch. */
+    private fun rebuildDisplayRange(firstImage: Int, endImage: Int) {
+        val start = lowerBoundForImage(firstImage)
+        val end = lowerBoundForImage(endImage)
+        val previous = displayItems.subList(start, end).toList()
+        val next = buildDisplayItems(items.subList(firstImage, endImage), firstImage)
+        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = previous.size
+            override fun getNewListSize() = next.size
+            override fun areItemsTheSame(old: Int, new: Int) = previous[old].stableKey == next[new].stableKey
+            override fun areContentsTheSame(old: Int, new: Int) = previous[old] == next[new]
+        }, false)
+        if (previous.size == next.size) {
+            next.forEachIndexed { index, item -> displayItems[start + index] = item }
+        } else {
+            displayItems.subList(start, end).clear()
+            displayItems.addAll(start, next)
+        }
+        diff.dispatchUpdatesTo(object : androidx.recyclerview.widget.ListUpdateCallback {
+            override fun onInserted(position: Int, count: Int) = notifyItemRangeInserted(start + position, count)
+            override fun onRemoved(position: Int, count: Int) = notifyItemRangeRemoved(start + position, count)
+            override fun onMoved(fromPosition: Int, toPosition: Int) = notifyItemMoved(start + fromPosition, start + toPosition)
+            override fun onChanged(position: Int, count: Int, payload: Any?) = notifyItemRangeChanged(start + position, count, payload)
+        })
     }
 
     private fun rebuildDisplayItems() {

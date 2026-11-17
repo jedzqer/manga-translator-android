@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.core.graphics.createBitmap
 import androidx.test.core.app.ApplicationProvider
 import com.manga.translate.platform.PdfImageCodec
+import com.manga.translate.platform.PdfImportMemoryEstimator
 import com.manga.translate.platform.PdfOriginalImageExtractor
 import com.manga.translate.platform.resolvePdfImportRenderScale
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -121,6 +122,8 @@ class PdfImageCodecTest {
 
             assertNotNull(extractor)
             extractor!!.use {
+                assertEquals(PdfImportMemoryEstimator.withOverhead(0, pdfFile.length()),
+                    it.estimatePagePeakBytes(0, PdfImageCodec.planImportPage(60, 90)))
                 assertTrue(it.extractPage(0, outputDir))
             }
             assertArrayEquals(jpeg, File(outputDir, "0001.jpg").readBytes())
@@ -141,8 +144,12 @@ class PdfImageCodecTest {
         strips.zipWithNext().forEach { (first, next) ->
             assertEquals(first.top + first.height, next.top)
         }
-        assertTrue(strips.all { it.height <= 4096 && it.height.toLong() * page.width <= 8_388_608 })
-        assertTrue(PdfImageCodec.PdfImportPlan(listOf(page)).peakBytes < 20L * 1024 * 1024)
+        assertTrue(strips.all { it.height <= 16_384 && it.height.toLong() * page.width <= 33_554_432 })
+        // Includes encoding workspace and PDF overhead, still budgets one strip rather
+        // than the full webtoon bitmap.
+        val peakBytes = PdfImageCodec.PdfImportPlan(listOf(page)).peakBytes
+        assertTrue(peakBytes > 2L * page.width * page.stripHeight * 4)
+        assertTrue(peakBytes < page.pixels * 4)
         val names = strips.map { page.fileName(0, it.index) } + "0002.jpg"
         assertEquals(names, names.sorted())
         assertEquals(names.size, names.toSet().size)

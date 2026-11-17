@@ -57,7 +57,9 @@ class BatchTranslationDeviceTest {
         listener.soTimeout = TimeUnit.MINUTES.toMillis(10).toInt()
         val serverThread = Thread {
             try {
-                repeat(pageCount / requestBatch + if (pageCount % requestBatch == 0) 0 else 1) {
+                // The bounded OCR queue may flush a partially filled batch at a window boundary.
+                // Serve until every page arrives instead of assuming every request is full.
+                while (requestItemCounts.sum() < pageCount) {
                     listener.accept().use { socket ->
                         socket.soTimeout = TimeUnit.SECONDS.toMillis(30).toInt()
                         val input = BufferedInputStream(socket.getInputStream())

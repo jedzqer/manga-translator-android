@@ -93,7 +93,7 @@ internal class PayloadBuilder(
                     .put("type", "image_url")
                     .put(
                         "image_url",
-                        JSONObject().put("url", "data:image/jpeg;base64,$imageBase64")
+                        JSONObject().put("url", EncodedImageData(imageBase64, dataUri = true))
                     )
             )
         val messages = JSONArray()
@@ -195,6 +195,8 @@ internal class PayloadBuilder(
     }
 
     /** 日志脱敏：把请求/响应 JSON 中的 base64 图片数据替换为占位文本。 */
+    fun sanitizeModelIoForLog(payload: JSONObject): String = sanitizeJsonValue(payload).toString()
+
     fun sanitizeModelIoForLog(content: String): String {
         val sanitizedJson = runCatching {
             when {
@@ -351,7 +353,7 @@ internal class PayloadBuilder(
                         )
                         .apply { imagesBase64.forEach { encoded ->
                             put(JSONObject().put("type", "image_url")
-                                .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$encoded")))
+                                .put("image_url", JSONObject().put("url", EncodedImageData(encoded, dataUri = true))))
                         } }
                 )
         )
@@ -399,7 +401,7 @@ internal class PayloadBuilder(
                         )
                         .apply { imagesBase64.forEach { encoded ->
                             put(JSONObject().put("type", "input_image")
-                                .put("image_url", "data:image/jpeg;base64,$encoded"))
+                                .put("image_url", EncodedImageData(encoded, dataUri = true)))
                         } }
                 )
         )
@@ -605,7 +607,7 @@ internal class PayloadBuilder(
             "inline_data",
             JSONObject()
                 .put("mime_type", "image/jpeg")
-                .put("data", imageBase64)
+                .put("data", EncodedImageData(imageBase64))
         )
     }
 
@@ -671,6 +673,8 @@ internal class PayloadBuilder(
 
     private fun sanitizeJsonValue(value: Any?): Any? {
         return when (value) {
+            is EncodedImageData -> if (value.dataUri) "data:image/<base64 omitted>" else "<base64 omitted>"
+            is String -> if (value.startsWith("data:image/", ignoreCase = true)) "data:image/<base64 omitted>" else value
             is JSONObject -> {
                 val sanitized = JSONObject()
                 val keys = value.keys()

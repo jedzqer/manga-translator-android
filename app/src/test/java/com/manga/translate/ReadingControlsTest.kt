@@ -1,5 +1,7 @@
 package com.manga.translate
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Looper
 import android.view.View
 import android.widget.SeekBar
@@ -22,12 +24,14 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.LooperMode
 import org.robolectric.shadows.ShadowDialog
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = MangaTranslateApp::class, qualifiers = "en-w320dp-h480dp-notnight")
 @LooperMode(LooperMode.Mode.PAUSED)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadingControlsTest {
     private fun withReader(mode: FolderReadingMode = FolderReadingMode.STANDARD, count: Int = 3,
                            test: (ReadingFragment, FragmentReadingBinding, ReadingSessionViewModel) -> Unit) {
@@ -42,24 +46,71 @@ class ReadingControlsTest {
             activity.supportFragmentManager.beginTransaction().add(android.R.id.content, fragment).commitNow()
             shadowOf(Looper.getMainLooper()).idle()
             val binding = FragmentReadingBinding.bind(fragment.requireView())
-            repeat(2) {
-                binding.root.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY))
-                binding.root.layout(0, 0, 320, 480)
-            }
+            layoutReader(binding)
             test(fragment, binding, vm)
         } finally { controller.pause().stop().destroy() }
     }
 
+    private fun layoutReader(binding: FragmentReadingBinding, width: Int = 320) {
+        repeat(3) {
+            shadowOf(Looper.getMainLooper()).idle()
+            binding.readingBookTitle.forceLayout()
+            binding.readingPageNumber.forceLayout()
+            binding.readingPageInfo.forceLayout()
+            binding.root.forceLayout()
+            binding.root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY))
+            binding.root.layout(0, 0, width, 480)
+        }
+    }
+
+    private fun savePreview(binding: FragmentReadingBinding, name: String) {
+        val bitmap = Bitmap.createBitmap(binding.root.width, binding.root.height, Bitmap.Config.ARGB_8888)
+        binding.root.draw(Canvas(bitmap))
+        val output = File("build/reports/reading-controls/$name.png")
+        output.parentFile!!.mkdirs()
+        output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+    }
+
     @Test fun longTitleLeavesEditControlsClear() = withReader { _, binding, _ ->
-        assertEquals(1, binding.readingPageInfo.maxLines)
+        assertEquals(1, binding.readingBookTitle.maxLines)
         assertTrue(binding.readingPageInfo.width <= 192)
         assertTrue(binding.readingPageInfo.right < binding.readingEditControls.left)
     }
 
+    private fun assertPageNumberVisible(binding: FragmentReadingBinding, expected: String) {
+        val number = binding.readingPageNumber
+        assertEquals(expected, number.text.toString())
+        assertNotNull("page info visibility=${binding.readingPageInfo.visibility}, number=${number.width}x${number.height}, root=${binding.root.width}", number.layout)
+        assertEquals(1, number.layout.lineCount)
+        assertEquals(0, number.layout.getEllipsisCount(0))
+        assertTrue(number.layout.getLineWidth(0) <= number.width - number.totalPaddingLeft - number.totalPaddingRight)
+        assertTrue(number.right <= binding.readingPageInfo.width - binding.readingPageInfo.paddingRight)
+        assertTrue(binding.readingBookTitle.right <= number.left)
+        assertTrue("info=${binding.readingPageInfo.left}..${binding.readingPageInfo.right}, edit=${binding.readingEditControls.left}..${binding.readingEditControls.right}, titleMax=${binding.readingBookTitle.maxWidth}, root=${binding.root.width}",
+            binding.readingPageInfo.right < binding.readingEditControls.left)
+    }
+
+    @Test fun longTitleKeepsFullPageNumber() = withReader(count = 1234) { _, binding, vm ->
+        assertPageNumberVisible(binding, "(1/1234)")
+        assertTrue(binding.readingBookTitle.layout.getEllipsisCount(0) > 0)
+        savePreview(binding, "long-title-light")
+        vm.moveTo(1233)
+        layoutReader(binding, width = 240)
+        assertPageNumberVisible(binding, "(1234/1234)")
+        savePreview(binding, "narrow-four-digit-page")
+    }
+
+    @Test fun webtoonLongTitleKeepsFullPageNumber() = withReader(FolderReadingMode.WEBTOON_SCROLL) { _, binding, _ ->
+        assertPageNumberVisible(binding, "(1/3)")
+        savePreview(binding, "webtoon-long-title")
+    }
+
     @Test @Config(qualifiers = "ru-w320dp-h480dp-night")
     fun nightThemeDialogRemainsUsable() = withReader { _, binding, _ ->
-        assertTrue(binding.readingPageInfo.right < binding.readingEditControls.left)
+        assertPageNumberVisible(binding, "(1/3)")
+        savePreview(binding, "long-title-dark")
         binding.readingPageInfo.performClick()
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         assertTrue(dialog.isShowing)

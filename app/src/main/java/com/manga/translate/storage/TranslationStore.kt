@@ -18,7 +18,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-class TranslationStore {
+class TranslationStore(displayCacheDirectory: File? = null) {
+    internal val displayStatusCache = LibraryStatusCache(displayCacheDirectory)
     private data class CacheEntry(
         val lastModified: Long,
         val fileSize: Long,
@@ -33,6 +34,44 @@ class TranslationStore {
     private val writeLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
 
     val updates: SharedFlow<String> = updatesFlow.asSharedFlow()
+
+    /** Display-only metadata read; legacy results keep the same status derivation as load(). */
+    internal fun isTranslatedForDisplay(imageFile: File): Boolean {
+        val file = translationFileFor(imageFile)
+        if (!file.isFile) return false
+        try {
+            android.util.JsonReader(file.bufferedReader()).use { reader ->
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    if (reader.nextName() != "metadata" || reader.peek() != android.util.JsonToken.BEGIN_OBJECT) {
+                        reader.skipValue()
+                        continue
+                    }
+                    var mode = ""
+                    var status = PageTranslationStatus.UNKNOWN
+                    reader.beginObject()
+                    while (reader.hasNext()) {
+                        val name = reader.nextName()
+                        if (reader.peek() != android.util.JsonToken.STRING) {
+                            reader.skipValue()
+                        } else when (name) {
+                            "mode" -> mode = reader.nextString()
+                            "status" -> status = PageTranslationStatus.fromJson(reader.nextString())
+                            else -> reader.skipValue()
+                        }
+                    }
+                    reader.endObject()
+                    if (mode == TranslationMetadata.MODE_MANUAL) return true
+                    if (status != PageTranslationStatus.UNKNOWN) return status == PageTranslationStatus.SUCCESS
+                    break
+                }
+            }
+        } catch (_: Exception) {
+            // The full reader also handles permissive legacy JSON and reports malformed files.
+        }
+        val result = load(imageFile) ?: return false
+        return result.metadata.isManual() || result.metadata.status == PageTranslationStatus.SUCCESS
+    }
 
     fun load(imageFile: File): TranslationResult? {
         val jsonFile = translationFileFor(imageFile)

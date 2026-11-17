@@ -168,6 +168,9 @@ internal fun retainLargestConnectedMaskComponent(
         }
     }
     if (largestLabel == 0) return null
+    // A substantial second lobe is not prototype noise. Falling back to the
+    // detection rectangle is safer than rendering all OCR text in half a balloon.
+    if (largestSize < foreground.count { it } * 0.8f) return null
     return BooleanArray(foreground.size) { labels[it] == largestLabel }
 }
 

@@ -112,7 +112,16 @@ internal class LibraryViewModel(
                 is FolderContent.Chapters -> chapterSelection.retain(content.items.map { it.folder.absolutePath }.toSet())
                 is FolderContent.Images -> imageSelection.retain(content.items.map { it.file.absolutePath }.toSet())
             }
-            mutableState.update { it.copy(content = content, contentRevision = generation) }
+            mutableState.update { it.copy(content = content, contentRevision = it.contentRevision + 1) }
+            withContext(Dispatchers.IO) {
+                loader.refreshContent(folder, content) { refreshed ->
+                    withContext(Dispatchers.Main) {
+                        if (generation == contentGeneration && state.value.folder == folder) {
+                            mutableState.update { it.copy(content = refreshed, contentRevision = it.contentRevision + 1) }
+                        }
+                    }
+                }
+            }
         }
     }
 }

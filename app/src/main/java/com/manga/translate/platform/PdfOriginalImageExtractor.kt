@@ -37,6 +37,32 @@ internal class PdfOriginalImageExtractor private constructor(
     fun openRendererDescriptor(): ParcelFileDescriptor =
         ParcelFileDescriptor.open(sourceFile, ParcelFileDescriptor.MODE_READ_ONLY)
 
+    suspend fun estimatePagePeakBytes(pageIndex: Int, size: PdfImageCodec.ImportPageSize): Long {
+        currentCoroutineContext().ensureActive()
+        return try {
+            val page = document.getPage(pageIndex)
+            val image = findFullPageImage(page)
+            if (image != null && canCopyOriginalJpeg(image)) {
+                // Stream copying a scan does not allocate a bitmap at its source resolution.
+                PdfImportMemoryEstimator.withOverhead(0, sourceFile.length())
+            } else {
+                val rendered = PdfImportMemoryEstimator.estimatePage(page, size, sourceFile.length())
+                if (image == null) rendered else maxOf(rendered,
+                    PdfImportMemoryEstimator.withOverhead(
+                        DeviceResourcePolicy.saturatingMultiply(
+                            DeviceResourcePolicy.estimateBitmapBytes(image.width, image.height), 3
+                        ), sourceFile.length()
+                    )
+                )
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            AppLogger.log("PdfImageCodec", "PDF image memory inspection unavailable on page ${pageIndex + 1}", error)
+            PdfImportMemoryEstimator.renderBytes(size, documentBytes = sourceFile.length())
+        }
+    }
+
     suspend fun extractPage(pageIndex: Int, outputDir: File): Boolean {
         currentCoroutineContext().ensureActive()
         val image = findFullPageImage(document.getPage(pageIndex)) ?: return false

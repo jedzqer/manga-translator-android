@@ -543,7 +543,7 @@
     <string name="translation_result_batch_task_label">Задачи перевода для папок %1$d</string>
     <string name="export_keepalive_title">Идет экспорт</string>
     <string name="reading_empty">Выберите папку, чтобы начать чтение</string>
-    <string name="reading_page_info">%1$s (%2$d/%3$d)</string>
+    <string name="reading_page_number">(%1$d/%2$d)</string>
     <string name="reading_edit_bubbles">Редактировать пузырьки</string>
     <string name="reading_confirm_edit">Завершить редактирование</string>
     <string name="reading_cancel_edit">Отменить редактирование</string>
@@ -689,4 +689,5 @@
     <string name="llm_param_max_output_tokens">Лимит вывода на запрос (токены)</string>
     <string name="reading_page_jump_title">Перейти к странице</string>
     <string name="reading_page_jump_value">Страница %1$d из %2$d</string>
+    <string name="image_status_pending">Ещё не проверено</string>
 </resources>

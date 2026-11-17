@@ -97,6 +97,58 @@ class LlmClientPayloadTest {
     }
 
     @Test
+    fun `HTTP retries replay identical multi image bodies with logging on and off`() = runBlocking {
+        val content = """{"items":[{"id":0,"translation":"first"},{"id":1,"translation":"second"}]}"""
+        val images = listOf("a+/=".repeat(4096), "b+/=".repeat(4096))
+        for (logging in listOf(false, true)) {
+            settingsStore.saveModelIoLogging(logging)
+            for (format in ApiFormat.entries) {
+                server.enqueue(MockResponse().setResponseCode(500).setBody("temporary failure"))
+                val response = when (format) {
+                    ApiFormat.OPENAI_COMPATIBLE -> JSONObject().put("choices", org.json.JSONArray().put(
+                        JSONObject().put("message", JSONObject().put("content", content))))
+                    ApiFormat.OPENAI_RESPONSES -> JSONObject().put("output_text", content)
+                    ApiFormat.GEMINI -> JSONObject().put("candidates", org.json.JSONArray().put(
+                        JSONObject().put("content", JSONObject().put("parts", org.json.JSONArray().put(
+                            JSONObject().put("text", content))))))
+                }
+                server.enqueue(MockResponse().setBody(response.toString()))
+                val settings = ApiSettings(server.url("/").toString(), "test-key", "vision", format)
+                val result = requireNotNull(LlmClient(context, settingsStore).translateMultiImageItems(
+                    images, listOf(0, 1), "prompts/vl_page_prompts.json", emptyMap(), false,
+                    15_000, 2, settings))
+                assertEquals(listOf("first", "second"), result.items.map { it.translation })
+                val first = requireNotNull(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS))
+                val second = requireNotNull(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS))
+                assertEquals(first.path, second.path)
+                assertEquals(first.getHeader("Content-Length"), second.getHeader("Content-Length"))
+                assertEquals(first.body.readByteString(), second.body.readByteString())
+            }
+        }
+        assertEquals(12, server.requestCount)
+    }
+
+    @Test
+    fun `API OCR HTTP retry preserves structured region request`() = runBlocking {
+        settingsStore.saveOcrApiSettings(settingsStore.loadOcrApiSettings().copy(
+            useLocalOcr = false, apiUrl = server.url("/").toString(), apiKey = "test", modelName = "ocr"))
+        server.enqueue(MockResponse().setResponseCode(500))
+        server.enqueue(MockResponse().setBody(
+            """{"choices":[{"message":{"content":"{\"items\":[{\"id\":3,\"translation\":\"recognized\"}]}"}}]}"""))
+        val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+        try {
+            val result = LlmClient(context, settingsStore).recognizePageRegions(bitmap, listOf(3))
+            assertEquals("recognized", requireNotNull(result)[3])
+            val first = requireNotNull(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS))
+            val second = requireNotNull(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(first.body.readByteString(), second.body.readByteString())
+        } finally {
+            bitmap.recycle()
+        }
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
     fun `all image APIs preserve multiple images in a single ordered user message`() {
         val builder = com.manga.translate.network.PayloadBuilder(context, settingsStore)
         for (format in ApiFormat.entries) {

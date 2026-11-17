@@ -86,6 +86,20 @@ class BubbleDetectorTest {
     }
 
     @Test
+    fun `substantial disconnected lobes fall back to full detection geometry`() {
+        val width = 12
+        val foreground = BooleanArray(width * 6)
+        for (y in 1..4) {
+            for (x in 1..4) foreground[y * width + x] = true
+            for (x in 7..10) foreground[y * width + x] = true
+        }
+        assertEquals(null, retainLargestConnectedMaskComponent(foreground, width, 6))
+        // Also reject a sizeable smaller lobe, rather than only equal halves.
+        for (y in 1..2) for (x in 7..10) foreground[y * width + x] = false
+        assertEquals(null, retainLargestConnectedMaskComponent(foreground, width, 6))
+    }
+
+    @Test
     fun `overlapping bubble detections keep the highest confidence candidate`() {
         val lowerConfidence = detection(RectF(100f, 100f, 400f, 400f), confidence = 0.72f)
         val higherConfidence = detection(RectF(112f, 108f, 408f, 404f), confidence = 0.91f)

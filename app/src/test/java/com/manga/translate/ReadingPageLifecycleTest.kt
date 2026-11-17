@@ -55,7 +55,8 @@ class ReadingPageLifecycleTest {
 
     private fun assertPage(fragment: ReadingFragment, page: Int) {
         val binding = FragmentReadingBinding.bind(fragment.requireView())
-        assertEquals(fragment.getString(R.string.reading_page_info, "reading-session", page, 3),
-            binding.readingPageInfo.text.toString())
+        assertEquals("reading-session", binding.readingBookTitle.text.toString())
+        assertEquals(fragment.getString(R.string.reading_page_number, page, 3),
+            binding.readingPageNumber.text.toString())
     }
 }

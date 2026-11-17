@@ -542,7 +542,7 @@
     <string name="translation_result_batch_task_label">Translation tasks for %1$d folders</string>
     <string name="export_keepalive_title">Export in Progress</string>
     <string name="reading_empty">Select a folder to start reading</string>
-    <string name="reading_page_info">%1$s (%2$d/%3$d)</string>
+    <string name="reading_page_number">(%1$d/%2$d)</string>
     <string name="reading_edit_bubbles">Edit Bubbles</string>
     <string name="reading_confirm_edit">Done Editing</string>
     <string name="reading_cancel_edit">Cancel Editing</string>
@@ -688,4 +688,5 @@ Communication and feedback group: %2$s</string>
     <string name="llm_param_max_output_tokens">Output limit per request (tokens)</string>
     <string name="reading_page_jump_title">Jump to page</string>
     <string name="reading_page_jump_value">Page %1$d of %2$d</string>
+    <string name="image_status_pending">Not checked yet</string>
 </resources>

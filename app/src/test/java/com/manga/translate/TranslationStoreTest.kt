@@ -16,6 +16,30 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class TranslationStoreTest {
     @Test
+    fun `display metadata agrees with full loading for current and legacy results`() {
+        val image = File.createTempFile("badge-status", ".jpg")
+        val store = TranslationStore()
+        val file = store.translationFileFor(image)
+        val cases = listOf(
+            """{"metadata":{"mode":"standard","status":"success"},"bubbles":[]}""",
+            """{"metadata":{"mode":"standard","status":"partial"},"bubbles":[]}""",
+            """{"metadata":{"mode":"manual","status":"partial"},"bubbles":[]}""",
+            """{"bubbles":[{"text":"legacy"}]}""",
+            """{"bubbles":[{"originalText":"pending","translationState":"pending"}]}""",
+            """{"metadata":null,"bubbles":[]}"""
+        )
+        try {
+            cases.forEach { json ->
+                file.writeText(json)
+                val result = TranslationStore().load(image)!!
+                org.junit.Assert.assertEquals(json,
+                    result.metadata.isManual() || result.metadata.status == PageTranslationStatus.SUCCESS,
+                    TranslationStore().isTranslatedForDisplay(image))
+            }
+        } finally { file.delete(); image.delete() }
+    }
+
+    @Test
     fun `empty translations remove all pending bubbles from disk`() {
         withPendingPage { store, image, _ ->
             val merged = store.mergePending(image, emptyMap(), setOf(1, 2))!!

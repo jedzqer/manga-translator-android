@@ -225,7 +225,17 @@ class LlmClient(
     private suspend fun recognizeWithOpenAi(ocrSettings: OcrApiSettings, image: Bitmap,
         requestedIds: List<Int>? = null): String? {
         val endpoint = EndpointBuilder.buildOpenAiCompatibleChatEndpoint(ocrSettings.apiUrl)
-        val payload = payloadBuilder.buildImageOcrPayload(ocrSettings, image, requestedIds)
+        val request = httpTransport.buildJsonPostRequest(
+            endpoint = endpoint,
+            payload = payloadBuilder.buildImageOcrPayload(ocrSettings, image, requestedIds),
+            settings = ApiSettings(
+                apiUrl = ocrSettings.apiUrl,
+                apiKey = ocrSettings.apiKey,
+                modelName = ocrSettings.modelName,
+                apiFormat = ApiFormat.OPENAI_COMPATIBLE,
+                providerId = OCR_PROVIDER_ID
+            )
+        )
         val timeoutMs = ocrSettings.timeoutSeconds * 1000
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
@@ -237,17 +247,7 @@ class LlmClient(
             val result = try {
                 ocrConcurrencyLimiter.withPermit(ocrSettings.apiOcrConcurrencyLimit) {
                     httpTransport.executeRequest(
-                        request = httpTransport.buildJsonPostRequest(
-                            endpoint = endpoint,
-                            payload = payload,
-                            settings = ApiSettings(
-                                apiUrl = ocrSettings.apiUrl,
-                                apiKey = ocrSettings.apiKey,
-                                modelName = ocrSettings.modelName,
-                                apiFormat = ApiFormat.OPENAI_COMPATIBLE,
-                                providerId = OCR_PROVIDER_ID
-                            )
-                        ),
+                        request = request,
                         timeoutMs = timeoutMs
                     ) { response ->
                         val code = response.code
@@ -486,7 +486,7 @@ class LlmClient(
         retryCount: Int,
         contentLogLabel: String,
         buildPayload: () -> JSONObject,
-        sanitizePayloadForLog: ((String) -> String)? = null,
+        sanitizePayloadForLog: ((JSONObject) -> String)? = null,
         validateContent: ((String) -> Unit)? = null,
         retryPolicyOverride: RetryPolicy? = null
     ): String? {
@@ -508,19 +508,20 @@ class LlmClient(
         retryPolicy: RetryPolicy,
         contentLogLabel: String,
         buildPayload: () -> JSONObject,
-        sanitizePayloadForLog: ((String) -> String)?,
+        sanitizePayloadForLog: ((JSONObject) -> String)?,
         budget: RequestTimeoutBudget,
         validateContent: ((String) -> Unit)?
     ): String? {
         val selectedModel = settings.modelName.trim()
         val endpoint = EndpointBuilder.buildEndpoint(settings, selectedModel)
         val payload = buildPayload()
-        val sanitizeForLog: (String) -> String = sanitizePayloadForLog ?: { it }
+        val sanitizeForLog: (JSONObject) -> String = sanitizePayloadForLog ?: { it.toString() }
         val logModelIo = settingsStore.loadModelIoLogging()
         if (logModelIo) {
-            AppLogger.log("LlmClient", "Model input ($promptAsset): ${sanitizeForLog(payload.toString())}")
+            AppLogger.log("LlmClient", "Model input ($promptAsset): ${sanitizeForLog(payload)}")
             AppLogger.log("LlmClient", "Selected model: $selectedModel")
         }
+        val request = httpTransport.buildJsonPostRequest(endpoint, payload, settings)
         val retries = retryPolicy.maxAttempts
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
@@ -540,7 +541,7 @@ class LlmClient(
             requestTrace.beginAttempt()
             val result = try {
                 httpTransport.executeRequest(
-                    request = httpTransport.buildJsonPostRequest(endpoint, payload, settings),
+                    request = request,
                     timeoutMs = attemptTimeoutMs,
                     writeTimeoutMs = if (operation.startsWith("text:")) RequestTimeoutPolicy.TEXT_WRITE_TIMEOUT_MS else timeoutMs
                 ) { response ->
@@ -587,7 +588,10 @@ class LlmClient(
                             )
                         } else {
                             if (logModelIo) {
-                                AppLogger.log("LlmClient", "Model output: ${sanitizeForLog(content)}")
+                                val loggedContent = if (sanitizePayloadForLog != null) {
+                                    payloadBuilder.sanitizeModelIoForLog(content)
+                                } else content
+                                AppLogger.log("LlmClient", "Model output: $loggedContent")
                             }
                             validateContent?.invoke(content)
                         }

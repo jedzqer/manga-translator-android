@@ -18,6 +18,7 @@ import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -25,12 +26,62 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import androidx.test.ext.junit.runners.AndroidJUnit4
 
 @RunWith(AndroidJUnit4::class)
 class PdfImportDeviceTest {
+    /** Opt-in regression for an externally staged PDF and reference PNG hashes. */
+    @Test
+    fun stagedPdfImportMatchesReference() = runBlocking {
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        assumeTrue(
+            androidx.test.platform.app.InstrumentationRegistry.getArguments()
+                .getString("stagedPdfImport") == "true"
+        )
+        val context = instrumentation.targetContext
+        check(context.packageName.endsWith(".qa"))
+        val pdf = File(context.cacheDir, "pdf-memory-input.pdf")
+        val reference = File(context.cacheDir, "pdf-memory-reference.sha256")
+        check(pdf.isFile && reference.isFile)
+        val expected = reference.readLines().filter { it.isNotBlank() }.associate { line ->
+            val (hash, name) = line.trim().split(Regex("\\s+"), limit = 2)
+            name to hash
+        }
+        assertTrue(expected.isNotEmpty())
+        val output = File(context.cacheDir, "pdf-import-regression-output")
+        check(!output.exists()) { "Previous regression output must be removed explicitly" }
+        check(output.mkdir())
+        try {
+            val plan = PdfImageCodec.estimateImportPlan(context, context.contentResolver, Uri.fromFile(pdf))
+            assertNotNull(plan)
+            instrumentation.sendStatus(0, android.os.Bundle().apply {
+                putLong("estimatedImportWorkingBytes", plan!!.peakBytes)
+            })
+            val count = PdfImageCodec.renderPdfToImages(
+                context, context.contentResolver, Uri.fromFile(pdf), output, plan
+            )
+            assertEquals(expected.size, count)
+            assertEquals(expected.keys, output.listFiles()!!.map { it.name }.toSet())
+            for ((name, hash) in expected) {
+                val digest = MessageDigest.getInstance("SHA-256")
+                File(output, name).inputStream().use { stream ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val size = stream.read(buffer)
+                        if (size < 0) break
+                        digest.update(buffer, 0, size)
+                    }
+                }
+                assertEquals(name, hash, digest.digest().joinToString("") { "%02x".format(it) })
+            }
+        } finally {
+            output.deleteRecursively()
+        }
+    }
+
     @Test
     fun stripRenderingMatchesFullPageAndPreservesFollowingScan() = runBlocking {
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext

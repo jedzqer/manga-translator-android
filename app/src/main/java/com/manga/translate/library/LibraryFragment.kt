@@ -861,10 +861,12 @@ class LibraryFragment : Fragment() {
         currentFolder?.let { folder ->
             syncExportActionState(folder)
             updateOnlyTranslateBubblesSwitchState(folder)
+            pageViewModel.loadImages(folder)
         }
     }
 
     private fun showFolderList(restoring: Boolean = false) {
+        readingLaunchJob?.cancel()
         persistCurrentFolderDetailScroll()
         pendingFolderScrollRestore = null
         pageViewModel.navigate(null)
@@ -885,6 +887,7 @@ class LibraryFragment : Fragment() {
     }
 
     private fun showFolderDetail(folder: File, parentFolder: File? = null, restoring: Boolean = false) {
+        readingLaunchJob?.cancel()
         persistCurrentFolderDetailScroll()
         pageViewModel.navigate(folder, parentFolder)
         pendingFolderScrollRestore = folder.absolutePath
@@ -1820,47 +1823,49 @@ class LibraryFragment : Fragment() {
         }.filter { it.second.isNotEmpty() }
     }
 
+    private var readingLaunchJob: Job? = null
+
     private fun startReading() {
-        val folder = currentFolder ?: return
         exitActiveSelectionMode()
-        if (repository.isCollectionFolder(folder)) {
-            val images = repository.listChildFolders(folder).flatMap { repository.listImages(it) }
-            if (images.isEmpty()) {
-                uiCallbacks.setFolderStatus(getString(R.string.folder_chapters_empty))
-                return
-            }
-            val startIndex = readingProgressStore.load(folder)
-            val readingMode = preferencesGateway.getReadingMode(folder)
-            readingSessionViewModel.setFolder(folder, images, startIndex, readingMode)
-            (activity as? MainActivity)?.switchToTab(MainPagerAdapter.READING_INDEX)
-            return
-        }
-        val images = repository.listImages(folder)
-        if (images.isEmpty()) {
-            uiCallbacks.setFolderStatus(getString(R.string.folder_images_empty))
-            return
-        }
-        AppLogger.log("Library", "Start reading ${folder.name}, ${images.size} images")
-        val startIndex = readingProgressStore.load(folder)
-        val readingMode = preferencesGateway.getReadingMode(folder)
-        readingSessionViewModel.setFolder(folder, images, startIndex, readingMode)
-        (activity as? MainActivity)?.switchToTab(MainPagerAdapter.READING_INDEX)
+        launchReader(null)
     }
 
     private fun openImageInReader(imageFile: File) {
-        val folder = currentFolder ?: return
         if (selectionController.isSelectionMode) return
-        val images = repository.listImages(folder)
-        if (images.isEmpty()) {
-            uiCallbacks.setFolderStatus(getString(R.string.folder_images_empty))
-            return
+        launchReader(imageFile)
+    }
+
+    private fun launchReader(imageFile: File?) {
+        val folder = currentFolder ?: return
+        val cachedContent = pageViewModel.state.value.content as? FolderContent.Images
+        readingLaunchJob?.cancel()
+        readingLaunchJob = viewLifecycleOwner.lifecycleScope.launch {
+            val (isCollection, images) = withContext(Dispatchers.IO) {
+                val collection = repository.isCollectionFolder(folder)
+                val pages = if (collection) {
+                    repository.listChildFolders(folder).flatMap {
+                        currentCoroutineContext().ensureActive()
+                        repository.listImages(it)
+                    }
+                } else {
+                    cachedContent?.items?.map { it.file } ?: repository.listImages(folder)
+                }
+                collection to pages
+            }
+            if (currentFolder != folder) return@launch
+            if (images.isEmpty()) {
+                uiCallbacks.setFolderStatus(getString(
+                    if (isCollection) R.string.folder_chapters_empty else R.string.folder_images_empty
+                ))
+                return@launch
+            }
+            val startIndex = if (imageFile == null) readingProgressStore.load(folder)
+                else images.indexOfFirst { it.absolutePath == imageFile.absolutePath }
+            if (startIndex < 0) return@launch
+            val readingMode = preferencesGateway.getReadingMode(folder)
+            readingSessionViewModel.setFolder(folder, images, startIndex, readingMode)
+            (activity as? MainActivity)?.switchToTab(MainPagerAdapter.READING_INDEX)
         }
-        val startIndex = images.indexOfFirst { it.absolutePath == imageFile.absolutePath }
-        if (startIndex < 0) return
-        AppLogger.log("Library", "Open image ${imageFile.name} at index $startIndex in ${folder.name}")
-        val readingMode = preferencesGateway.getReadingMode(folder)
-        readingSessionViewModel.setFolder(folder, images, startIndex, readingMode)
-        (activity as? MainActivity)?.switchToTab(MainPagerAdapter.READING_INDEX)
     }
 
     private fun showFullTranslateInfo() {

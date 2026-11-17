@@ -212,6 +212,19 @@ class ReadingFragment : Fragment() {
         binding.readingWebtoonList.addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
             override fun onInterceptTouchEvent(rv: RecyclerView, event: MotionEvent): Boolean {
                 if (folderReadingMode != FolderReadingMode.WEBTOON_SCROLL || isEditMode) return false
+                if (binding.readingWebtoonList.isStoppingScrollGesture) {
+                    webtoonTouchHolder?.let { holder ->
+                        val cancel = MotionEvent.obtain(event)
+                        try {
+                            cancel.action = MotionEvent.ACTION_CANCEL
+                            dispatchWebtoonTouch(holder, cancel)
+                        } finally {
+                            cancel.recycle()
+                        }
+                    }
+                    webtoonTouchHolder = null
+                    return false // RecyclerView still receives the gesture to stop or resume scrolling.
+                }
                 val target = webtoonTouchHolder ?: findWebtoonTouchHolder(rv, event)
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                     webtoonTouchHolder = target
@@ -446,12 +459,17 @@ class ReadingFragment : Fragment() {
         }
     }
 
+    private var retainedBitmapImages: List<java.io.File>? = null
+
     private fun loadCurrentImage() {
         stopWebtoonTranslationWatcher()
         val images = readingSessionViewModel.state.value.images.orEmpty()
         val folder = readingSessionViewModel.state.value.currentFolder
         folderReadingMode = readingSessionViewModel.state.value.readingMode
-        readingBitmapCache.retainPaths(images.mapTo(hashSetOf()) { it.absolutePath })
+        if (retainedBitmapImages !== images) {
+            readingBitmapCache.retainPaths(images.mapTo(hashSetOf()) { it.absolutePath })
+            retainedBitmapImages = images
+        }
         if (images.isEmpty() || folder == null) {
             binding.readingEmptyHint.visibility = View.VISIBLE
             binding.readingPageInfo.visibility = View.GONE
@@ -482,12 +500,7 @@ class ReadingFragment : Fragment() {
         binding.readingPageInfo.visibility = if (readingControlsVisible) View.VISIBLE else View.GONE
         updateEditButtonState()
         exitBubbleResizeMode()
-        binding.readingPageInfo.text = getString(
-            R.string.reading_page_info,
-            folder.name,
-            index + 1,
-            images.size
-        )
+        updatePageInfo(folder.name, index + 1, images.size)
         val targetPath = imageFile.absolutePath
         val targetIndex = index
         viewLifecycleOwner.lifecycleScope.launch {
@@ -904,11 +917,25 @@ class ReadingFragment : Fragment() {
         }
     }
 
+    private fun updatePageInfo(title: String, page: Int, total: Int) {
+        if (binding.readingBookTitle.text.toString() != title) binding.readingBookTitle.text = title
+        val pageNumber = getString(R.string.reading_page_number, page, total)
+        if (binding.readingPageNumber.text.toString() != pageNumber) binding.readingPageNumber.text = pageNumber
+        updatePageInfoWidth()
+    }
+
     private fun updatePageInfoWidth() {
         if (_binding == null) return
         val available = binding.readingRoot.width - binding.readingEditControls.measuredWidth - (36 * resources.displayMetrics.density).toInt()
         val maxWidth = minOf((binding.readingRoot.width * 0.6f).toInt(), available).coerceAtLeast(0)
-        if (binding.readingPageInfo.maxWidth != maxWidth) binding.readingPageInfo.maxWidth = maxWidth
+        val pageNumber = binding.readingPageNumber
+        val pageNumberWidth = kotlin.math.ceil(pageNumber.paint.measureText(pageNumber.text.toString())).toInt() +
+            pageNumber.compoundPaddingLeft + pageNumber.compoundPaddingRight
+        val titleMaxWidth = (maxWidth - binding.readingPageInfo.paddingLeft -
+            binding.readingPageInfo.paddingRight - pageNumberWidth).coerceAtLeast(0)
+        if (binding.readingBookTitle.maxWidth != titleMaxWidth) {
+            binding.readingBookTitle.maxWidth = titleMaxWidth
+        }
     }
 
     private fun handleTap(x: Float) {
@@ -1591,12 +1618,7 @@ class ReadingFragment : Fragment() {
             }
         }
         binding.readingPageInfo.visibility = if (readingControlsVisible) View.VISIBLE else View.GONE
-        binding.readingPageInfo.text = getString(
-            R.string.reading_page_info,
-            folder.name,
-            displayIndex + 1,
-            total
-        )
+        updatePageInfo(folder.name, displayIndex + 1, total)
     }
 
     private fun persistCurrentTranslation(forceSave: Boolean = false): kotlinx.coroutines.Deferred<Result<java.io.File>>? {

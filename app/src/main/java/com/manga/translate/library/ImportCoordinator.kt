@@ -61,6 +61,7 @@ internal class ImportCoordinator(
         val peakBytes = if (isPdf) {
             pendingPdfPlans.clear()
             PdfImageCodec.estimateImportPlan(
+                context = uiContext,
                 contentResolver = uiContext.contentResolver,
                 uri = uri
             )?.also { plan ->

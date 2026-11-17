@@ -53,22 +53,40 @@
         </FrameLayout>
     </com.manga.translate.reader.ReadingScrollView>
 
-    <TextView
+    <LinearLayout
         android:id="@+id/reading_page_info"
         android:clickable="true"
         android:focusable="true"
         android:contentDescription="@string/reading_page_jump_title"
-        android:maxLines="1"
-        android:ellipsize="middle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|start"
         android:layout_margin="12dp"
-        android:textColor="#FFFFFFFF"
-        android:textSize="12sp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:background="@drawable/bg_reader_label"
         android:padding="9dp"
-        android:visibility="gone" />
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/reading_book_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="middle"
+            android:textColor="#FFFFFFFF"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/reading_page_number"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="4dp"
+            android:paddingEnd="0dp"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="12sp" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/reading_empty_hint"

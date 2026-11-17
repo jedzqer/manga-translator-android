@@ -11,7 +11,9 @@ internal data class VerticalTextLayout(
     val totalWidth: Float,
     val totalHeight: Float,
     val fontMetrics: Paint.FontMetrics,
-    val fits: Boolean
+    val fits: Boolean,
+    /** Pre-computed glyph positions, so layout and rendering cannot disagree. */
+    val glyphs: List<VerticalLineBreaker.Glyph> = emptyList()
 )
 
 internal object VerticalTextLayoutCalculator {
@@ -26,10 +28,15 @@ internal object VerticalTextLayoutCalculator {
         val fontMetrics = textPaint.fontMetrics
         val lineHeight = (fontMetrics.descent - fontMetrics.ascent).coerceAtLeast(1f)
         val maxRows = (maxHeight / lineHeight).toInt().coerceAtLeast(1)
+        // Kinsoku-aware wrapping: closing punctuation follows the previous glyph,
+        // opening brackets stay with the next one, Latin words stay in one column.
+        val breaks = VerticalLineBreaker.breakText(text, maxRows)
+        // Measure the glyphs actually drawn (single code points), so surrogate pairs
+        // are not counted as two narrow halves.
         var maxCharWidth = 0f
-        for (ch in text) {
-            if (ch == '\n') continue
-            val width = textPaint.measureText(ch.toString())
+        for (glyph in breaks.glyphs) {
+            if (glyph.text.isBlank()) continue
+            val width = textPaint.measureText(glyph.text)
             if (width > maxCharWidth) {
                 maxCharWidth = width
             }
@@ -38,36 +45,19 @@ internal object VerticalTextLayoutCalculator {
             maxCharWidth = textPaint.measureText("国")
         }
         maxCharWidth = maxCharWidth.coerceAtLeast(1f)
-        // Match the renderer: explicit breaks start a new column, automatic
-        // wrapping only starts another column when the next glyph arrives.
-        var columns = 1
-        var row = 0
-        var usedRows = 0
-        for (ch in text) {
-            if (ch == '\n') {
-                columns += 1
-                row = 0
-            } else {
-                if (row >= maxRows) {
-                    columns += 1
-                    row = 0
-                }
-                row += 1
-                usedRows = maxOf(usedRows, row)
-            }
-        }
-        val totalWidth = columns * maxCharWidth
-        val totalHeight = usedRows * lineHeight
+        val totalWidth = breaks.columns * maxCharWidth
+        val totalHeight = breaks.usedRows * lineHeight
         val fits = totalWidth <= maxWidth && totalHeight <= maxHeight
         return VerticalTextLayout(
             columnWidth = maxCharWidth,
             lineHeight = lineHeight,
             maxRows = maxRows,
-            columns = columns,
+            columns = breaks.columns,
             totalWidth = totalWidth,
             totalHeight = totalHeight,
             fontMetrics = fontMetrics,
-            fits = fits
+            fits = fits,
+            glyphs = breaks.glyphs
         )
     }
 }

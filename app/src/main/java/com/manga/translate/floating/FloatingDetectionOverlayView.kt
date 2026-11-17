@@ -10,7 +10,6 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Layout
-import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -24,11 +23,9 @@ import com.manga.translate.rendering.BubbleColorSampler
 import com.manga.translate.rendering.BubbleFontResolver
 import com.manga.translate.rendering.BubbleShapePaths
 import com.manga.translate.rendering.BubbleTextColorResolver
+import com.manga.translate.rendering.BubbleTextLayoutCache
 import com.manga.translate.rendering.BubbleTextScaling
-import com.manga.translate.rendering.VerticalTextLayout
-import com.manga.translate.rendering.VerticalTextLayoutCalculator
 import com.manga.translate.rendering.VerticalTextRenderer
-import com.manga.translate.rendering.VerticalTextSymbolConverter
 import com.manga.translate.settings.FloatingBubbleRenderSettings
 import com.manga.translate.settings.FloatingBubbleShape
 import com.manga.translate.settings.SettingsStore
@@ -78,6 +75,7 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         color = DEFAULT_TEXT_COLOR
         textSize = resources.displayMetrics.density * resources.configuration.fontScale * 12f
     }
+    private val textLayoutCache = BubbleTextLayoutCache()
     private val sourceRect = RectF()
     private val tempRect = RectF()
     private val shapeRect = RectF()
@@ -203,6 +201,7 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         val typefaceSourceChanged = cachedTypefaceSignature != nextTypefaceSignature
         if (!settingsChanged && !typefaceSourceChanged) return
         bubbleRenderSettings = settings
+        textLayoutCache.clear()
         if (typefaceSourceChanged) {
             cachedTypeface = null
         }
@@ -468,40 +467,34 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
                 updateDisplayRect(tempRect, tempRect)
                 drawDeleteIcon(canvas, tempRect)
             }
-            val text = BubbleTextScaling.prepareTextForLayout(
-                bubble.text.ifBlank { context.getString(R.string.floating_bubble_placeholder) }
-            )
+            val text = bubble.text.ifBlank { context.getString(R.string.floating_bubble_placeholder) }
             val textRect = BubbleTextScaling.resolveTextRect(bubblePath)
             if (textRect.width() <= 0f || textRect.height() <= 0f) continue
             if (bubbleRenderSettings.useHorizontalText) {
-                val textSize = BubbleTextScaling.findAutoHorizontalTextSize(
+                val textLayout = textLayoutCache.horizontal(
                     text = text,
                     maxWidth = textRect.width().toInt().coerceAtLeast(1),
                     maxHeight = textRect.height().toInt().coerceAtLeast(1),
-                    buildLayout = { content, width, ts ->
-                        buildLayout(text = content, paint = TextPaint(textPaint).apply { this.textSize = ts }, availableWidth = width)
-                    },
-                    textFillPercent = bubbleRenderSettings.textFillPercent,
-                    layoutFits = BubbleTextScaling::layoutFits
-                )
-                val textLayout = buildLayout(
-                    text = text,
-                    paint = TextPaint(textPaint).apply { this.textSize = textSize },
-                    availableWidth = textRect.width().toInt().coerceAtLeast(1)
+                    fillPercent = bubbleRenderSettings.textFillPercent,
+                    basePaint = textPaint,
+                    alignment = Layout.Alignment.ALIGN_NORMAL
                 )
                 canvas.withClip(textRect) {
                     withTranslation(textRect.centerX(), textRect.centerY()) {
-                        translate(-textLayout.width / 2f, -textLayout.height / 2f)
-                        textLayout.draw(this)
+                        translate(-textLayout.layout.width / 2f, -textLayout.layout.height / 2f)
+                        textLayout.layout.draw(this)
                     }
                 }
             } else {
                 canvas.withClip(textRect) {
-                    drawVerticalTextInRect(
-                        this,
-                        VerticalTextSymbolConverter.convert(text),
-                        textRect
+                    val layout = textLayoutCache.vertical(
+                        text = text,
+                        maxWidth = textRect.width().toInt().coerceAtLeast(1),
+                        maxHeight = textRect.height().toInt().coerceAtLeast(1),
+                        fillPercent = bubbleRenderSettings.textFillPercent,
+                        basePaint = textPaint
                     )
+                    VerticalTextRenderer.draw(this, textRect, layout.paint, layout.layout)
                 }
             }
         }
@@ -567,14 +560,6 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         val right = (left + size).coerceAtMost(source.right)
         val bottom = (top + size).coerceAtMost(source.bottom)
         outRect.set(left, top, right, bottom)
-    }
-
-    private fun buildLayout(text: String, paint: TextPaint, availableWidth: Int): StaticLayout {
-        return StaticLayout.Builder
-            .obtain(text, 0, text.length, paint, availableWidth)
-            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-            .setIncludePad(false)
-            .build()
     }
 
     private fun applyBubbleOpacity() {
@@ -677,34 +662,6 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         )
     }
 
-    private fun drawVerticalTextInRect(canvas: Canvas, text: String, rect: RectF) {
-        val maxWidth = rect.width().toInt().coerceAtLeast(1)
-        val maxHeight = rect.height().toInt().coerceAtLeast(1)
-        val textSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight)
-        val layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
-        textPaint.textSize = textSize
-        VerticalTextRenderer.draw(canvas, text, rect, textPaint, layout)
-    }
-
-    private fun findDefaultVerticalTextSize(
-        text: String,
-        maxWidth: Int,
-        maxHeight: Int
-    ): Float {
-        return BubbleTextScaling.findAutoVerticalTextSize(maxWidth, maxHeight, bubbleRenderSettings.textFillPercent) { textSize ->
-            buildVerticalLayout(text, maxWidth, maxHeight, textSize)
-        }
-    }
-
-    private fun buildVerticalLayout(
-        text: String,
-        maxWidth: Int,
-        maxHeight: Int,
-        textSize: Float
-    ): VerticalTextLayout {
-        return VerticalTextLayoutCalculator.build(textPaint, text, maxWidth, maxHeight, textSize)
-    }
-
     private fun setDirty(value: Boolean) {
         if (dirty == value) return
         dirty = value
@@ -730,6 +687,7 @@ class FloatingDetectionOverlayView @JvmOverloads constructor(
         super.onDetachedFromWindow()
         typefaceLoadJob?.cancel()
         viewJob.cancel()
+        textLayoutCache.clear()
         screenTapDetector?.cancel()
     }
 

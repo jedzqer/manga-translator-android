@@ -16,7 +16,8 @@ data class FolderItem(
 
 data class ImageItem(
     val file: File,
-    val translated: Boolean
+    val translated: Boolean,
+    val statusLoaded: Boolean = true
 )
 
 enum class FolderStatus(val labelRes: Int) {

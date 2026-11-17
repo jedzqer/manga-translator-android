@@ -56,9 +56,10 @@ class LibraryRepository(private val context: Context) {
         sortField: LibrarySortField,
         ascending: Boolean
     ): List<File> {
+        val modified = if (sortField == LibrarySortField.TIME) folders.associateWith { it.lastModified() } else emptyMap()
         val comparator = when (sortField) {
             LibrarySortField.NAME -> compareBy<File> { it.name.lowercase(Locale.getDefault()) }
-            LibrarySortField.TIME -> compareBy<File> { it.lastModified() }
+            LibrarySortField.TIME -> compareBy<File> { modified.getValue(it) }
         }
         return if (ascending) {
             folders.sortedWith(comparator)
@@ -140,7 +141,7 @@ class LibraryRepository(private val context: Context) {
 
     fun listImages(folder: File): List<File> {
         val images = folder.listFiles { file ->
-            file.isFile && isImageFile(file.name)
+            isImageFile(file.name) && file.isFile
         }?.toList().orEmpty()
         return images.sortedWith { first, second ->
             compareFileNamesNaturally(first.name, second.name)
@@ -148,7 +149,7 @@ class LibraryRepository(private val context: Context) {
     }
 
     fun countImages(folder: File): Int = folder.listFiles { file ->
-        file.isFile && isImageFile(file.name)
+        isImageFile(file.name) && file.isFile
     }?.size ?: 0
 
     suspend fun addImages(

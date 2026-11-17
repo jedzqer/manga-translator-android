@@ -4,7 +4,6 @@ import com.manga.translate.library.LibraryPreferencesGateway
 import com.manga.translate.library.LibraryRepository
 import com.manga.translate.model.FolderReadingMode
 import com.manga.translate.model.PageOcrResult
-import com.manga.translate.model.PageTranslationStatus
 import com.manga.translate.model.TranslationLanguage
 import com.manga.translate.model.TranslationMetadata
 import com.manga.translate.network.LlmRequestException
@@ -316,30 +315,11 @@ internal class FolderStandardTranslationWorkflow(
                     failureMessage = e.message
                     null
                 }
-                val pageFailed = if (execution?.result != null) {
-                    translationPipeline.saveResult(image, execution.result)
-                    val savedStatus = execution.result.metadata.status
-                    progressStore.update(
-                        folder,
-                        image.name,
-                        if (savedStatus == PageTranslationStatus.SKIPPED) {
-                            PageProgressStatus.SKIPPED
-                        } else {
-                            PageProgressStatus.SAVED
-                        }
-                    )
-                    false
-                } else if (execution?.recoveredFromModelError == true) {
-                    progressStore.update(folder, image.name, PageProgressStatus.SKIPPED)
-                    false
-                } else {
+                val pageFailed = scheduler.commitPageResult(
+                    folder, image, execution, failureMessage ?: requestException.get()?.message
+                )
+                if (pageFailed) {
                     hasFailures.set(true)
-                    scheduler.recordPageFailure(
-                        folder,
-                        image,
-                        failureMessage ?: requestException.get()?.message
-                    )
-                    true
                 }
                 reportPageProcessed(pageFailed)
             }

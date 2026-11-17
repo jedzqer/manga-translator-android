@@ -11,6 +11,7 @@ import com.manga.translate.detection.BubbleDetection
 import com.manga.translate.detection.DetectionTile
 import com.manga.translate.detection.PageRegionDetectionResult
 import com.manga.translate.detection.lineBelongsToRegion
+import com.manga.translate.detection.shouldFilterTextRectByBubbles
 import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.BubbleTranslation
 import kotlin.math.abs
@@ -28,23 +29,51 @@ internal data class VlPageLayout(
 )
 
 internal fun PageRegionDetectionResult.vlLayout(): VlPageLayout {
+    // A text block spanning connected balloons is one indivisible response. Give
+    // it a complete rendering parent, including other text in the same balloons.
+    val groups = bubbleDetections.indices.map { mutableSetOf(it) }.toMutableList()
+    for (text in allTextDetections) {
+        val textArea = text.rect.width() * text.rect.height()
+        if (textArea <= 0f) continue
+        val coverage = bubbleDetections.map { bubble ->
+            val intersection = RectF(text.rect)
+            if (intersection.intersect(bubble.rect)) intersection.width() * intersection.height() / textArea else 0f
+        }
+        if (coverage.any { it >= 0.8f }) continue
+        val candidates = coverage.indices.filter { coverage[it] >= 0.2f }.toSet()
+        if (candidates.size < 2 || !shouldFilterTextRectByBubbles(
+                text.rect, candidates.map { bubbleDetections[it].rect }, iouThreshold = 1f)) continue
+        val joined = groups.filter { group -> group.any { it in candidates } }
+        val merged = joined.flatMap { it }.toMutableSet()
+        groups.removeAll(joined.toSet())
+        groups.add(merged)
+    }
+    val backgrounds = groups.sortedBy { it.min() }.map { group ->
+        val first = bubbleDetections[group.min()]
+        if (group.size == 1) first else {
+            val rect = RectF(first.rect)
+            group.forEach { rect.union(bubbleDetections[it].rect) }
+            // A single lobe's contour cannot describe the merged region.
+            first.copy(rect = rect, maskContour = null)
+        }
+    }
     val parents = allTextDetections.map { text ->
-        bubbleDetections.indices.filter { lineBelongsToRegion(text.rect, bubbleDetections[it].rect) }
+        backgrounds.indices.filter { lineBelongsToRegion(text.rect, backgrounds[it].rect) }
             .sortedWith(compareByDescending<Int> {
                 val intersection = RectF(text.rect)
-                if (intersection.intersect(bubbleDetections[it].rect)) intersection.width() * intersection.height() else 0f
-            }.thenBy { bubbleDetections[it].rect.width() * bubbleDetections[it].rect.height() }).firstOrNull()
+                if (intersection.intersect(backgrounds[it].rect)) intersection.width() * intersection.height() else 0f
+            }.thenBy { backgrounds[it].rect.width() * backgrounds[it].rect.height() }).firstOrNull()
     }
     val seeds = allTextDetections.mapIndexed { i, text ->
         Triple(text.rect, text.maskContour, parents[i])
-    } + bubbleDetections.mapIndexedNotNull { i, bubble ->
+    } + backgrounds.mapIndexedNotNull { i, bubble ->
         if (i in parents) null else Triple(bubble.rect, bubble.maskContour, i)
     }
     val sorted = seeds.sortedWith(compareBy({ it.first.top }, { it.first.left }))
     return VlPageLayout(width, height, sorted.mapIndexed { id, seed ->
         BubbleTranslation.pending(id, seed.first, "",
             if (seed.third == null) BubbleSource.TEXT_DETECTOR else BubbleSource.BUBBLE_DETECTOR, seed.second)
-    }, bubbleDetections, tiles, sorted.mapIndexedNotNull { id, seed -> seed.third?.let { id to it } }.toMap())
+    }, backgrounds, tiles, sorted.mapIndexedNotNull { id, seed -> seed.third?.let { id to it } }.toMap())
 }
 
 /** Fold text-block responses into a single rendering region per balloon. */
@@ -56,8 +85,13 @@ internal fun VlPageLayout.renderTranslations(translated: Map<Int, String>): List
         if (text.isEmpty()) return@mapNotNull null
         val target = members.first()
         val parent = if (key.first) backgrounds[key.second] else null
-        val region = if (parent == null) target else target.copy(
-            rect = RectF(parent.rect), maskContour = parent.maskContour, source = BubbleSource.BUBBLE_DETECTOR)
+        val region = if (parent == null) target else {
+            val rect = RectF(parent.rect)
+            members.forEach { rect.union(it.rect) }
+            target.copy(rect = rect,
+                maskContour = parent.maskContour.takeIf { rect == parent.rect },
+                source = BubbleSource.BUBBLE_DETECTOR)
+        }
         region.withTranslationResult(text)
     }
 }

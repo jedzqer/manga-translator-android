@@ -1369,20 +1369,7 @@ internal class PageRegionDetector(
         threshold: Float
     ): List<RectF> {
         if (bubbleRects.isEmpty()) return textRects
-        val filtered = ArrayList<RectF>(textRects.size)
-        for (rect in textRects) {
-            var overlapped = false
-            for (bubble in bubbleRects) {
-                if (shouldFilterTextRectByBubble(rect, bubble, threshold)) {
-                    overlapped = true
-                    break
-                }
-            }
-            if (!overlapped) {
-                filtered.add(rect)
-            }
-        }
-        return filtered
+        return textRects.filterNot { shouldFilterTextRectByBubbles(it, bubbleRects, threshold) }
     }
 
     private fun filterTinyBubbleDetections(
@@ -1648,6 +1635,44 @@ internal fun shouldFilterTextRectByBubble(
     return rectIou(textRect, bubbleRect) >= iouThreshold ||
         rectContains(bubbleRect, textRect)
 }
+
+/** Suppress text spanning multiple balloons without counting their gaps or overlaps twice. */
+internal fun shouldFilterTextRectByBubbles(
+    textRect: RectF,
+    bubbleRects: List<RectF>,
+    iouThreshold: Float
+): Boolean {
+    if (bubbleRects.any { shouldFilterTextRectByBubble(textRect, it, iouThreshold) }) return true
+    val textArea = rectAreaValue(textRect)
+    if (textArea <= 0f) return false
+    val intersections = bubbleRects.mapNotNull { bubble ->
+        RectF(
+            max(textRect.left, bubble.left), max(textRect.top, bubble.top),
+            min(textRect.right, bubble.right), min(textRect.bottom, bubble.bottom)
+        ).takeIf { it.width() > 0f && it.height() > 0f }
+    }
+    if (intersections.size < 2) return false
+
+    // Integrate the union of clipped rectangles in vertical strips. A bounding box
+    // would also suppress unrelated text in the empty space between balloons.
+    val edges = intersections.flatMap { listOf(it.left, it.right) }.distinct().sorted()
+    var coveredArea = 0f
+    for (index in 0 until edges.lastIndex) {
+        val left = edges[index]
+        val right = edges[index + 1]
+        val intervals = intersections.filter { it.left < right && it.right > left }.sortedBy { it.top }
+        var coveredHeight = 0f
+        var bottom = Float.NEGATIVE_INFINITY
+        for (rect in intervals) {
+            coveredHeight += (rect.bottom - max(rect.top, bottom)).coerceAtLeast(0f)
+            bottom = max(bottom, rect.bottom)
+        }
+        coveredArea += (right - left) * coveredHeight
+    }
+    return coveredArea / textArea >= MULTI_BUBBLE_TEXT_COVERAGE_THRESHOLD
+}
+
+private const val MULTI_BUBBLE_TEXT_COVERAGE_THRESHOLD = 0.8f
 
 private fun shouldTreatPartiallyShiftedRectsAsSameBubble(
     a: RectF,

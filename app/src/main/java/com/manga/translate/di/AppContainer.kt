@@ -50,7 +50,7 @@ internal class AppContainer(private val appContext: Context) {
     }
     val bubbleTextRecognizer =
         com.manga.translate.ocr.BubbleTextRecognizer(llmClient, ocrEngineRegistry)
-    val translationStore = TranslationStore()
+    val translationStore = TranslationStore(java.io.File(appContext.cacheDir, "library_status"))
     val ocrStore = OcrStore()
     val glossaryStore = GlossaryStore()
     val extractStateStore = ExtractStateStore()

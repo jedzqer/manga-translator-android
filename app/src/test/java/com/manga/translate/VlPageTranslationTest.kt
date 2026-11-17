@@ -91,6 +91,47 @@ class VlPageTranslationTest {
         assertEquals(layout.targets.map { it.rect }, page.vlLayout().targets.map { it.rect })
     }
 
+    @Test fun `text spanning two balloons renders once across both including their other text`() {
+        val contour = floatArrayOf(0f, 0f, .5f, 0f, .5f, 1f, 0f, 1f)
+        val balloons = listOf(
+            BubbleDetection(RectF(0f, 0f, 100f, 200f), 1f, 0, contour),
+            BubbleDetection(RectF(100f, 0f, 200f, 200f), 1f, 0))
+        val texts = listOf(RectF(50f, 20f, 150f, 100f), RectF(20f, 120f, 80f, 160f))
+            .map { BubbleDetection(it, 1f, 1) }
+        val layout = PageRegionDetectionResult(200, 200, balloons, emptyList(), emptyList(),
+            allTextDetections = texts).vlLayout()
+        assertEquals(texts.map { it.rect }, layout.targets.map { it.rect })
+        val result = layout.renderTranslations(mapOf(0 to "complete dialogue", 1 to "more dialogue")).single()
+        assertEquals(RectF(0f, 0f, 200f, 200f), result.rect)
+        assertEquals("complete dialogue\nmore dialogue", result.translatedText)
+        assertNull(result.maskContour)
+        assertEquals(BubbleSource.BUBBLE_DETECTOR, result.source)
+    }
+
+    @Test fun `partial parent cannot crop a text block to half its geometry`() {
+        val parent = BubbleDetection(RectF(0f, 0f, 100f, 100f), 1f, 0,
+            floatArrayOf(0f, 0f, .5f, 0f, .5f, 1f, 0f, 1f))
+        val text = BubbleDetection(RectF(50f, 20f, 150f, 80f), 1f, 1)
+        val layout = PageRegionDetectionResult(200, 100, listOf(parent), emptyList(), emptyList(),
+            allTextDetections = listOf(text)).vlLayout()
+        val result = layout.renderTranslations(mapOf(0 to "complete dialogue")).single()
+        assertEquals(RectF(0f, 0f, 150f, 100f), result.rect)
+        assertNull(result.maskContour)
+    }
+
+    @Test fun `text across a large gap does not merge unrelated balloons`() {
+        val balloons = listOf(BubbleDetection(RectF(0f, 0f, 100f, 200f), 1f, 0),
+            BubbleDetection(RectF(200f, 0f, 300f, 200f), 1f, 0))
+        val text = BubbleDetection(RectF(50f, 20f, 250f, 80f), 1f, 1)
+        val layout = PageRegionDetectionResult(300, 200, balloons, emptyList(), emptyList(),
+            allTextDetections = listOf(text)).vlLayout()
+        assertEquals(balloons, layout.backgrounds)
+        assertEquals(3, layout.targets.size)
+        assertEquals(text.rect, layout.renderTranslations(layout.targets.associate {
+            it.id to if (it.source == BubbleSource.TEXT_DETECTOR) "text" else ""
+        }).single().rect)
+    }
+
     @Test fun `overlapping parents choose smaller fully covering balloon`() {
         val large = BubbleDetection(RectF(0f, 0f, 100f, 100f), 1f, 0)
         val small = BubbleDetection(RectF(10f, 10f, 80f, 80f), 1f, 0)

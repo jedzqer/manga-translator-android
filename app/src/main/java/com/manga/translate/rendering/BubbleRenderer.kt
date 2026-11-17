@@ -9,7 +9,6 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Layout
-import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.core.graphics.withClip
 import androidx.core.graphics.withTranslation
@@ -243,20 +242,18 @@ class BubbleRenderer(context: Context) {
         verticalLayoutEnabled: Boolean,
         startFromTop: Boolean
     ) {
-        val text = BubbleTextScaling.prepareTextForLayout(rawText)
+        val width = rect.width().toInt().coerceAtLeast(1)
+        val height = rect.height().toInt().coerceAtLeast(1)
         if (verticalLayoutEnabled) {
+            val prepared = BubbleTextLayoutPreparer.vertical(rawText, width, height, textFillPercent, textPaint)
             canvas.withClip(rect) {
-                drawVerticalTextInRect(
-                    this,
-                    VerticalTextSymbolConverter.convert(text),
-                    rect,
-                    textFillPercent,
-                    startFromTop
-                )
+                VerticalTextRenderer.draw(this, rect, prepared.paint, prepared.layout, startFromTop)
             }
         } else {
-            val textSize = resolveHorizontalTextSize(rect, text, textFillPercent)
-            val layout = buildLayout(text, rect.width().toInt().coerceAtLeast(1), textSize)
+            val prepared = BubbleTextLayoutPreparer.horizontal(
+                rawText, width, height, textFillPercent, textPaint, Layout.Alignment.ALIGN_CENTER
+            )
+            val layout = prepared.layout
             val left = BubbleTextPlacement.horizontalTextLeft(rect, layout.width)
             val top = BubbleTextPlacement.horizontalTextTop(rect, layout.height, startFromTop)
             canvas.withClip(rect) {
@@ -265,59 +262,5 @@ class BubbleRenderer(context: Context) {
                 }
             }
         }
-    }
-
-    private fun resolveHorizontalTextSize(rect: RectF, text: String, textFillPercent: Int): Float {
-        return BubbleTextScaling.findAutoHorizontalTextSize(
-            text = text,
-            maxWidth = rect.width().toInt().coerceAtLeast(1),
-            maxHeight = rect.height().toInt().coerceAtLeast(1),
-            buildLayout = ::buildLayout,
-            textFillPercent = textFillPercent,
-            layoutFits = BubbleTextScaling::layoutFits
-        )
-    }
-
-    private fun buildLayout(text: String, width: Int, textSize: Float): StaticLayout {
-        textPaint.textSize = textSize
-        return StaticLayout.Builder.obtain(text, 0, text.length, textPaint, width)
-            .setAlignment(Layout.Alignment.ALIGN_CENTER)
-            .setIncludePad(false)
-            .setLineSpacing(0f, 1f)
-            .build()
-    }
-
-    private fun drawVerticalTextInRect(
-        canvas: Canvas,
-        text: String,
-        rect: RectF,
-        textFillPercent: Int,
-        startFromTop: Boolean
-    ) {
-        val maxWidth = rect.width().toInt().coerceAtLeast(1)
-        val maxHeight = rect.height().toInt().coerceAtLeast(1)
-        val textSize = findDefaultVerticalTextSize(text, maxWidth, maxHeight, textFillPercent)
-        val layout = buildVerticalLayout(text, maxWidth, maxHeight, textSize)
-        VerticalTextRenderer.draw(canvas, text, rect, textPaint, layout, startFromTop)
-    }
-
-    private fun findDefaultVerticalTextSize(
-        text: String,
-        maxWidth: Int,
-        maxHeight: Int,
-        textFillPercent: Int
-    ): Float {
-        return BubbleTextScaling.findAutoVerticalTextSize(maxWidth, maxHeight, textFillPercent) { textSize ->
-            buildVerticalLayout(text, maxWidth, maxHeight, textSize)
-        }
-    }
-
-    private fun buildVerticalLayout(
-        text: String,
-        maxWidth: Int,
-        maxHeight: Int,
-        textSize: Float
-    ): VerticalTextLayout {
-        return VerticalTextLayoutCalculator.build(textPaint, text, maxWidth, maxHeight, textSize)
     }
 }
