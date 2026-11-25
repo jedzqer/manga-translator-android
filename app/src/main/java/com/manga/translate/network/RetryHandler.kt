@@ -3,6 +3,8 @@ package com.manga.translate.network
 import com.manga.translate.platform.AppLogger
 import com.manga.translate.settings.SettingsStore
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlin.random.Random
 
 /**
@@ -25,16 +27,41 @@ internal class RetryHandler(private val settingsStore: SettingsStore) {
         retryPolicy: RetryPolicy,
         errorCode: String?,
         errorBody: String?
-    ): Boolean = attempt < retryPolicy.maxAttempts &&
-        shouldRetry(errorCode, errorBody, retryPolicy.mode)
+    ): Boolean = attempt < retryPolicy.maxAttempts && shouldRetry(errorCode, errorBody)
 
-    suspend fun backoffBeforeRetry(attempt: Int, retryPolicy: RetryPolicy, errorCode: String?) {
-        val delayMs = retryDelayMs(attempt, retryPolicy.mode)
+    suspend fun backoffBeforeRetry(
+        attempt: Int, retryPolicy: RetryPolicy, errorCode: String?, retryAfter: String? = null,
+        deadline: RequestTimeoutBudget
+    ): Boolean {
+        val jitter = retryDelayMs(attempt, retryPolicy.mode)
+        val serverDelay = retryAfterMillis(retryAfter)
+        val delayMs = maxOf(jitter, serverDelay ?: 0L)
+        currentCoroutineContext().ensureActive()
+        // An otherwise retryable request stopped by its deadline is a timeout,
+        // not a terminal failure with the preceding HTTP status.
+        if (deadline.remainingMs() <= delayMs) throw LlmRequestException(LlmErrorCode.Timeout)
         AppLogger.log(
             "LlmClient",
             "Retrying request after ${delayMs}ms delay (attempt ${attempt + 1}/${retryPolicy.maxAttempts}, error=$errorCode)"
         )
         delay(delayMs)
+        deadline.requireRemainingMs()
+        return true
+    }
+
+    internal fun retryAfterMillis(value: String?, nowMillis: Long = System.currentTimeMillis()): Long? {
+        val raw = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (raw.all { it in '0'..'9' }) {
+            return (raw.toLongOrNull() ?: Long.MAX_VALUE).coerceAtMost(Long.MAX_VALUE / 1000L) * 1000L
+        }
+        return runCatching {
+            val format = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US)
+            format.isLenient = false
+            val position = java.text.ParsePosition(0)
+            val expires = format.parse(raw, position)?.time ?: return null
+            if (position.index != raw.length) return null
+            (expires - nowMillis).coerceAtLeast(0L)
+        }.getOrNull()
     }
 
     internal fun retryDelayMs(attempt: Int, mode: RetryMode): Long {
@@ -44,55 +71,29 @@ internal class RetryHandler(private val settingsStore: SettingsStore) {
         return Random.nextLong(ceiling / 2, ceiling + 1)
     }
 
-    private fun shouldRetry(
-        errorCode: String?,
-        errorBody: String?,
-        mode: RetryMode
-    ): Boolean {
-        return when (mode) {
-            RetryMode.DEFAULT -> shouldRetryWithBackoff(errorCode)
-            RetryMode.CONFIGURABLE -> shouldRetryWithConfiguredMode(errorCode, errorBody)
-        }
-    }
-
-    private fun shouldRetryWithBackoff(errorCode: String?): Boolean {
+    private fun shouldRetry(errorCode: String?, errorBody: String?): Boolean {
         if (errorCode == null) return false
-        if (errorCode == "TIMEOUT" || errorCode == "NETWORK_ERROR" || errorCode == "HTTP 408" || errorCode == "HTTP 429") {
-            return true
-        }
-        if (!errorCode.startsWith("HTTP ")) {
-            return false
-        }
-        val status = errorCode.removePrefix("HTTP ").toIntOrNull() ?: return false
-        return status in 500..599
-    }
-
-    private fun shouldRetryWithConfiguredMode(errorCode: String?, errorBody: String?): Boolean {
-        if (errorCode == null) return false
-        if (errorCode == "TIMEOUT" || errorCode == "NETWORK_ERROR" || errorCode == "HTTP 408" || errorCode == "HTTP 429") {
-            return true
-        }
+        if (errorCode == "TIMEOUT" || errorCode == "NETWORK_ERROR") return true
         val status = errorCode.removePrefix("HTTP ").toIntOrNull()
-        if (status != null && status in 500..599) {
-            return true
-        }
-        if (errorBody != null) {
-            val normalizedBody = errorBody.lowercase()
-            if (
-                normalizedBody.contains("temporarily unavailable") ||
-                normalizedBody.contains("temporary unavailable") ||
-                normalizedBody.contains("service unavailable") ||
-                normalizedBody.contains("try again later") ||
-                normalizedBody.contains("server busy") ||
-                normalizedBody.contains("overloaded")
-            ) {
-                return true
-            }
-        }
-        return false
+        val body = errorBody.orEmpty().lowercase()
+        if (permanentFailures.any(body::contains)) return false
+        if (status == 408 || status == 429 || status != null && status in 500..599) return true
+        return status == 400 && temporaryGatewayFailures.any(body::contains)
     }
 
     companion object {
+        private val permanentFailures = listOf(
+            "insufficient_quota", "insufficient quota", "billing_hard_limit", "billing_not_active",
+            "billing hard limit", "payment required", "insufficient balance", "insufficient credits",
+            "credit balance is too low", "out of credits", "quota exhausted", "exceeded your current quota",
+            "invalid_api_key", "invalid api key", "unauthorized", "forbidden", "authentication_error",
+            "invalid parameter", "invalid_parameter", "unknown parameter", "unsupported parameter",
+            "content_filter", "content policy violation", "safety filter", "refusal"
+        )
+        private val temporaryGatewayFailures = listOf(
+            "temporarily unavailable", "temporary unavailable", "service unavailable", "server busy",
+            "server overloaded", "server is overloaded", "service overloaded", "model is overloaded"
+        )
         const val RETRY_COUNT = 3
         const val RETRY_BASE_DELAY_MS = 750
         const val RETRY_MAX_DELAY_MS = 4_000

@@ -16,7 +16,7 @@ internal class ThinkingLengthDialog(
 ) {
     fun show() {
         val current = settingsStore.loadLlmParameters()
-        if (!current.enableThinking) {
+        if (current.enableThinking != true) {
             Toast.makeText(
                 fragment.requireContext(),
                 R.string.thinking_length_requires_enable,
@@ -24,13 +24,12 @@ internal class ThinkingLengthDialog(
             ).show()
             return
         }
-        val options = ThinkingLength.optionsFor(fragment.currentApiFormat())
-        val selected = options.find { it == current.thinkingLength } ?: options.first()
+        val options = ThinkingLength.entries
         showSingleChoiceSettingDialog(
             context = fragment.requireContext(),
             titleRes = R.string.thinking_length_title,
             options = options,
-            current = selected,
+            current = current.thinkingLength,
             labelRes = { it.labelRes }
         ) { dialog, length ->
             val latest = settingsStore.loadLlmParameters()

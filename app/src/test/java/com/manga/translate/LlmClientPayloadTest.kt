@@ -423,7 +423,7 @@ class LlmClientPayloadTest {
     }
 
     @Test
-    fun `gemini payload omits thinking config when thinking is disabled`() = runBlocking {
+    fun `gemini payload omits thinking config when thinking follows the model default`() = runBlocking {
         server.enqueue(
             MockResponse().setBody(
                 """{"candidates":[{"content":{"parts":[{"text":"{\"translation\":\"ok\"}"}]}}]}"""

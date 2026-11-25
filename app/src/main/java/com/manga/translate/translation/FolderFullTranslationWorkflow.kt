@@ -35,10 +35,7 @@ internal class FolderFullTranslationWorkflow(
         onGlossaryProgress: suspend (processed: Int, total: Int, imageName: String) -> Unit,
         onCountUpdated: suspend (processedCount: Int, failedCount: Int) -> Unit
     ): PageExecutionSummary {
-        val synopsis = FullTranslationSynopsis(glossaryLifecycle.loadSynopsis(folder)) {
-            glossaryLifecycle.saveSynopsis(folder, it)
-        }
-        return withContext(synopsis) {
+        return glossaryLifecycle.withSynopsis(folder) {
             val glossary = glossaryLifecycle.loadScopedGlossary(folder)
             val extractState = glossaryLifecycle.loadScopedExtractState(folder)
             val glossaryMutex = Mutex()

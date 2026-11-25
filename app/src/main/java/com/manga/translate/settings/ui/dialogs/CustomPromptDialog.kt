@@ -23,6 +23,7 @@ internal class PromptEditorState : ViewModel() {
     val drafts = mutableMapOf<Int, String>()
     var importMode: Int? = null
     var exportText: String? = null
+    var exportPack: ByteArray? = null
 }
 
 class CustomPromptDialog : DialogFragment() {
@@ -65,6 +66,36 @@ class CustomPromptDialog : DialogFragment() {
         }
     }
 
+    private val importPackDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) lifecycleScope.launch {
+            val context = requireContext()
+            val promptStore = store
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { promptStore.importPack(context, it) }
+                        ?: error("Cannot open document")
+                }
+            }.onSuccess { documents ->
+                CustomPromptStore.assets.forEachIndexed { index, asset -> state.drafts[index] = documents.getValue(asset) }
+                editor?.setText(state.drafts.getValue(state.mode))
+                Toast.makeText(context, R.string.custom_prompt_pack_imported, Toast.LENGTH_SHORT).show()
+            }.onFailure { showPackError() }
+        }
+    }
+    private val exportPackDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val bytes = state.exportPack
+        state.exportPack = null
+        if (uri != null && bytes != null) lifecycleScope.launch {
+            val context = requireContext()
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+                        ?: error("Cannot open document")
+                }
+            }.onFailure { showPackError() }
+        }
+    }
+
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val context = requireContext()
         val content = layoutInflater.inflate(R.layout.dialog_custom_prompt, null)
@@ -95,6 +126,23 @@ class CustomPromptDialog : DialogFragment() {
                 state.exportText = valid
                 exportDocument.launch(asset.substringAfterLast('/'))
             }.onFailure { showError() }
+        }
+        content.findViewById<View>(R.id.prompt_pack_import).setOnClickListener {
+            importPackDocument.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+        }
+        content.findViewById<View>(R.id.prompt_pack_export).setOnClickListener {
+            state.drafts[state.mode] = editor?.text.toString()
+            val drafts = state.drafts.mapKeys { CustomPromptStore.assets[it.key] }
+            val promptStore = store
+            lifecycleScope.launch {
+                runCatching {
+                    withContext(Dispatchers.IO) { promptStore.exportPack(context, drafts) }
+                }.onSuccess {
+                    state.exportPack = it
+                    val language = com.manga.translate.platform.PromptAssetResolver.translationTargetKey(context)
+                    exportPackDocument.launch("prompts_$language.zip")
+                }.onFailure { showPackError() }
+            }
         }
         content.findViewById<View>(R.id.prompt_reset).setOnClickListener {
             val selectedMode = state.mode
@@ -135,6 +183,11 @@ class CustomPromptDialog : DialogFragment() {
         editor?.let { state.drafts[state.mode] = it.text.toString() }
         editor = null
         super.onDestroyView()
+    }
+
+    private fun showPackError() {
+        if (isAdded) AlertDialog.Builder(requireContext()).setMessage(R.string.custom_prompt_pack_error)
+            .setPositiveButton(android.R.string.ok, null).show()
     }
 
     private fun showError() {

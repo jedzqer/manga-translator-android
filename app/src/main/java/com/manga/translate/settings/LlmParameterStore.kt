@@ -21,20 +21,11 @@ internal class LlmParameterStore(
 
     fun loadLlmParameters(): LlmParameterSettings {
         return LlmParameterSettings(
-            temperature = storage.readDoubleWithDefault(
-                SettingsStore.KEY_LLM_TEMPERATURE,
-                SettingsStore.DEFAULT_LLM_TEMPERATURE
-            ),
-            topP = storage.readDoubleWithDefault(
-                SettingsStore.KEY_LLM_TOP_P,
-                SettingsStore.DEFAULT_LLM_TOP_P
-            ),
+            temperature = storage.readDoubleOptional(SettingsStore.KEY_LLM_TEMPERATURE),
+            topP = storage.readDoubleOptional(SettingsStore.KEY_LLM_TOP_P),
             topK = storage.readIntOptional(SettingsStore.KEY_LLM_TOP_K),
             maxOutputTokens = storage.readIntOptional(SettingsStore.KEY_LLM_MAX_OUTPUT_TOKENS),
-            enableThinking = storage.prefs.getBoolean(
-                SettingsStore.KEY_LLM_ENABLE_THINKING,
-                SettingsStore.DEFAULT_LLM_ENABLE_THINKING
-            ),
+            enableThinking = storage.prefs.all[SettingsStore.KEY_LLM_ENABLE_THINKING] as? Boolean,
             thinkingLength = loadThinkingLength(),
             frequencyPenalty = storage.readDoubleOptional(SettingsStore.KEY_LLM_FREQUENCY_PENALTY),
             presencePenalty = storage.readDoubleOptional(SettingsStore.KEY_LLM_PRESENCE_PENALTY)
@@ -59,7 +50,6 @@ internal class LlmParameterStore(
                 .putOptionalNumber(SettingsStore.KEY_LLM_TOP_P, settings.topP)
                 .putOptionalNumber(SettingsStore.KEY_LLM_TOP_K, settings.topK)
                 .putOptionalNumber(SettingsStore.KEY_LLM_MAX_OUTPUT_TOKENS, settings.maxOutputTokens)
-                .putBoolean(SettingsStore.KEY_LLM_ENABLE_THINKING, settings.enableThinking)
                 .putString(SettingsStore.KEY_LLM_THINKING_LENGTH, settings.thinkingLength.prefValue)
                 .remove(SettingsStore.KEY_LLM_THINKING_BUDGET)
                 .putOptionalNumber(
@@ -70,6 +60,9 @@ internal class LlmParameterStore(
                     SettingsStore.KEY_LLM_PRESENCE_PENALTY,
                     settings.presencePenalty
                 )
+            val enableThinking = settings.enableThinking
+            if (enableThinking == null) remove(SettingsStore.KEY_LLM_ENABLE_THINKING)
+            else putBoolean(SettingsStore.KEY_LLM_ENABLE_THINKING, enableThinking)
         }
     }
 

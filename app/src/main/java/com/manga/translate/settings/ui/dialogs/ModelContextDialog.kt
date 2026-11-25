@@ -4,7 +4,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.manga.translate.R
 import com.manga.translate.databinding.DialogModelContextBinding
-import com.manga.translate.settings.ModelContextDefaults
 import com.manga.translate.settings.ModelContextLimits
 import com.manga.translate.settings.SettingsStore
 import com.manga.translate.settings.ui.SettingsFragment
@@ -30,9 +29,8 @@ internal class ModelContextDialog(
             binding.contextOutputLayout to binding.contextOutputInput,
             binding.contextTotalLayout to binding.contextTotalInput
         )
-        fields.zip(listOf(ModelContextDefaults.MAX_INPUT_TOKENS, ModelContextDefaults.MAX_OUTPUT_TOKENS,
-            ModelContextDefaults.CONTEXT_WINDOW_TOKENS)).forEach { (field, fallback) ->
-            field.first.hint = fragment.getString(R.string.model_context_unknown, fallback)
+        fields.forEach { (layout, _) ->
+            layout.hint = fragment.getString(R.string.model_context_unknown)
         }
         fields.zip(listOf(current.limits.maxInputTokens, current.limits.maxOutputTokens, current.limits.contextWindowTokens))
             .forEach { (field, value) -> field.second.setText(value?.toString().orEmpty()) }

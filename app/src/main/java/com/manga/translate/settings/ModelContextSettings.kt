@@ -40,34 +40,7 @@ data class ModelContextSettings(
     val profileName: String?,
     val identity: ModelContextIdentity,
     val limits: ModelContextLimits
-) {
-    /** User overrides stay nullable on disk; consumers use this complete fallback snapshot. */
-    val effectiveLimits: EffectiveModelContextLimits
-        get() = EffectiveModelContextLimits(
-            limits.maxInputTokens ?: ModelContextDefaults.MAX_INPUT_TOKENS,
-            limits.maxOutputTokens ?: ModelContextDefaults.MAX_OUTPUT_TOKENS,
-            limits.contextWindowTokens ?: ModelContextDefaults.CONTEXT_WINDOW_TOKENS
-        )
-}
-
-data class EffectiveModelContextLimits(
-    val maxInputTokens: Int,
-    val maxOutputTokens: Int,
-    val contextWindowTokens: Int
 )
-
-/** Conservative application defaults, not inferred or verified provider capabilities.
- * Context baseline: https://huggingface.co/Qwen/Qwen3.5-397B-A17B (native 262,144).
- * Output baseline: Qwen3.5 Plus / Flash 64K output, documented at
- * https://www.alibabacloud.com/help/en/model-studio/vision-model
- * Request budgeting must still
- * reserve output and safety margin inside the shared context window.
- */
-object ModelContextDefaults {
-    const val MAX_INPUT_TOKENS = 262144
-    const val MAX_OUTPUT_TOKENS = 65536
-    const val CONTEXT_WINDOW_TOKENS = 262144
-}
 
 internal object ModelContextCodec {
     fun encode(entries: List<ModelContextEntry>): JSONArray = JSONArray().apply {

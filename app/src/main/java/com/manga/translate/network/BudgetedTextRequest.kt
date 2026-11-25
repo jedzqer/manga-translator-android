@@ -15,44 +15,32 @@ import org.json.JSONObject
  */
 internal class BudgetedTextTemplate(
     template: JSONObject,
-    private val format: ApiFormat,
+    val protocol: RequestProtocolCapabilities,
     private val context: ModelContextSettings,
-    defaultOutputTokens: Int
+    private val estimatedContentTokens: Int,
+    private val inputEstimator: TextTokenEstimator = Utf8TextTokenEstimator
 ) {
-    private val frozen: String
-    private val output: TextOutputReserve
+    private val format = protocol.format
+    private val frozen = template.toString()
+    val hasInputLimit = context.limits.maxInputTokens != null || context.limits.contextWindowTokens != null ||
+        protocol.sharedReasoning && protocol.fixedThinking(template)?.let { it > 0 } == true &&
+        (protocol.outputLimit(template) != null || context.limits.maxOutputTokens != null)
 
-    init {
-        val copy = JSONObject(template.toString())
-        val config = if (format == ApiFormat.GEMINI) {
-            copy.optJSONObject("generationConfig") ?: JSONObject().also { copy.put("generationConfig", it) }
-        } else copy
-        val key = when (format) {
-            ApiFormat.OPENAI_COMPATIBLE -> "max_tokens"
-            ApiFormat.OPENAI_RESPONSES -> "max_output_tokens"
-            ApiFormat.GEMINI -> "maxOutputTokens"
-        }
-        val defaultCap = minOf(defaultOutputTokens, context.effectiveLimits.maxOutputTokens)
-        val explicitCap = if (config.has(key)) config.getInt(key) else null
-        val thinking = if (format == ApiFormat.GEMINI) {
-            config.optJSONObject("thinkingConfig")?.optInt("thinkingBudget", -1) ?: 0
-        } else if (copy.optBoolean("enable_thinking")) copy.optInt("thinking_budget", explicitCap ?: defaultCap) else 0
-        // Automatic caps include a fixed reasoning allowance without consuming the task's
-        // content allowance. Explicit user caps remain total caps. AUTO has no fixed allowance.
-        val automaticCap = defaultCap.toLong() + thinking.coerceAtLeast(0)
-        if (explicitCap == null && automaticCap > context.effectiveLimits.maxOutputTokens) {
-            throw LlmResponseException(LlmErrorCode.Custom("TEXT_BUDGET_EXCEEDED"),
-                "OUTPUT_LIMIT: content=$defaultCap; reasoning=$thinking; maxOutput=${context.effectiveLimits.maxOutputTokens}",
-                retryable = false)
-        }
-        val cap = explicitCap ?: automaticCap.toInt()
-        require(cap > 0)
-        config.put(key, cap)
-        // Also reserve reasoning separately in the context for providers that exclude it from
-        // their output cap. AUTO conservatively reserves the whole cap as reasoning.
-        val reasoning = if (thinking < 0) cap else thinking
-        output = TextOutputReserve(cap, 0, reasoning, reasoningCountsTowardOutputLimit = false)
-        frozen = copy.toString()
+    private fun reserve(payload: JSONObject, minimum: Int, reduced: Boolean): TextOutputReserve {
+        val cap = protocol.outputLimit(payload)
+        val fixed = protocol.fixedThinking(payload)
+        val knownLimit = context.limits.maxOutputTokens ?: Int.MAX_VALUE
+        val sharedFixed = if (protocol.sharedReasoning) fixed ?: 0 else 0
+        val estimated = if (reduced) maxOf(minimum, MIN_ESTIMATED_CONTENT_TOKENS) else estimatedContentTokens
+        val wanted = estimated.toLong() + (if (fixed == null && !reduced) estimated else 0)
+        val visible = if (cap != null) cap.toLong() - sharedFixed else minOf(wanted,
+            knownLimit.toLong() - sharedFixed).coerceAtLeast(1)
+        return TextOutputReserve(
+            contentTokens = if (sharedFixed > 0) maxOf(visible, minimum.toLong()).toInt() else visible.coerceAtLeast(1).toInt(),
+            structureTokens = 0,
+            reasoningTokens = fixed ?: 0,
+            reasoningCountsTowardOutputLimit = protocol.sharedReasoning
+        )
     }
 
     fun payload(user: String): JSONObject = JSONObject(frozen).also { root ->
@@ -70,18 +58,44 @@ internal class BudgetedTextTemplate(
         }
     }
 
-    fun check(payload: JSONObject): TextBatchPlan = TextRequestBudget(
-        context, output, SAFETY_TOKENS,
-        TextRequestEnvelope(listOf(payload.toString()), "", PROTOCOL_TOKENS)
-    ).plan(emptyList())
+    fun check(payload: JSONObject, singlePage: Boolean = false, minimum: Int = 12): TextBatchPlan {
+        val envelope = TextRequestEnvelope(listOf(payload.toString()), "", PROTOCOL_TOKENS)
+        fun budget(reserve: TextOutputReserve) = TextRequestBudget(context, reserve, SAFETY_TOKENS, envelope, inputEstimator)
+        val output = reserve(payload, minimum, reduced = false)
+        val initial = budget(output)
+        val cap = protocol.outputLimit(payload)
+        // Fixed reasoning shares this cap. Only a small per-item structural allowance is hard;
+        // the much larger content estimate is used for packing, not output rejection.
+        if (cap != null && output.outputLimitTokens > cap) {
+            return TextBatchPlan.Rejected(TextBudgetFailureReason.OUTPUT_LIMIT, initial.fixedBudgetDetails())
+        }
+        val result = initial.plan(emptyList())
+        return if (singlePage && cap == null && context.limits.contextWindowTokens != null && result is TextBatchPlan.Rejected) {
+            budget(reserve(payload, minimum, reduced = true)).plan(emptyList())
+        } else result
+    }
+
+    fun recoverTruncated(payload: JSONObject, failure: LlmResponseException, minimum: Int = 12): JSONObject? {
+        val evidence = failure.cause as? TruncatedTokenUsage ?: return null
+        val cap = protocol.outputLimit(payload) ?: return null
+        val ceiling = context.limits.maxOutputTokens ?: return null
+        if (!protocol.trustedUsage || cap <= 0 || cap >= ceiling ||
+            protocol.usageAgainstLimit(evidence.output, evidence.reasoning) < cap) return null
+        val larger = minOf(ceiling.toLong(), cap.toLong() + maxOf(128, cap / 4)).toInt()
+        return JSONObject(payload.toString()).apply { protocol.outputConfig(this)?.put(protocol.outputKey, larger) }
+            .takeIf { check(it, singlePage = true, minimum = minimum) is TextBatchPlan.Ready }
+    }
 
     fun shrink(units: List<TextBudgetUnit>): List<List<TextBudgetUnit>> = splitTextBudgetUnits(units)
 
     companion object {
         const val SAFETY_TOKENS = 1024
         const val PROTOCOL_TOKENS = 256
+        private const val MIN_ESTIMATED_CONTENT_TOKENS = 1024
     }
 }
+
+internal class TruncatedTokenUsage(val output: Int, val reasoning: Int?) : Exception()
 
 /** All HTTP attempts, including network and malformed-response retries, consume this same counter. */
 internal class TextAttemptBudget(private var remaining: Int) : AbstractCoroutineContextElement(Key) {
@@ -99,6 +113,7 @@ internal suspend fun <T> executeBudgetedText(
     template: BudgetedTextTemplate,
     buildUser: (List<TextBudgetUnit>) -> String,
     send: suspend (JSONObject, List<TextBudgetUnit>) -> T,
+    minimumOutput: (List<TextBudgetUnit>) -> Int = { 12 },
     onSuccess: suspend (T) -> Unit = {}
 ): List<T> {
     require(units.map { it.sourceId }.distinct().size == units.size)
@@ -109,11 +124,11 @@ internal suspend fun <T> executeBudgetedText(
         while (pending.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
             val next = pending.removeFirst()
-            val payload = template.payload(buildUser(next))
-            val rejection = template.check(payload) as? TextBatchPlan.Rejected
+            var payload = template.payload(buildUser(next))
+            val minimum = minimumOutput(next)
+            val rejection = template.check(payload, singlePage = next.size == 1, minimum = minimum) as? TextBatchPlan.Rejected
             if (rejection != null) {
-                if (next.size == 1 || rejection.reason == TextBudgetFailureReason.OUTPUT_LIMIT ||
-                    rejection.reason == TextBudgetFailureReason.CONTEXT_EXHAUSTED) {
+                if (next.size == 1) {
                     throw LlmResponseException(LlmErrorCode.Custom("TEXT_BUDGET_EXCEEDED"),
                         "${rejection.reason}: ${next.first().sourceId}; input=${rejection.budget.inputTokens}, available=${rejection.budget.availableInputTokens}",
                         retryable = false)
@@ -122,14 +137,20 @@ internal suspend fun <T> executeBudgetedText(
                 continue
             }
             var attempts = 0
+            var adjusted = false
             while (true) {
-                try {
-                    val result = send(payload, next)
-                    onSuccess(result)
-                    results += result
-                    break
+                val result = try {
+                    send(payload, next)
                 } catch (failure: LlmResponseException) {
                     if (!failure.retryable) throw failure
+                    if (!adjusted && failure.errorCode == LlmErrorCode.ResponseTruncated) {
+                        adjusted = true
+                        val recovery = template.recoverTruncated(payload, failure, minimum)
+                        if (recovery != null) {
+                            payload = recovery
+                            continue
+                        }
+                    }
                     val shrink = failure.errorCode == LlmErrorCode.ResponseTruncated ||
                         failure.errorCode.value == "CONTEXT_LENGTH_EXCEEDED"
                     if (shrink && next.size > 1) {
@@ -138,16 +159,23 @@ internal suspend fun <T> executeBudgetedText(
                     }
                     if (shrink || ++attempts >= 3) throw LlmResponseException(
                         failure.errorCode, failure.responseContent, failure, retryable = false)
+                    continue
                 }
+                onSuccess(result)
+                results += result
+                break
             }
         }
     }
     var start = 0
     while (start < units.size) {
         currentCoroutineContext().ensureActive()
-        var end = start + 1
-        while (end < units.size && template.check(template.payload(buildUser(units.subList(start, end + 1))))
-            is TextBatchPlan.Ready) end++
+        var end = if (template.hasInputLimit) start + 1 else units.size
+        while (end < units.size) {
+            val batch = units.subList(start, end + 1)
+            if (template.check(template.payload(buildUser(batch)), minimum = minimumOutput(batch)) !is TextBatchPlan.Ready) break
+            end++
+        }
         checkedSend(units.subList(start, end).toList())
         start = end
     }

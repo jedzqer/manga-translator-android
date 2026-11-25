@@ -67,7 +67,7 @@ class TextRequestBudgetTest {
         val source = (0..199).map { TextBudgetUnit("page-${199-it}", "x".repeat(it % 17)) }
         val batches = ready(planner().plan(source))
         assertEquals(source, batches.flatMap { it.units })
-        assertTrue(batches.all { it.budget.inputTokens <= it.budget.availableInputTokens })
+        assertTrue(batches.all { it.budget.inputTokens <= requireNotNull(it.budget.availableInputTokens) })
         assertTrue(ready(planner().plan(emptyList())).isEmpty())
         assertThrows(IllegalArgumentException::class.java) { planner().plan(listOf(source[0], source[0])) }
     }
@@ -84,10 +84,12 @@ class TextRequestBudgetTest {
         assertEquals(14L, batches.first().budget.outputReserveTokens)
     }
 
-    @Test fun `fallback and large reserves never wrap integers`() {
+    @Test fun `unknown limits and large reserves never wrap integers`() {
         val batch = ready(planner(limits = ModelContextLimits(maxInputTokens = 20)).plan(units(1))).single()
-        assertTrue(batch.budget.usesFallbackLimits)
+        assertTrue(batch.budget.hasUnknownLimits)
         assertEquals(20L, batch.budget.availableInputTokens)
+        val unknown = ready(planner(limits = ModelContextLimits()).plan(units(270000))).single()
+        assertNull(unknown.budget.availableInputTokens)
         val failure = rejected(planner(output = TextOutputReserve(Int.MAX_VALUE, Int.MAX_VALUE)).plan(units(1)))
         assertEquals(4294967294L, failure.budget.outputReserveTokens)
     }

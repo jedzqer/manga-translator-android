@@ -4,14 +4,16 @@ import android.content.Context
 import com.manga.translate.di.appContainer
 import android.graphics.Bitmap
 import com.manga.translate.model.ApiFormat
+import com.manga.translate.model.ThinkingLength
 import com.manga.translate.platform.ImageEncodingUtils
 import com.manga.translate.platform.PromptAssetResolver
 import com.manga.translate.settings.ApiSettings
+import com.manga.translate.settings.CustomRequestParameter
 import com.manga.translate.settings.LlmParameterSettings
-import com.manga.translate.settings.OCR_PROVIDER_ID
 import com.manga.translate.settings.OcrApiSettings
 import com.manga.translate.settings.PRIMARY_PROVIDER_ID
 import com.manga.translate.settings.SettingsStore
+import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,9 +21,6 @@ import org.json.JSONObject
 /**
  * 请求体组装：OpenAI Chat Completions / OpenAI Responses / Gemini 三套协议，
  * 文本与图片翻译载荷、OCR 载荷、用户侧 items/glossary 载荷，以及自定义请求参数注入。
- *
- * JSON 结构与原始 LlmClient 实现完全一致（含 OPENAI_RESPONSES 的 model/input/instructions、
- * OCR 仅 OpenAI 兼容 chat 等契约）。
  */
 internal class PayloadBuilder(
     private val appContext: Context,
@@ -29,15 +28,37 @@ internal class PayloadBuilder(
 ) {
     private val promptCache = ConcurrentHashMap<String, LlmPromptConfig>()
 
+    class RequestParameters(
+        val protocol: RequestProtocolCapabilities,
+        val llm: LlmParameterSettings,
+        val custom: List<CustomRequestParameter>
+    )
+
+    fun requestParameters(settings: ApiSettings): RequestParameters {
+        val custom = customParameters(settings)
+        val override = custom.filter { it.enabled && it.key.trim() == RequestProtocolCapabilities.CHAT_OUTPUT_OVERRIDE }
+        if (override.size > 1) throw LlmRequestException(LlmErrorCode.CustomParamConflict,
+            RequestProtocolCapabilities.CHAT_OUTPUT_OVERRIDE)
+        val field = override.singleOrNull()?.value?.trim()
+        if (field != null && (settings.apiFormat != ApiFormat.OPENAI_COMPATIBLE ||
+                field !in RequestProtocolCapabilities.CHAT_OUTPUT_KEYS)) {
+            throw LlmRequestException(LlmErrorCode.CustomParamInvalidValue, RequestProtocolCapabilities.CHAT_OUTPUT_OVERRIDE)
+        }
+        return RequestParameters(RequestProtocolCapabilities.resolve(settings, field),
+            settingsStore.loadLlmParameters(), custom)
+    }
+
     fun buildPayload(
         settings: ApiSettings,
         modelName: String,
         promptAsset: String,
         apiFormat: ApiFormat,
         userPayload: String,
-        glossaryProcessingEnabled: Boolean = true
+        glossaryProcessingEnabled: Boolean = true,
+        parameters: RequestParameters = requestParameters(settings),
+        outputContract: StructuredTranslationOutput? = null
     ): JSONObject {
-        val baseConfig = getPromptConfig(promptAsset, settings.translationStyle)
+        val (baseConfig, isBuiltIn) = getPromptConfig(promptAsset, settings.translationStyle)
         val config = if (glossaryProcessingEnabled) baseConfig.copy(
             userPromptPrefix = baseConfig.userPromptPrefix + AUTHORITATIVE_GLOSSARY_INSTRUCTION
         ) else baseConfig.copy(
@@ -49,28 +70,29 @@ internal class PayloadBuilder(
         )
         return when (apiFormat) {
             ApiFormat.OPENAI_COMPATIBLE -> buildOpenAiPayload(
-                settings = settings,
                 modelName = modelName,
                 config = config,
                 userPayload = userPayload
             )
             ApiFormat.OPENAI_RESPONSES -> buildOpenAiResponsesPayload(
-                settings = settings,
                 modelName = modelName,
                 config = config,
                 userPayload = userPayload
             )
             ApiFormat.GEMINI -> buildGeminiTextPayload(
-                settings = settings,
                 config = config,
                 userPayload = userPayload
             )
+        }.also { payload ->
+            applyRequestParameters(payload, parameters, useJsonPayload = true)
+            outputContract?.applyTo(payload, settings, modelName, apiFormat, parameters,
+                promptAsset, isBuiltIn, glossaryProcessingEnabled)
         }
     }
 
     fun buildImageOcrPayload(ocrSettings: OcrApiSettings, image: Bitmap,
         requestedIds: List<Int>? = null): JSONObject {
-        val config = getPromptConfig(OCR_PROMPT_CONFIG_ASSET)
+        val config = getPromptConfig(OCR_PROMPT_CONFIG_ASSET).config
         val imageBase64 = ImageEncodingUtils.encodeBitmapToBase64(image)
             ?: throw LlmRequestException(
                 LlmErrorCode.ImageEncodeFailed,
@@ -119,16 +141,6 @@ internal class PayloadBuilder(
         val payload = JSONObject()
             .put("model", ocrSettings.modelName)
             .put("messages", messages)
-        applyCustomRequestParameters(
-            payload,
-            ApiSettings(
-                apiUrl = ocrSettings.apiUrl,
-                apiKey = ocrSettings.apiKey,
-                modelName = ocrSettings.modelName,
-                apiFormat = ApiFormat.OPENAI_COMPATIBLE,
-                providerId = OCR_PROVIDER_ID
-            )
-        )
         return payload
     }
 
@@ -141,28 +153,32 @@ internal class PayloadBuilder(
         glossary: Map<String, String> = emptyMap(),
         glossaryProcessingEnabled: Boolean = false,
         requestedIds: List<Int>? = null,
-        imagesBase64: List<String> = listOf(imageBase64)
+        imagesBase64: List<String> = listOf(imageBase64),
+        parameters: RequestParameters = requestParameters(settings)
     ): JSONObject {
+        val prompt = getPromptConfig(promptAsset, settings.translationStyle)
+        val userText = buildImageUserPrompt(prompt, glossary, glossaryProcessingEnabled, requestedIds)
         return when (apiFormat) {
             ApiFormat.OPENAI_COMPATIBLE -> buildOpenAiImageTranslationPayload(
-                settings = settings,
+                config = prompt.config,
                 modelName = modelName,
                 imagesBase64 = imagesBase64,
-                promptAsset = promptAsset,
-                glossary = glossary,
-                glossaryProcessingEnabled = glossaryProcessingEnabled,
-                requestedIds = requestedIds
+                userText = userText
             )
             ApiFormat.OPENAI_RESPONSES -> buildOpenAiResponsesImageTranslationPayload(
-                settings = settings,
+                config = prompt.config,
                 modelName = modelName,
                 imagesBase64 = imagesBase64,
-                promptAsset = promptAsset,
-                glossary = glossary,
-                glossaryProcessingEnabled = glossaryProcessingEnabled,
-                requestedIds = requestedIds
+                userText = userText
             )
-            ApiFormat.GEMINI -> buildGeminiImageTranslationPayload(settings, imagesBase64, promptAsset, glossary, glossaryProcessingEnabled, requestedIds)
+            ApiFormat.GEMINI -> buildGeminiImageTranslationPayload(
+                prompt.config, imagesBase64, userText)
+        }.also { payload ->
+            applyRequestParameters(payload, parameters, useJsonPayload = false)
+            val outputContract = if (requestedIds == null) StructuredTranslationOutput.IMAGE_BUBBLE
+                else StructuredTranslationOutput.IMAGE_PAGE
+            outputContract.applyTo(payload, settings, modelName, apiFormat, parameters,
+                promptAsset, prompt.isBuiltIn, glossaryProcessingEnabled)
         }
     }
 
@@ -222,12 +238,10 @@ internal class PayloadBuilder(
     }
 
     private fun buildOpenAiPayload(
-        settings: ApiSettings,
         modelName: String,
         config: LlmPromptConfig,
         userPayload: String
     ): JSONObject {
-        val llmParams = settingsStore.loadLlmParameters()
         val messages = JSONArray()
         messages.put(
             JSONObject()
@@ -252,19 +266,14 @@ internal class PayloadBuilder(
         val payload = JSONObject()
             .put("model", modelName)
             .put("messages", messages)
-        applyOpenAiSamplingParams(payload, llmParams, settings)
-        applyOpenAiThinkingParams(payload, llmParams)
-        applyCustomRequestParameters(payload, settings)
         return payload
     }
 
     private fun buildOpenAiResponsesPayload(
-        settings: ApiSettings,
         modelName: String,
         config: LlmPromptConfig,
         userPayload: String
     ): JSONObject {
-        val llmParams = settingsStore.loadLlmParameters()
         val input = JSONArray()
         for (message in config.exampleMessages) {
             input.put(
@@ -284,9 +293,6 @@ internal class PayloadBuilder(
         if (config.systemPrompt.isNotBlank()) {
             payload.put("instructions", config.systemPrompt)
         }
-        applyOpenAiResponsesSamplingParams(payload, llmParams)
-        applyOpenAiThinkingParams(payload, llmParams)
-        applyCustomRequestParameters(payload, settings)
         return payload
     }
 
@@ -299,7 +305,6 @@ internal class PayloadBuilder(
     }
 
     private fun buildGeminiTextPayload(
-        settings: ApiSettings,
         config: LlmPromptConfig,
         userPayload: String
     ): JSONObject {
@@ -309,22 +314,15 @@ internal class PayloadBuilder(
         if (config.systemPrompt.isNotBlank()) {
             payload.put("systemInstruction", buildGeminiSystemInstruction(config.systemPrompt))
         }
-        buildGeminiGenerationConfig(useJsonPayload = true)?.let { payload.put("generationConfig", it) }
-        applyCustomRequestParameters(payload, settings)
         return payload
     }
 
     private fun buildOpenAiImageTranslationPayload(
-        settings: ApiSettings,
+        config: LlmPromptConfig,
         modelName: String,
         imagesBase64: List<String>,
-        promptAsset: String,
-        glossary: Map<String, String>,
-        glossaryProcessingEnabled: Boolean,
-        requestedIds: List<Int>? = null
+        userText: String
     ): JSONObject {
-        val llmParams = settingsStore.loadLlmParameters()
-        val config = getPromptConfig(promptAsset, settings.translationStyle)
         val messages = JSONArray()
         if (config.systemPrompt.isNotBlank()) {
             messages.put(
@@ -349,7 +347,7 @@ internal class PayloadBuilder(
                         .put(
                             JSONObject()
                                 .put("type", "text")
-                                .put("text", buildImageUserPrompt(config, glossary, glossaryProcessingEnabled, requestedIds))
+                                .put("text", userText)
                         )
                         .apply { imagesBase64.forEach { encoded ->
                             put(JSONObject().put("type", "image_url")
@@ -360,23 +358,15 @@ internal class PayloadBuilder(
         val payload = JSONObject()
             .put("model", modelName)
             .put("messages", messages)
-        applyOpenAiSamplingParams(payload, llmParams, settings)
-        applyOpenAiThinkingParams(payload, llmParams)
-        applyCustomRequestParameters(payload, settings)
         return payload
     }
 
     private fun buildOpenAiResponsesImageTranslationPayload(
-        settings: ApiSettings,
+        config: LlmPromptConfig,
         modelName: String,
         imagesBase64: List<String>,
-        promptAsset: String,
-        glossary: Map<String, String>,
-        glossaryProcessingEnabled: Boolean,
-        requestedIds: List<Int>? = null
+        userText: String
     ): JSONObject {
-        val llmParams = settingsStore.loadLlmParameters()
-        val config = getPromptConfig(promptAsset, settings.translationStyle)
         val input = JSONArray()
         for (message in config.exampleMessages) {
             input.put(
@@ -394,10 +384,7 @@ internal class PayloadBuilder(
                         .put(
                             JSONObject()
                                 .put("type", "input_text")
-                                .put(
-                                    "text",
-                                    buildImageUserPrompt(config, glossary, glossaryProcessingEnabled, requestedIds)
-                                )
+                                .put("text", userText)
                         )
                         .apply { imagesBase64.forEach { encoded ->
                             put(JSONObject().put("type", "input_image")
@@ -411,46 +398,33 @@ internal class PayloadBuilder(
         if (config.systemPrompt.isNotBlank()) {
             payload.put("instructions", config.systemPrompt)
         }
-        applyOpenAiResponsesSamplingParams(payload, llmParams)
-        applyOpenAiThinkingParams(payload, llmParams)
-        applyCustomRequestParameters(payload, settings)
         return payload
     }
 
-    private fun applyOpenAiSamplingParams(
-        payload: JSONObject,
-        llmParams: LlmParameterSettings,
-        settings: ApiSettings
-    ) {
-        llmParams.temperature?.let { payload.put("temperature", it) }
-        llmParams.topP?.let { payload.put("top_p", it) }
-        llmParams.topK?.let { payload.put("top_k", it) }
-        // max_output_tokens belongs to the Responses API. Chat Completions uses the
-        // broadly supported max_tokens name for the same user-facing setting.
-        llmParams.maxOutputTokens?.let { payload.put("max_tokens", it) }
-        llmParams.frequencyPenalty?.let { payload.put("frequency_penalty", it) }
-        llmParams.presencePenalty?.let { payload.put("presence_penalty", it) }
-    }
-
-    private fun applyOpenAiResponsesSamplingParams(
-        payload: JSONObject,
-        llmParams: LlmParameterSettings
-    ) {
-        llmParams.temperature?.let { payload.put("temperature", it) }
-        llmParams.topP?.let { payload.put("top_p", it) }
-        llmParams.maxOutputTokens?.let { payload.put("max_output_tokens", it) }
+    private fun applyRequestParameters(payload: JSONObject, parameters: RequestParameters, useJsonPayload: Boolean) {
+        val (protocol, llm) = parameters.protocol to parameters.llm
+        if (protocol.format == ApiFormat.GEMINI) {
+            buildGeminiGenerationConfig(useJsonPayload, parameters)?.let { payload.put("generationConfig", it) }
+        } else {
+            llm.temperature?.let { payload.put("temperature", it) }
+            llm.topP?.let { payload.put("top_p", it) }
+            llm.maxOutputTokens?.let { payload.put(protocol.outputKey, it) }
+            if (protocol.format == ApiFormat.OPENAI_COMPATIBLE) {
+                llm.topK?.let { payload.put("top_k", it) }
+                llm.frequencyPenalty?.let { payload.put("frequency_penalty", it) }
+                llm.presencePenalty?.let { payload.put("presence_penalty", it) }
+                if (protocol.chatGatewayThinking) applyOpenAiThinkingParams(payload, llm)
+            }
+        }
+        applyCustomRequestParameters(payload, protocol.format, parameters.custom)
+        if (protocol.format == ApiFormat.OPENAI_RESPONSES) applyOpenAiResponsesThinkingParams(payload, llm, protocol)
     }
 
     private fun buildGeminiImageTranslationPayload(
-        settings: ApiSettings,
+        config: LlmPromptConfig,
         imagesBase64: List<String>,
-        promptAsset: String,
-        glossary: Map<String, String>,
-        glossaryProcessingEnabled: Boolean,
-        requestedIds: List<Int>? = null
+        userText: String
     ): JSONObject {
-        val config = getPromptConfig(promptAsset, settings.translationStyle)
-        val userText = buildImageUserPrompt(config, glossary, glossaryProcessingEnabled, requestedIds)
         val payload = JSONObject().put(
             "contents",
             buildGeminiContents(
@@ -463,31 +437,28 @@ internal class PayloadBuilder(
         if (config.systemPrompt.isNotBlank()) {
             payload.put("systemInstruction", buildGeminiSystemInstruction(config.systemPrompt))
         }
-        buildGeminiGenerationConfig(useJsonPayload = false)?.let {
-            payload.put("generationConfig", it)
-        }
-        applyCustomRequestParameters(payload, settings)
         return payload
     }
 
     private fun buildImageUserPrompt(
-        config: LlmPromptConfig,
+        prompt: ResolvedPrompt,
         glossary: Map<String, String>,
         glossaryProcessingEnabled: Boolean,
-        requestedIds: List<Int>? = null
+        requestedIds: List<Int>?
     ): String = buildString {
-        append(config.userPromptPrefix.ifBlank { DEFAULT_IMAGE_TRANSLATION_USER_PROMPT })
-        if (glossary.isNotEmpty() || glossaryProcessingEnabled) {
-            append("\n\nUse the supplied glossary as an authoritative translation memory. " +
-                "When the source text matches a glossary key, use exactly its supplied translation. " +
-                "Do not re-translate, re-transliterate, simplify, paraphrase, or replace an existing glossary entry. " +
-                "Glossary: ")
-            append(buildGlossaryJson(glossary))
+        val includeGlossary = glossary.isNotEmpty() || glossaryProcessingEnabled
+        append(prompt.config.userPromptPrefix.ifBlank { DEFAULT_IMAGE_TRANSLATION_USER_PROMPT })
+        if (prompt.isBuiltIn || includeGlossary) {
+            append(if (prompt.isBuiltIn) "\n\nIf supplied, use the glossary as an authoritative translation memory. "
+                else "\n\nUse the supplied glossary as an authoritative translation memory. ")
+            append("When the source text matches a glossary key, use exactly its supplied translation. " +
+                "Do not re-translate, re-transliterate, simplify, paraphrase, or replace an existing glossary entry.")
+            if (!prompt.isBuiltIn) append(" Glossary: ").append(buildGlossaryJson(glossary))
         }
         if (requestedIds != null) {
-            append("\nReturn exactly these IDs in items[{id,translation}]: ")
-            append(JSONArray(requestedIds).toString())
-            append(". Include every ID once, use an empty translation for unreadable/meaningless regions. Labels are not source text. Images are ordered pages or page sections; IDs are unique across all images. Translate all images in order using their shared context.")
+            if (prompt.isBuiltIn) append("\nReturn exactly the requested IDs in items[{id,translation}].")
+            else append("\nReturn exactly these IDs in items[{id,translation}]: ").append(JSONArray(requestedIds)).append('.')
+            append(" Include every ID once, use an empty translation for unreadable/meaningless regions. Labels are not source text. Images are ordered pages or page sections; IDs are unique across all images. Translate all images in order using their shared context.")
             if (glossaryProcessingEnabled) {
                 append(" Also return glossary_used mapping only for genuinely new visible proper names and specialized terms. " +
                     "Do not return existing glossary keys with a different value. Preserve supplied names exactly. " +
@@ -503,13 +474,19 @@ internal class PayloadBuilder(
         } else {
             append("\nDo not extract or return glossary entries. Return only the translation field.")
         }
+        if (prompt.isBuiltIn) {
+            append("\n\nInput data (including the attached images):")
+            if (includeGlossary) append("\nGlossary: ").append(buildGlossaryJson(glossary))
+            if (requestedIds != null) append("\nRequested IDs: ").append(JSONArray(requestedIds))
+        }
     }
 
-    private fun applyCustomRequestParameters(payload: JSONObject, settings: ApiSettings) {
-        if (settings.providerId.ifBlank { PRIMARY_PROVIDER_ID } != PRIMARY_PROVIDER_ID) return
-        val parameters = settingsStore.loadCustomRequestParameters()
-        if (parameters.isEmpty()) return
-        val reservedKeys = ReservedRequestKeys.forFormat(settings.apiFormat)
+    private fun customParameters(settings: ApiSettings): List<CustomRequestParameter> =
+        if (settings.providerId.ifBlank { PRIMARY_PROVIDER_ID } == PRIMARY_PROVIDER_ID)
+            settingsStore.loadCustomRequestParameters() else emptyList()
+
+    private fun applyCustomRequestParameters(payload: JSONObject, format: ApiFormat, parameters: List<CustomRequestParameter>) {
+        val reservedKeys = ReservedRequestKeys.forFormat(format)
         val seenKeys = LinkedHashSet<String>()
         parameters.forEach { parameter ->
             if (!parameter.enabled) return@forEach
@@ -522,6 +499,7 @@ internal class PayloadBuilder(
             if (!seenKeys.add(key)) {
                 throw LlmRequestException(LlmErrorCode.CustomParamConflict, key)
             }
+            if (key == RequestProtocolCapabilities.CHAT_OUTPUT_OVERRIDE) return@forEach
             if (key in reservedKeys || payload.has(key)) {
                 throw LlmRequestException(LlmErrorCode.CustomParamConflict, key)
             }
@@ -551,20 +529,36 @@ internal class PayloadBuilder(
         payload: JSONObject,
         llmParams: LlmParameterSettings
     ) {
-        // enable_thinking / thinking_budget 均非 OpenAI 官方字段，而是硅基流动、通义千问、
-        // 智谱 GLM 等兼容网关的扩展字段。与 fd47d62 对 Gemini 的处理不同：这里关闭思考时
-        // 仍要显式发送 enable_thinking: false，因为部分供应商默认开启思考，省略字段等于
-        // 关不掉；显式 false 才能保证关闭。该行为自 7fda9f4 起即为有意设计（不再按 URL
-        // 白名单限制）。thinking_budget 仅在开启思考时发送，避免出现无效的 0 预算。
-        payload.put("enable_thinking", llmParams.enableThinking)
-        if (llmParams.enableThinking) {
-            payload.put("thinking_budget", llmParams.thinkingLength.openAiBudgetTokens())
+        // Keep the Chat Completions gateway extension for explicit settings.
+        val enabled = llmParams.enableThinking ?: return
+        payload.put("enable_thinking", enabled)
+        if (enabled) {
+            llmParams.thinkingLength.openAiBudgetTokens()?.let { payload.put("thinking_budget", it) }
         }
     }
 
-    private fun resolveGeminiThinkingBudget(llmParams: LlmParameterSettings): Int {
-        if (!llmParams.enableThinking) return 0
-        return llmParams.thinkingLength.geminiThinkingBudget()
+    private fun applyOpenAiResponsesThinkingParams(
+        payload: JSONObject, llmParams: LlmParameterSettings, protocol: RequestProtocolCapabilities
+    ) {
+        if (payload.has("reasoning")) {
+            val custom = payload.optJSONObject("reasoning")?.opt("effort")
+            if (custom == "none" && protocol.efforts?.contains("none") == false) {
+                val reasoning = payload.getJSONObject("reasoning")
+                reasoning.remove("effort")
+                if (reasoning.length() == 0) payload.remove("reasoning")
+            }
+            return
+        }
+        val effort = when (llmParams.enableThinking) {
+            false -> "none"
+            true -> when (llmParams.thinkingLength) {
+                ThinkingLength.AUTO -> ThinkingLength.MEDIUM.prefValue
+                else -> llmParams.thinkingLength.prefValue
+            }
+            null -> null
+        }
+        effort?.takeIf { protocol.efforts?.contains(it) != false }
+            ?.let { payload.put("reasoning", JSONObject().put("effort", it)) }
     }
 
     private fun buildGeminiContents(config: LlmPromptConfig, userParts: JSONArray): JSONArray {
@@ -611,8 +605,8 @@ internal class PayloadBuilder(
         )
     }
 
-    private fun buildGeminiGenerationConfig(useJsonPayload: Boolean): JSONObject? {
-        val llmParams = settingsStore.loadLlmParameters()
+    private fun buildGeminiGenerationConfig(useJsonPayload: Boolean, parameters: RequestParameters): JSONObject? {
+        val llmParams = parameters.llm
         val config = JSONObject()
         if (useJsonPayload) {
             config.put("responseMimeType", "application/json")
@@ -620,31 +614,54 @@ internal class PayloadBuilder(
         llmParams.temperature?.let { config.put("temperature", it) }
         llmParams.topP?.let { config.put("topP", it) }
         llmParams.topK?.let { config.put("topK", it) }
-        llmParams.maxOutputTokens?.let { config.put("maxOutputTokens", it) }
+        llmParams.maxOutputTokens?.let { config.put(parameters.protocol.outputKey, it) }
         llmParams.frequencyPenalty?.let { config.put("frequencyPenalty", it) }
         llmParams.presencePenalty?.let { config.put("presencePenalty", it) }
-        // Gemini rejects thinkingConfig on models/requests where thinking is disabled.
-        // Omitting the block is also the API-compatible way to use the model default.
-        if (llmParams.enableThinking) {
-            config.put("thinkingConfig", buildGeminiThinkingConfig(llmParams))
+        val thinking = when (parameters.protocol.geminiThinking) {
+            RequestProtocolCapabilities.GeminiThinking.LEVEL_PRO,
+            RequestProtocolCapabilities.GeminiThinking.LEVEL_FLASH -> {
+                val pro = parameters.protocol.geminiThinking == RequestProtocolCapabilities.GeminiThinking.LEVEL_PRO
+                val level = when (llmParams.enableThinking) {
+                    false -> if (pro) "LOW" else "MINIMAL"
+                    true -> when (llmParams.thinkingLength) {
+                        ThinkingLength.AUTO -> null
+                        ThinkingLength.LOW -> "LOW"
+                        ThinkingLength.MEDIUM -> if (pro) null else "MEDIUM"
+                        ThinkingLength.HIGH, ThinkingLength.XHIGH -> "HIGH"
+                    }
+                    null -> null
+                }
+                level?.let { JSONObject().put("thinkingLevel", it) }
+            }
+            else -> {
+                val budget = when (llmParams.enableThinking) {
+                    true -> llmParams.thinkingLength.geminiThinkingBudget()
+                    false -> if (parameters.protocol.geminiThinking == RequestProtocolCapabilities.GeminiThinking.BUDGET_PRO) 128 else 0
+                    null -> null
+                }
+                val maximum = when (parameters.protocol.geminiThinking) {
+                    RequestProtocolCapabilities.GeminiThinking.BUDGET_PRO -> 32768
+                    RequestProtocolCapabilities.GeminiThinking.BUDGET_FLASH -> 24576
+                    else -> Int.MAX_VALUE
+                }
+                budget?.let { JSONObject().put("thinkingBudget", it.coerceAtMost(maximum)) }
+            }
         }
+        thinking?.let { config.put("thinkingConfig", it) }
         return config.takeIf { it.length() > 0 }
     }
 
-    private fun buildGeminiThinkingConfig(llmParams: LlmParameterSettings): JSONObject {
-        return JSONObject().put("thinkingBudget", resolveGeminiThinkingBudget(llmParams))
-    }
-
-    private fun getPromptConfig(name: String, styleOverride: String? = null): LlmPromptConfig {
+    private fun getPromptConfig(name: String, styleOverride: String? = null): ResolvedPrompt {
         val resolvedName = PromptAssetResolver.resolve(appContext, name)
         val style = styleOverride ?: settingsStore.loadTranslationStyle()
-        val source = appContext.appContainer.customPromptStore.read(appContext, name)
-        val cacheKey = "$resolvedName\u0000$style\u0000$source"
+        val source = appContext.appContainer.customPromptStore.readSource(appContext, name)
+        val cacheKey = "$resolvedName\u0000$style\u0000${source.text}"
         if (promptCache.size > 32) promptCache.clear()
-        return promptCache.getOrPut(cacheKey) { loadPromptConfig(source, style) }
+        val config = promptCache.getOrPut(cacheKey) { loadPromptConfig(source.text, style) }
+        return ResolvedPrompt(config, source.isBuiltIn)
     }
 
-    private fun loadPromptConfig(source: String, styleHint: String): LlmPromptConfig {
+    private fun loadPromptConfig(source: String, style: String): LlmPromptConfig {
         val json = JSONObject(source)
         val systemPrompt = json.optString("system_prompt")
         val userPromptPrefix = json.optString("user_prompt_prefix")
@@ -653,14 +670,13 @@ internal class PayloadBuilder(
         for (i in 0 until examplesJson.length()) {
             val messageObj = examplesJson.optJSONObject(i) ?: continue
             val role = messageObj.optString("role")
-            val content = messageObj.optString("content")
-                .replace("{{STYLE_HINT}}", styleHint)
+            val rawContent = messageObj.optString("content")
+            val content = rawContent.replace(STYLE_HINT, style)
             if (role.isNotBlank() && content.isNotBlank()) {
                 examples.add(PromptMessage(role, content))
             }
         }
-        return LlmPromptConfig(systemPrompt, userPromptPrefix, examples,
-            json.optString("batch_prompt"))
+        return LlmPromptConfig(systemPrompt, userPromptPrefix, examples, json.optString("batch_prompt"))
     }
 
     private fun buildGlossaryJson(glossary: Map<String, String>): JSONObject {
@@ -713,6 +729,7 @@ internal class PayloadBuilder(
     }
 
     companion object {
+        private const val STYLE_HINT = "{{STYLE_HINT}}"
         private const val AUTHORITATIVE_GLOSSARY_INSTRUCTION =
             "\nGlossary rule: the supplied glossary is authoritative. When the source matches an existing glossary key, use exactly its supplied translation; do not re-translate, re-transliterate, paraphrase, simplify, or replace it. Do not return an existing key in glossary_used with a different value.\n"
         const val PROMPT_CONFIG_ASSET = "prompts/llm_prompts.json"
@@ -760,6 +777,102 @@ internal object ReservedRequestKeys {
                 "generationConfig"
             )
         }
+    }
+}
+
+private data class ResolvedPrompt(
+    val config: LlmPromptConfig,
+    val isBuiltIn: Boolean
+)
+
+internal enum class StructuredTranslationOutput(private val builtInAsset: String) {
+    TEXT_BUBBLES("prompts/llm_prompts.json"),
+    IMAGE_PAGE("prompts/vl_page_prompts.json"),
+    IMAGE_BUBBLE("prompts/vl_bubble_prompts.json"),
+    GLOSSARY("prompts/llm_prompts_abstract.json"),
+    GLOSSARY_WITH_SYNOPSIS("prompts/llm_prompts_abstract.json");
+
+    fun applyTo(
+        payload: JSONObject,
+        settings: ApiSettings,
+        modelName: String,
+        apiFormat: ApiFormat,
+        parameters: PayloadBuilder.RequestParameters,
+        promptAsset: String,
+        isBuiltIn: Boolean,
+        glossaryProcessingEnabled: Boolean
+    ) {
+        if (!isBuiltIn || promptAsset != builtInAsset) return
+        // Custom parameters can supply a format or change the instructions and output contract.
+        if (parameters.custom.any { it.enabled && it.key.isNotBlank() }) return
+        if (apiFormat != settings.apiFormat || apiFormat != parameters.protocol.format ||
+            !parameters.protocol.trustedTextInputUsage) return
+        val schema = schema(apiFormat, glossaryProcessingEnabled) ?: return
+        when (apiFormat) {
+            ApiFormat.OPENAI_COMPATIBLE -> {
+                if (modelName !in OPENAI_MODELS || payload.has("response_format")) return
+                payload.put("response_format", JSONObject().put("type", "json_schema")
+                    .put("json_schema", openAiSchema(schema)))
+            }
+            ApiFormat.OPENAI_RESPONSES -> {
+                if (modelName !in OPENAI_MODELS || payload.has("text")) return
+                payload.put("text", JSONObject()
+                    .put("format", openAiSchema(schema).put("type", "json_schema")))
+            }
+            ApiFormat.GEMINI -> {
+                val model = modelName.removePrefix("/").removePrefix("models/")
+                if (model !in GEMINI_MODELS) return
+                // A full Gemini endpoint can select a different model than the settings field.
+                val path = runCatching { URI(EndpointBuilder.buildEndpoint(settings, modelName)).rawPath }.getOrNull()
+                if (path != "/v1beta/models/$model:generateContent") return
+                val config = payload.optJSONObject("generationConfig") ?: JSONObject()
+                payload.put("generationConfig", config.put("responseMimeType", "application/json")
+                    .put("responseJsonSchema", schema))
+            }
+        }
+    }
+
+    private fun openAiSchema(schema: JSONObject): JSONObject = JSONObject()
+        .put("name", "translation_result").put("strict", true).put("schema", schema)
+
+    private fun schema(format: ApiFormat, glossary: Boolean): JSONObject? {
+        val returnsGlossary = glossary || this == GLOSSARY || this == GLOSSARY_WITH_SYNOPSIS
+        // OpenAI's strict subset cannot express the existing open-ended glossary map.
+        if (format != ApiFormat.GEMINI && returnsGlossary) return null
+        val stringSchema = JSONObject().put("type", "string")
+        val properties = JSONObject()
+        when (this) {
+            TEXT_BUBBLES, IMAGE_PAGE -> {
+                val item = objectSchema(JSONObject().put("id", JSONObject().put("type", "integer"))
+                    .put("translation", stringSchema))
+                properties.put("items", JSONObject().put("type", "array").put("items", item))
+            }
+            IMAGE_BUBBLE -> properties.put("translation", stringSchema)
+            GLOSSARY -> Unit
+            GLOSSARY_WITH_SYNOPSIS -> properties.put("synopsis", stringSchema)
+        }
+        if (this == TEXT_BUBBLES || returnsGlossary) {
+            val glossarySchema = if (returnsGlossary) {
+                JSONObject().put("type", "object").put("additionalProperties", stringSchema)
+            } else objectSchema(JSONObject())
+            properties.put("glossary_used", glossarySchema)
+        }
+        return objectSchema(properties)
+    }
+
+    private fun objectSchema(properties: JSONObject): JSONObject = JSONObject().put("type", "object")
+        .put("properties", properties).put("required", JSONArray(properties.keys().asSequence().toList()))
+        .put("additionalProperties", false)
+
+    private companion object {
+        val OPENAI_MODELS = setOf(
+            "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.1-2025-04-14",
+            "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14", "gpt-4o-mini", "gpt-4o-mini-2024-07-18",
+            "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5.1", "gpt-5.2",
+            "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-5-nano-2025-08-07",
+            "gpt-5.1-2025-11-13", "gpt-5.2-2025-12-11"
+        )
+        val GEMINI_MODELS = setOf("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-3.1-flash-lite")
     }
 }
 

@@ -154,52 +154,139 @@ class BudgetedTextIntegrationTest {
         }
     }
 
-    @Test fun `automatic translation and glossary caps include fixed thinking budgets`() = runBlocking {
+    @Test fun `blank settings defer sampling output and thinking to all three protocols`() = runBlocking {
         for (format in ApiFormat.entries) {
             api = api.copy(apiFormat = format)
-            store.save(api)
-            for (length in listOf(ThinkingLength.MEDIUM, ThinkingLength.HIGH, ThinkingLength.XHIGH)) {
-                store.saveLlmParameters(store.loadLlmParameters().copy(
-                    maxOutputTokens = null, enableThinking = true, thinkingLength = length))
-                val reasoning = if (format == ApiFormat.GEMINI) length.geminiThinkingBudget()
-                    else length.openAiBudgetTokens()
-                server.enqueue(response(translated(1, 2, 3)))
-                client.translateBubbleItems(items(), emptyMap(), apiSettings = api)
-                assertEquals(8192 + reasoning, outputCap(request()))
-                server.enqueue(response("""{"glossary_used":{}}"""))
-                client.extractGlossaryPages(listOf(TextBudgetUnit("p1", "first")),
-                    emptyMap(), "prompts/llm_prompts_abstract.json") {}
-                assertEquals(4096 + reasoning, outputCap(request()))
+            store.saveLlmParameters(store.loadLlmParameters().copy(maxOutputTokens = null, enableThinking = null))
+            server.enqueue(response(translated(1, 2, 3)))
+            client.translateBubbleItems(items(), emptyMap(), apiSettings = api)
+            val payload = request()
+            val config = if (format == ApiFormat.GEMINI) payload.getJSONObject("generationConfig") else payload
+            assertFalse(config.has("temperature"))
+            assertFalse(config.has("top_p"))
+            assertFalse(config.has("topP"))
+            assertFalse(config.has("max_tokens"))
+            assertFalse(config.has("max_output_tokens"))
+            assertFalse(config.has("maxOutputTokens"))
+            assertFalse(config.has("enable_thinking"))
+            assertFalse(config.has("thinking_budget"))
+            assertFalse(config.has("reasoning"))
+            assertFalse(config.has("thinkingConfig"))
+        }
+    }
+
+    @Test fun `full synopsis sends a cap only with an explicit request limit`() = runBlocking {
+        assertTrue(store.saveModelContextSettings(store.loadModelContextSettings().copy(
+            limits = ModelContextLimits(maxOutputTokens = 12800))))
+        val synopsisResponse = """{"glossary_used":{},"synopsis":""}"""
+        val pages = listOf(TextBudgetUnit("p1", "first"))
+        val prompt = "prompts/llm_prompts_abstract.json"
+
+        store.saveLlmParameters(store.loadLlmParameters().copy(maxOutputTokens = null, enableThinking = null))
+        server.enqueue(response(synopsisResponse))
+        withContext(FullTranslationSynopsis()) { client.extractGlossaryPages(pages, emptyMap(), prompt) }
+        assertFalse(request().has("max_tokens"))
+
+        store.saveLlmParameters(store.loadLlmParameters().copy(maxOutputTokens = 12800))
+        server.enqueue(response(synopsisResponse))
+        withContext(FullTranslationSynopsis()) { client.extractGlossaryPages(pages, emptyMap(), prompt) }
+        assertEquals(12800, outputCap(request()))
+    }
+
+    @Test fun `explicit thinking and output settings use each protocol's fields`() = runBlocking {
+        for (format in ApiFormat.entries) {
+            api = api.copy(apiFormat = format)
+            store.saveLlmParameters(store.loadLlmParameters().copy(
+                maxOutputTokens = 32768, enableThinking = true, thinkingLength = ThinkingLength.HIGH))
+            server.enqueue(response(translated(1, 2, 3)))
+            client.translateBubbleItems(items(), emptyMap(), apiSettings = api)
+            val payload = request()
+            assertEquals(32768, outputCap(payload))
+            when (format) {
+                ApiFormat.OPENAI_COMPATIBLE -> {
+                    assertTrue(payload.getBoolean("enable_thinking"))
+                    assertEquals(8192, payload.getInt("thinking_budget"))
+                }
+                ApiFormat.OPENAI_RESPONSES -> {
+                    assertEquals("high", payload.getJSONObject("reasoning").getString("effort"))
+                    assertFalse(payload.has("enable_thinking"))
+                    assertFalse(payload.has("thinking_budget"))
+                }
+                ApiFormat.GEMINI -> assertEquals(24576, payload.getJSONObject("generationConfig")
+                    .getJSONObject("thinkingConfig").getInt("thinkingBudget"))
             }
         }
     }
 
-    @Test fun `explicit caps and disabled thinking retain their output allocations`() = runBlocking {
+    @Test fun `each protocol sends a setting for explicitly disabled thinking`() = runBlocking {
+        store.saveLlmParameters(store.loadLlmParameters().copy(enableThinking = false))
         for (format in ApiFormat.entries) {
             api = api.copy(apiFormat = format)
-            store.saveLlmParameters(store.loadLlmParameters().copy(
-                maxOutputTokens = 512, enableThinking = true, thinkingLength = ThinkingLength.HIGH))
             server.enqueue(response(translated(1, 2, 3)))
             client.translateBubbleItems(items(), emptyMap(), apiSettings = api)
-            assertEquals(512, outputCap(request()))
-            store.saveLlmParameters(store.loadLlmParameters().copy(maxOutputTokens = null, enableThinking = false))
-            server.enqueue(response(translated(1, 2, 3)))
-            client.translateBubbleItems(items(), emptyMap(), apiSettings = api)
-            assertEquals(8192, outputCap(request()))
+            val payload = request()
+            when (format) {
+                ApiFormat.OPENAI_COMPATIBLE -> {
+                    assertFalse(payload.getBoolean("enable_thinking"))
+                    assertFalse(payload.has("thinking_budget"))
+                }
+                ApiFormat.OPENAI_RESPONSES ->
+                    assertEquals("none", payload.getJSONObject("reasoning").getString("effort"))
+                ApiFormat.GEMINI -> assertEquals(0, payload.getJSONObject("generationConfig")
+                    .getJSONObject("thinkingConfig").getInt("thinkingBudget"))
+            }
         }
     }
 
-    @Test fun `automatic thinking allocation exceeding model output is rejected without requests`() = runBlocking {
+    @Test fun `enabling Responses thinking without picking a length sends medium effort`() = runBlocking {
+        api = api.copy(apiFormat = ApiFormat.OPENAI_RESPONSES)
+        val parameters = store.loadLlmParameters()
+        assertEquals(ThinkingLength.AUTO, parameters.thinkingLength)
+        store.saveLlmParameters(parameters.copy(enableThinking = true))
+        server.enqueue(response(translated(1, 2, 3)))
+
+        client.translateBubbleItems(items(), emptyMap(), apiSettings = api)
+
+        assertEquals("medium", request().getJSONObject("reasoning").getString("effort"))
+    }
+
+    @Test fun `blank output cap preserves fixed Gemini thinking during single page preflight`() = runBlocking {
+        api = api.copy(apiFormat = ApiFormat.GEMINI)
+        store.save(api)
+        store.saveLlmParameters(store.loadLlmParameters().copy(
+            maxOutputTokens = null, enableThinking = true, thinkingLength = ThinkingLength.HIGH))
+        val capability = store.loadModelContextSettings()
+        assertTrue(store.saveModelContextSettings(capability.copy(
+            limits = ModelContextLimits(maxOutputTokens = 8192, contextWindowTokens = 26000))))
+        server.enqueue(response(translated(1)))
+        val page = items().take(1)
+
+        try {
+            client.translateBubbleItems(page, emptyMap(), apiSettings = api)
+            fail("The fixed thinking budget must survive the smaller single-page estimate")
+        } catch (e: LlmResponseException) {
+            assertEquals("TEXT_BUDGET_EXCEEDED", e.errorCode.value)
+            assertTrue(e.responseContent.startsWith("CONTEXT_EXHAUSTED:"))
+        }
+        assertEquals(0, server.requestCount)
+
+        assertTrue(store.saveModelContextSettings(capability.copy(
+            limits = ModelContextLimits(maxOutputTokens = 8192, contextWindowTokens = 100000))))
+        client.translateBubbleItems(page, emptyMap(), apiSettings = api)
+        val config = request().getJSONObject("generationConfig")
+        assertFalse(config.has("maxOutputTokens"))
+        assertEquals(24576, config.getJSONObject("thinkingConfig").getInt("thinkingBudget"))
+    }
+
+    @Test fun `model capability rejects a conflicting explicit cap before sending`() = runBlocking {
         for (format in ApiFormat.entries) {
             api = api.copy(apiFormat = format)
             store.save(api)
-            store.saveLlmParameters(store.loadLlmParameters().copy(
-                maxOutputTokens = null, enableThinking = true, thinkingLength = ThinkingLength.HIGH))
-            store.saveModelContextSettings(store.loadModelContextSettings().copy(
-                limits = ModelContextLimits(maxOutputTokens = 8192)))
+            store.saveLlmParameters(store.loadLlmParameters().copy(maxOutputTokens = 8193))
+            assertTrue(store.saveModelContextSettings(store.loadModelContextSettings().copy(
+                limits = ModelContextLimits(maxOutputTokens = 8192))))
             try {
-                client.extractGlossaryPages(listOf(TextBudgetUnit("p1", "first")),
-                    emptyMap(), "prompts/llm_prompts_abstract.json") {}
+                client.translateBubbleItems(items(), emptyMap(), apiSettings = api)
                 fail()
             } catch (e: LlmResponseException) {
                 assertEquals("TEXT_BUDGET_EXCEEDED", e.errorCode.value)
@@ -207,6 +294,15 @@ class BudgetedTextIntegrationTest {
             }
         }
         assertEquals(0, server.requestCount)
+    }
+
+    @Test fun `one page can use less estimated output room in a small context`() = runBlocking {
+        store.saveLlmParameters(store.loadLlmParameters().copy(maxOutputTokens = null, enableThinking = null))
+        assertTrue(store.saveModelContextSettings(store.loadModelContextSettings().copy(
+            limits = ModelContextLimits(contextWindowTokens = 12000))))
+        server.enqueue(response(translated(1)))
+        client.translateBubbleItems(items().take(1), emptyMap(), apiSettings = api)
+        assertFalse(request().has("max_tokens"))
     }
 
     @Test fun `truncated requests shrink only at whole image boundaries for every protocol`() = runBlocking {
@@ -311,4 +407,88 @@ class BudgetedTextIntegrationTest {
         catch (e: LlmRequestException) { assertEquals(LlmErrorCode.CustomParamConflict, e.errorCode) }
         assertEquals(0, server.requestCount)
     }
+
+    @Test fun `stress 500 pages preserve every bubble and unicode through bounded requests`() = runBlocking {
+        val source = (0 until 500).flatMap { page ->
+            (0 until 3).map { bubble -> LlmBubbleTranslationRequestItem(
+                page * 3 + bubble, ("頁$page 氣泡$bubble 漢字😀\\\"\n").repeat(30), "page-$page") }
+        }
+        assertTrue(store.saveModelContextSettings(store.loadModelContextSettings().copy(
+            limits = ModelContextLimits(18000, 512, 20000))))
+        val received = java.util.Collections.synchronizedList(mutableListOf<Int>())
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val raw = request.body.readUtf8()
+                assertTrue(raw.toByteArray(Charsets.UTF_8).size + 256 <= 18000)
+                val text = user(JSONObject(raw))
+                val sent = JSONObject(text.substring(text.indexOf('{'))).getJSONArray("items")
+                assertEquals(0, sent.length() % 3)
+                val ids = (0 until sent.length()).map { index ->
+                    val item = sent.getJSONObject(index)
+                    val id = item.getInt("id")
+                    assertEquals(source[id].text, item.getString("text"))
+                    id
+                }
+                assertEquals(0, ids.first() % 3)
+                received.addAll(ids)
+                return response(translated(*ids.toIntArray()))
+            }
+        }
+        val result = client.translateBubbleItems(source, emptyMap(), requestTimeoutMs = 120000, apiSettings = api)!!
+        assertEquals(source.map { it.id }, result.items.map { it.id })
+        assertEquals(source.map { it.id }, received.toList())
+        assertTrue(server.requestCount in 2..500)
+        println("CONTEXT_STRESS pages=500 bubbles=1500 requests=${server.requestCount} unicode_preserved=true")
+    }
+
+    @Test fun `stress unknown context recursively shrinks 64 pages without partial page requests`() = runBlocking {
+        val source = (0 until 64).flatMap { page -> (0 until 2).map { bubble ->
+            LlmBubbleTranslationRequestItem(page * 2 + bubble, "page-$page bubble-$bubble", "page-$page")
+        } }
+        val succeeded = java.util.Collections.synchronizedList(mutableListOf<Int>())
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val text = user(JSONObject(request.body.readUtf8()))
+                val sent = JSONObject(text.substring(text.indexOf('{'))).getJSONArray("items")
+                val ids = (0 until sent.length()).map { sent.getJSONObject(it).getInt("id") }
+                assertEquals(0, ids.first() % 2)
+                assertEquals(0, ids.size % 2)
+                if (ids.size > 8) return MockResponse().setResponseCode(400)
+                    .setBody("""{"error":{"code":"context_length_exceeded"}}""")
+                succeeded.addAll(ids)
+                return response(translated(*ids.toIntArray()))
+            }
+        }
+        val result = client.translateBubbleItems(source, emptyMap(), requestTimeoutMs = 120000, apiSettings = api)!!
+        assertEquals(source.map { it.id }, result.items.map { it.id })
+        assertEquals(source.map { it.id }, succeeded.toList())
+        assertTrue(server.requestCount in 31..127)
+        println("CONTEXT_STRESS unknown_limit pages=64 requests=${server.requestCount} complete=true")
+    }
+
+    @Test fun `stress repeated truncation exhausts shared attempts without outer retry reset`() = runBlocking {
+        val source = (0 until 500).map { LlmBubbleTranslationRequestItem(it, "page-$it", "p$it") }
+        var singles = 0
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val text = user(JSONObject(request.body.readUtf8()))
+                val sent = JSONObject(text.substring(text.indexOf('{'))).getJSONArray("items")
+                if (sent.length() > 1) return response("{", "length")
+                singles++
+                return response(translated(sent.getJSONObject(0).getInt("id")))
+            }
+        }
+        try {
+            executeWithModelResponseRetries("Stress") {
+                client.translateBubbleItems(source, emptyMap(), requestTimeoutMs = 120000, apiSettings = api)
+            }
+            fail("999 requests must not fit the shared 512-attempt ceiling")
+        } catch (expected: LlmRequestException) {
+            assertEquals("TEXT_ATTEMPTS_EXHAUSTED", expected.errorCode.value)
+        }
+        assertEquals(512, server.requestCount)
+        assertTrue(singles in 1 until 500)
+        println("CONTEXT_STRESS truncation pages=500 requests=${server.requestCount} partial_success_not_returned=true")
+    }
+
 }

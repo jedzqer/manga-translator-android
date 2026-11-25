@@ -32,8 +32,6 @@ internal class LlmParamsDialog(
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val parsed = parseLlmParams(dialogBinding)
                 settingsStore.saveLlmParameters(parsed.params)
-                fragment.fragmentBinding.enableThinkingSwitch.isChecked = parsed.params.enableThinking
-                fragment.updateThinkingLengthButton()
                 if (parsed.hasInvalid) {
                     Toast.makeText(
                         fragment.requireContext(),
@@ -62,13 +60,11 @@ internal class LlmParamsDialog(
             return fragment.parseIntInput(trimmed).also { if (it == null) hasInvalid = true }
         }
         val existing = settingsStore.loadLlmParameters()
-        val params = LlmParameterSettings(
+        val params = existing.copy(
             temperature = parseDouble(dialogBinding.temperatureInput.text?.toString()),
             topP = parseDouble(dialogBinding.topPInput.text?.toString()),
             topK = parseInt(dialogBinding.topKInput.text?.toString()),
             maxOutputTokens = parseInt(dialogBinding.maxOutputTokensInput.text?.toString()),
-            enableThinking = fragment.fragmentBinding.enableThinkingSwitch.isChecked,
-            thinkingLength = existing.thinkingLength,
             frequencyPenalty = parseDouble(dialogBinding.frequencyPenaltyInput.text?.toString()),
             presencePenalty = parseDouble(dialogBinding.presencePenaltyInput.text?.toString())
         )

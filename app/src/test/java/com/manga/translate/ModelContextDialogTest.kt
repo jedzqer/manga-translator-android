@@ -1,10 +1,12 @@
 package com.manga.translate
 
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ScrollView
 import androidx.appcompat.app.AlertDialog
 import com.manga.translate.databinding.DialogModelContextBinding
+import com.manga.translate.model.ThinkingLength
 import com.manga.translate.settings.ApiSettings
 import com.manga.translate.settings.ModelContextLimits
 import com.manga.translate.settings.SettingsStore
@@ -14,6 +16,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowDialog
 
@@ -34,20 +37,33 @@ class ModelContextDialogTest {
             settings.save(ApiSettings("https://example.test/v1", "key", "model"))
             val fragment = SettingsFragment()
             activity.supportFragmentManager.beginTransaction().add(android.R.id.content, fragment).commitNow()
+            val settingsBinding = fragment.fragmentBinding
+            assertFalse(settingsBinding.thinkingLengthButton.isEnabled)
+            for ((option, value) in listOf(1 to true, 2 to false, 0 to null)) {
+                settingsBinding.thinkingModeButton.performClick()
+                shadowOf(Looper.getMainLooper()).idle()
+                val modeDialog = ShadowDialog.getLatestDialog() as AlertDialog
+                val options = modeDialog.listView
+                options.performItemClick(options.getChildAt(option), option, options.adapter.getItemId(option))
+                val parameters = settings.loadLlmParameters()
+                assertEquals(value, parameters.enableThinking)
+                assertEquals(ThinkingLength.AUTO, parameters.thinkingLength)
+                assertEquals(value == true, settingsBinding.thinkingLengthButton.isEnabled)
+            }
             val button = fragment.fragmentBinding.modelContextButton
             val parent = button.parent as ViewGroup
             assertEquals(parent.indexOfChild(fragment.fragmentBinding.thinkingLengthButton) + 1,
                 parent.indexOfChild(button))
             fun open(): Pair<AlertDialog, DialogModelContextBinding> {
                 button.performClick()
-                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                shadowOf(Looper.getMainLooper()).idle()
                 val dialog = ShadowDialog.getLatestDialog() as AlertDialog
                 return dialog to DialogModelContextBinding.bind(dialog.findViewById<ScrollView>(R.id.model_context_scroll)!!)
             }
             val (dialog, binding) = open()
-            assertEquals(activity.getString(R.string.model_context_unknown, 262144), binding.contextInputLayout.hint.toString())
-            assertEquals(activity.getString(R.string.model_context_unknown, 65536), binding.contextOutputLayout.hint.toString())
-            assertEquals(activity.getString(R.string.model_context_unknown, 262144), binding.contextTotalLayout.hint.toString())
+            assertEquals(activity.getString(R.string.model_context_unknown), binding.contextInputLayout.hint.toString())
+            assertEquals(activity.getString(R.string.model_context_unknown), binding.contextOutputLayout.hint.toString())
+            assertEquals(activity.getString(R.string.model_context_unknown), binding.contextTotalLayout.hint.toString())
             val scroll = binding.root
             val density = activity.resources.displayMetrics.density
             scroll.measure(View.MeasureSpec.makeMeasureSpec((280 * density).toInt(), View.MeasureSpec.EXACTLY),

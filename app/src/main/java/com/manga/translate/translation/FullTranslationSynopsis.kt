@@ -1,30 +1,38 @@
 package com.manga.translate.translation
 
+import com.manga.translate.storage.SynopsisStore.Snapshot
+import java.io.File
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
 /** Task-local context. Extraction is sequential; translation workers only read a completed window. */
 internal class FullTranslationSynopsis(
-    initialText: String = "",
-    private val onCommit: (String) -> Unit = {}
+    initial: Snapshot,
+    private val onCommit: (Snapshot, String?) -> Unit
 ) : AbstractCoroutineContextElement(Key) {
+    constructor(initialText: String = "", onCommit: (String) -> Unit = {}) : this(
+        Snapshot(initialText), { _, newText -> newText?.let(onCommit) }
+    )
+
     companion object Key : CoroutineContext.Key<FullTranslationSynopsis> {
         const val MAX_LENGTH = 6000
     }
 
-    var text: String = initialText.trim().take(MAX_LENGTH)
-        private set
-    private val completedPages = mutableSetOf<String>()
+    private var snapshot = initial
+    val text: String get() = snapshot.text.trim().take(MAX_LENGTH)
 
-    fun isComplete(sourceId: String): Boolean = sourceId in completedPages
+    fun isComplete(sourceId: String): Boolean = pageName(sourceId) in snapshot.completedPages
 
     fun commit(sourceIds: List<String>, synopsis: String) {
-        // An explicit empty synopsis carries no new plot information.
-        if (!synopsis.isBlank()) {
-            val updated = synopsis.trim().take(MAX_LENGTH)
-            onCommit(updated)
-            text = updated
-        }
-        completedPages.addAll(sourceIds)
+        val newText = synopsis.trim().take(MAX_LENGTH).takeIf { it.isNotEmpty() }
+        val updated = Snapshot(
+            text = newText ?: snapshot.text,
+            completedPages = snapshot.completedPages + sourceIds.map(::pageName)
+        )
+        onCommit(updated, newText)
+        snapshot = updated
     }
+
+    // Page names are unique inside the folder and survive a folder move.
+    private fun pageName(sourceId: String): String = File(sourceId).name
 }

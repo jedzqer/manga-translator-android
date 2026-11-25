@@ -54,7 +54,7 @@ class CustomPromptDialogTest {
             val scroll = editor.parent.parent as ScrollView
             scroll.fullScroll(View.FOCUS_DOWN)
             assertTrue(scroll.scrollY > 0)
-            for (id in listOf(R.id.prompt_import, R.id.prompt_export, R.id.prompt_reset)) {
+            for (id in listOf(R.id.prompt_import, R.id.prompt_export, R.id.prompt_pack_export, R.id.prompt_pack_import, R.id.prompt_reset)) {
                 val button = dialog.findViewById<android.widget.Button>(id)
                 assertTrue(button.width > 0)
                 assertTrue(button.height >= button.layout.height + button.compoundPaddingTop + button.compoundPaddingBottom)

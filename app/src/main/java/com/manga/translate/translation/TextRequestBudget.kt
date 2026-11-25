@@ -70,16 +70,16 @@ internal data class TextRequestEnvelope(
 internal data class TextBudgetUnit(val sourceId: String, val serializedText: String)
 
 internal data class TextBudgetDetails(
-    val availableInputTokens: Long,
+    val availableInputTokens: Long?,
     val fixedInputTokens: Long,
     val bodyInputTokens: Long,
     val outputReserveTokens: Long,
     val safetyTokens: Int,
-    val usesFallbackLimits: Boolean,
+    val hasUnknownLimits: Boolean,
     val isEstimate: Boolean = true
 ) {
     val inputTokens: Long get() = Math.addExact(fixedInputTokens, bodyInputTokens)
-    val remainingInputTokens: Long get() = availableInputTokens - inputTokens
+    val remainingInputTokens: Long? get() = availableInputTokens?.minus(inputTokens)
 }
 
 internal data class TextBudgetBatch(val units: List<TextBudgetUnit>, val budget: TextBudgetDetails)
@@ -106,43 +106,48 @@ internal class TextRequestBudget(
     envelope: TextRequestEnvelope,
     private val estimator: TextTokenEstimator = Utf8TextTokenEstimator
 ) {
-    private val limits = settings.effectiveLimits
-    private val fallback = settings.limits.hasUnknownLimits
+    private val limits = settings.limits
     private val separator = estimate(envelope.separator)
     private val fixed = envelope.fixedText.fold(envelope.protocolTokens.toLong()) { sum, text ->
         Math.addExact(sum, estimate(text))
     }
-    private val available = minOf(limits.maxInputTokens.toLong(),
-        limits.contextWindowTokens.toLong() - output.contextTokens - safetyTokens)
+    private val available = listOfNotNull(
+        limits.maxInputTokens?.toLong(),
+        limits.contextWindowTokens?.let { it.toLong() - output.contextTokens - safetyTokens }
+    ).minOrNull()
 
     init { require(safetyTokens >= 0) }
 
     private fun estimate(text: String): Long = estimator.estimate(text).also { require(it >= 0) }
 
     private fun details(body: Long = 0) = TextBudgetDetails(
-        available, fixed, body, output.contextTokens, safetyTokens, fallback
+        available, fixed, body, output.contextTokens, safetyTokens, limits.hasUnknownLimits
     )
+
+    fun fixedBudgetDetails(): TextBudgetDetails = details()
 
     fun plan(units: List<TextBudgetUnit>): TextBatchPlan {
         require(units.map { it.sourceId }.toSet().size == units.size) { "Duplicate source IDs" }
         require(units.all { it.sourceId.isNotBlank() }) { "Blank source ID" }
+        val maxOutput = limits.maxOutputTokens
         val failure = when {
-            output.outputLimitTokens > limits.maxOutputTokens -> TextBudgetFailureReason.OUTPUT_LIMIT
-            available <= 0 -> TextBudgetFailureReason.CONTEXT_EXHAUSTED
-            fixed > available -> TextBudgetFailureReason.FIXED_INPUT_TOO_LARGE
+            maxOutput != null && output.outputLimitTokens > maxOutput -> TextBudgetFailureReason.OUTPUT_LIMIT
+            available != null && available <= 0 -> TextBudgetFailureReason.CONTEXT_EXHAUSTED
+            available != null && fixed > available -> TextBudgetFailureReason.FIXED_INPUT_TOO_LARGE
             else -> null
         }
         if (failure != null) return TextBatchPlan.Rejected(failure, details())
+        val availableBody = available?.minus(fixed)
         val batches = mutableListOf<TextBudgetBatch>()
         var pending = mutableListOf<TextBudgetUnit>()
         var body = 0L
         for (unit in units) {
             val cost = estimate(unit.serializedText)
-            if (cost > available - fixed) return TextBatchPlan.Rejected(
+            if (availableBody != null && cost > availableBody) return TextBatchPlan.Rejected(
                 TextBudgetFailureReason.UNIT_TOO_LARGE, details(cost), unit.sourceId
             )
             val candidate = Math.addExact(body, Math.addExact(if (pending.isEmpty()) 0 else separator, cost))
-            if (candidate > available - fixed) {
+            if (availableBody != null && candidate > availableBody) {
                 batches += TextBudgetBatch(pending.toList(), details(body))
                 pending = mutableListOf()
                 body = 0

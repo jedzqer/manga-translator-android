@@ -257,7 +257,7 @@
     <string name="ocr_settings_note_api">使用 OpenAI 兼容 OCR 接口识别文字；地址、API Key 或模型留空时复用主 API 的对应配置。</string>
     <string name="missing_ocr_api_settings">请先在主 API 或 OCR 设置中填写 API 地址、Key 与模型名称</string>
     <string name="llm_params_invalid">参数格式有误，已忽略无效项</string>
-    <string name="llm_params_note">留空将不发送该字段</string>
+    <string name="llm_params_note">留空使用模型默认</string>
     <string name="thinking_length_button">思考长度</string>
     <string name="thinking_length_title">思考长度</string>
     <string name="thinking_length_format">思考长度：%1$s</string>
@@ -272,6 +272,10 @@
     <string name="llm_param_top_p">top_p</string>
     <string name="llm_param_top_k">top_k</string>
     <string name="llm_param_enable_thinking">启用思考</string>
+    <string name="thinking_mode_title">思考模式</string>
+    <string name="thinking_mode_format">思考模式：%1$s</string>
+    <string name="thinking_mode_model_default">跟随模型默认</string>
+    <string name="thinking_mode_disabled">关闭思考</string>
     <string name="llm_param_frequency_penalty">frequency_penalty</string>
     <string name="llm_param_presence_penalty">presence_penalty</string>
 
@@ -553,7 +557,7 @@
 %1$s</string>
     <string name="model_response_failed_clear_advanced_params">当前接口可能不支持高级参数。请在“LLM 参数”中清空可选高级参数后重试。</string>
     <string name="model_response_empty_content">模型返回空响应，无法提取有效内容。</string>
-    <string name="model_response_truncated">译文超出输出长度限制。请在“LLM 参数”中调大 max_output_tokens 后重试。</string>
+    <string name="model_response_truncated">模型响应达到输出长度上限。请检查“AI 参数设置”中的“单次请求输出上限”以及服务商的限制。若已开启思考，可尝试降低思考长度或关闭思考后重试。</string>
     <string name="model_text_budget_exceeded">本次请求超出已配置的模型输入或输出额度。请缩短内容或检查模型能力设置。</string>
     <string name="model_text_budget_exhausted">本次请求已用尽共享的重试次数或时间预算。</string>
     <string name="model_response_blank_bubbles">模型返回空白结果：%1$s 模式下有 %2$d 个气泡未返回有效翻译内容。</string>
@@ -682,7 +686,7 @@
     <string name="reading_save_failed">阅读页保存失败</string>
     <string name="custom_prompt_title">自定义提示词</string>
     <string name="custom_prompt_mode">提示词模式</string>
-    <string name="custom_prompt_warning">高级功能：不了解提示词协议时，请勿随意修改。仅修改当前界面语言。切换模式会保留草稿；导入仅预览，点击“保存当前模式”后生效。已有译文不会自动重译。</string>
+    <string name="custom_prompt_warning">高级功能：不了解提示词协议时，请勿随意修改。仅修改当前界面语言。切换模式会保留草稿；导入 JSON 仅预览，点击“保存当前模式”后生效。已有译文不会自动重译。</string>
     <string name="custom_prompt_import">导入 JSON</string>
     <string name="custom_prompt_export">导出 JSON</string>
     <string name="custom_prompt_reset">恢复当前模式内置提示词</string>
@@ -714,17 +718,22 @@
     <string name="model_context_title">模型上下文配置</string>
     <string name="model_context_scope">供应商：%1$s\n模型：%2$s\n地址：%3$s</string>
     <string name="model_context_unsaved">当前配置（未存为供应商）</string>
-    <string name="model_context_unknown">默认：%1$d token</string>
+    <string name="model_context_unknown">未配置</string>
     <string name="model_context_input">最大输入（token）</string>
     <string name="model_context_output">最大输出（token）</string>
     <string name="model_context_total">总上下文（token）</string>
-    <string name="model_context_note">不确定时无需填写：默认最大输入 262,144、最大输出 65,536、总上下文 262,144 token。空白字段显示并使用默认值，输入数字即可覆盖；恢复默认后点击确定保存。部分本地部署可能限制更小，请按服务规格调低。\n\n输入和输出是独立上限，实际请求的输入、输出和安全余量共用总上下文。能力上限与 LLM 参数中的单次输出额度独立；目前不自动调整翻译批次。配置只用于当前供应商、地址、接口格式和模型。</string>
+    <string name="model_context_note">请按服务商公布的能力填写。留空的上限由服务端决定，应用根据已填写的上限为文本任务分批。遇到模型报告超限时，应用会按完整页面缩批。\n\n这里填写的是模型能力。要指定请求发送的输出额度，请填写「AI 参数设置」中的「单次请求输出上限」。配置仅适用于当前供应商、地址、接口格式和模型。</string>
     <string name="model_context_invalid">请输入 1–2147483647 的整数，留空使用默认值。</string>
-    <string name="model_context_clear">恢复默认</string>
+    <string name="model_context_clear">清空</string>
     <string name="model_context_save_failed">保存失败或当前模型配置已变化，请重新打开后重试。</string>
     <string name="model_context_missing_identity">请先填写模型名称和接口地址。</string>
     <string name="llm_param_max_output_tokens">单次请求输出上限（token）</string>
     <string name="reading_page_jump_title">跳转到指定页面</string>
     <string name="reading_page_jump_value">第 %1$d / %2$d 页</string>
     <string name="image_status_pending">待检查</string>
+    <string name="custom_prompt_pack_export">导出提示词包</string>
+    <string name="custom_prompt_pack_import">导入提示词包</string>
+    <string name="custom_prompt_pack_hint">ZIP 包包含当前语言的所有模式（含草稿）。导入成功后立即覆盖并保存当前语言的全部模式。</string>
+    <string name="custom_prompt_pack_imported">已导入并保存当前语言的所有模式提示词</string>
+    <string name="custom_prompt_pack_error">提示词包操作失败。请检查文件权限；ZIP 根目录须包含全部 7 个模式的 JSON 文件，不能重复或包含其他文件，每个文件不超过 256 KiB，并符合对应模式的提示词协议。</string>
 </resources>

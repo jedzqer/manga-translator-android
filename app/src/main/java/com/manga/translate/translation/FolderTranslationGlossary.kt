@@ -48,8 +48,8 @@ internal class FolderTranslationGlossary(
         val changed = additions.filter { (key, value) ->
             key.isNotBlank() && value.isNotBlank() && !glossary.containsKey(key)
         }
-        changed.forEach { (key, value) -> glossary[key] = value }
         if (changed.isNotEmpty()) glossaryWriter.submit(folder, changed)
+        glossary.putAll(changed)
     }
 
     /** Lands any coalesced glossary write still pending. Survives cancellation. */
@@ -67,8 +67,10 @@ internal class FolderTranslationGlossary(
         return extractStateStore.load(folder, translationTargetKey)
     }
 
-    fun loadSynopsis(folder: File): String = synopsisStore.load(folder, translationTargetKey)
-    fun saveSynopsis(folder: File, text: String) = synopsisStore.save(folder, text, translationTargetKey)
+    suspend fun <T> withSynopsis(folder: File, action: suspend () -> T): T =
+        synopsisStore.withUpdate(folder, translationTargetKey) { initial, save ->
+            withContext(FullTranslationSynopsis(initial) { snapshot, _ -> save(snapshot) }) { action() }
+        }
 
     fun saveScopedExtractState(folder: File, extracted: Set<String>) {
         extractStateStore.save(folder, extracted, translationTargetKey)

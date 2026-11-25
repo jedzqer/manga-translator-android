@@ -25,6 +25,8 @@ Requires Android 7.0 (API 24) or later.
 - **AI configuration**: OpenAI-compatible Chat, OpenAI Responses and Gemini formats; saved provider profiles, custom request parameters, prompts and translation styles. Folders and collections can override the global style.
 - **Tasks and backups**: background progress and completion notifications, in-app logs and update checks; separately back up manga and translations or app configuration, including providers and custom fonts.
 
+**Custom prompts** in Settings lets you edit 7 modes for the current interface language, import/export individual JSON files, or transfer all modes as a ZIP with **Export prompt pack / Import prompt pack**. Export includes drafts; a valid pack is saved immediately on import. See the [custom prompts tutorial](Tutorial/Tutorial_EN.md#custom-prompts).
+
 ## Choosing a Translation Mode
 
 | Mode | Workflow and use |

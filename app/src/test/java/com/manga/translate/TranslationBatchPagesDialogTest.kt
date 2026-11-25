@@ -49,7 +49,7 @@ class TranslationBatchPagesDialogTest {
             val button = settingsBinding.translationRequestSettingsButton
             val parent = button.parent as ViewGroup
             assertEquals(
-                parent.indexOfChild(settingsBinding.enableThinkingSwitch) + 1,
+                parent.indexOfChild(settingsBinding.thinkingModeButton) + 1,
                 parent.indexOfChild(settingsBinding.fetchModelsButton)
             )
             button.performClick()

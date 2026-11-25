@@ -16,6 +16,13 @@
             android:layout_height="wrap_content" android:text="@string/custom_prompt_import" />
         <Button android:id="@+id/prompt_export" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:text="@string/custom_prompt_export" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/custom_prompt_pack_hint" android:textColor="?attr/dialogTextColor"
+            android:layout_marginTop="12dp" />
+        <Button android:id="@+id/prompt_pack_export" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/custom_prompt_pack_export" />
+        <Button android:id="@+id/prompt_pack_import" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/custom_prompt_pack_import" />
         <Button android:id="@+id/prompt_reset" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:text="@string/custom_prompt_reset" />
     </LinearLayout>

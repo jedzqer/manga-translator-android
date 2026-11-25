@@ -8,11 +8,13 @@ import com.manga.translate.model.TranslationLanguage
 import com.manga.translate.platform.AppLogger
 import com.manga.translate.platform.RequestPerfTrace
 import com.manga.translate.settings.ApiSettings
+import com.manga.translate.settings.ModelContextSettings
 import com.manga.translate.settings.OCR_PROVIDER_ID
 import com.manga.translate.settings.OcrApiSettings
 import com.manga.translate.translation.FullTranslationSynopsis
 import com.manga.translate.translation.TextBudgetUnit
 import com.manga.translate.translation.TextBatchPlan
+import com.manga.translate.translation.Utf8TextTokenEstimator
 import com.manga.translate.settings.SettingsStore
 import java.io.InterruptedIOException
 import kotlinx.coroutines.CancellationException
@@ -39,6 +41,7 @@ class LlmClient(
     private val httpTransport = HttpTransport()
     private val payloadBuilder = PayloadBuilder(appContext, settingsStore)
     private val responseParser = ResponseParser()
+    private val textUsageCalibration = TextUsageCalibration()
     private val retryHandler = RetryHandler(settingsStore)
     private val ocrConcurrencyLimiter = DynamicConcurrencyLimiter()
 
@@ -59,17 +62,14 @@ class LlmClient(
         apiSettings: ApiSettings? = null
     ): LlmTranslationResult? =
         withContext(Dispatchers.IO) {
-            val content = requestContent(
+            requestTextTranslation(
                 text = text,
                 glossary = glossary,
                 promptAsset = promptAsset,
-                useJsonPayload = true,
                 requestTimeoutMs = requestTimeoutMs,
                 retryCount = retryCount,
                 apiSettings = apiSettings
             )
-                ?: return@withContext null
-            responseParser.parseTranslationContent(content)
         }
 
     override suspend fun translateBubbleItems(
@@ -97,12 +97,16 @@ class LlmClient(
             val additions = linkedMapOf<String, String>()
             val results = runBudgetedText(units, settings, promptAsset, requestTimeoutMs, retryCount,
                 glossaryProcessingEnabled, 8192,
+                task = TextUsageCalibration.Task.BUBBLE_TRANSLATION,
+                outputContract = StructuredTranslationOutput.TEXT_BUBBLES,
+                composition = { TextUsageCalibration.Composition(names.isNotEmpty(), !synopsis.isNullOrEmpty()) },
                 buildUser = { batch -> payloadBuilder.buildBubbleItemsUserPayload(
                     batch.flatMap { grouped.getValue(it.sourceId) }, names, synopsis) },
                 parse = { content, batch -> validateTextBubbleIds(
                     responseParser.parseBubbleTranslationContent(content,
                         batch.flatMap { grouped.getValue(it.sourceId) }.map { it.id }),
                     batch.flatMap { grouped.getValue(it.sourceId) }.map { it.id }, content) },
+                minimumOutput = { batch -> 12 + batch.sumOf { grouped.getValue(it.sourceId).size } * 8 },
                 onSuccess = { result ->
                     if (glossaryProcessingEnabled) result.glossaryUsed.forEach { (key, value) ->
                         if (!names.containsKey(key)) { names[key] = value; additions[key] = value }
@@ -133,6 +137,10 @@ class LlmClient(
         val pending = pages.filterNot { synopsis?.isComplete(it.sourceId) == true }
         runBudgetedText(pending, settings, promptAsset, null, RetryHandler.RETRY_COUNT, true,
             if (synopsis != null) 8192 else 4096,
+            task = TextUsageCalibration.Task.GLOSSARY,
+            outputContract = if (synopsis == null) StructuredTranslationOutput.GLOSSARY
+                else StructuredTranslationOutput.GLOSSARY_WITH_SYNOPSIS,
+            composition = { TextUsageCalibration.Composition(names.isNotEmpty(), !synopsis?.text.isNullOrEmpty()) },
             buildUser = { batch -> payloadBuilder.buildUserPayload(
                 batch.joinToString("\n") { it.serializedText }, names, synopsis?.text) },
             parse = { content, batch -> Triple(responseParser.parseGlossaryContentStrict(content),
@@ -141,9 +149,10 @@ class LlmClient(
             onSuccess = { (extracted, summary, sourceIds) ->
                 val fresh = extracted.filterKeys { !names.containsKey(it) }
                 onSuccess(fresh)
+                currentCoroutineContext().ensureActive()
+                synopsis?.commit(sourceIds, requireNotNull(summary))
                 names.putAll(fresh)
                 additions.putAll(fresh)
-                synopsis?.commit(sourceIds, requireNotNull(summary))
             })
         additions
     }
@@ -162,14 +171,23 @@ class LlmClient(
     private suspend fun <T> runBudgetedText(
         units: List<TextBudgetUnit>, settings: ApiSettings, promptAsset: String,
         requestTimeoutMs: Int?, retryCount: Int, glossaryProcessingEnabled: Boolean,
-        defaultOutput: Int, buildUser: (List<TextBudgetUnit>) -> String,
+        estimatedContentTokens: Int,
+        task: TextUsageCalibration.Task,
+        outputContract: StructuredTranslationOutput,
+        composition: () -> TextUsageCalibration.Composition,
+        buildUser: (List<TextBudgetUnit>) -> String,
         parse: (String, List<TextBudgetUnit>) -> T,
+        minimumOutput: (List<TextBudgetUnit>) -> Int = { 12 },
         onSuccess: suspend (T) -> Unit
     ): List<T> {
         if (units.isEmpty()) return emptyList()
+        val requestParameters = payloadBuilder.requestParameters(settings)
         val capability = settingsStore.loadModelContextSettings(settings)
-        val template = BudgetedTextTemplate(payloadBuilder.buildPayload(settings, settings.modelName.trim(),
-            promptAsset, settings.apiFormat, "", glossaryProcessingEnabled), settings.apiFormat, capability, defaultOutput)
+        val payloadTemplate = payloadBuilder.buildPayload(settings, settings.modelName.trim(),
+            promptAsset, settings.apiFormat, "", glossaryProcessingEnabled, requestParameters, outputContract)
+        val calibration = textCalibration(requestParameters, capability, task, promptAsset, payloadTemplate, composition)
+        val template = BudgetedTextTemplate(payloadTemplate, requestParameters.protocol, capability,
+            estimatedContentTokens, calibration?.estimator ?: Utf8TextTokenEstimator)
         val timeout = requestTimeoutMs ?: RequestTimeoutPolicy.callTimeoutMs(settingsStore.loadApiTimeoutMs(), units.size)
         val policy = retryHandler.buildRetryPolicy(retryCount)
         val context = currentCoroutineContext()[RequestBudgetContext] ?: RequestBudgetContext()
@@ -183,11 +201,12 @@ class LlmClient(
                         var parsed: T? = null
                         executeRequestWithRetry("text:$promptAsset", promptAsset, settings, timeout,
                             policy.maxAttempts, "response", { payload },
-                            validateContent = { parsed = parse(it, batch) }, retryPolicyOverride = policy)
+                            validateContent = { parsed = parse(it, batch) }, retryPolicyOverride = policy,
+                            protocol = requestParameters.protocol, textCalibration = calibration)
                             ?: throw LlmResponseException(LlmErrorCode.EmptyResponse,
                                 appContext.getString(R.string.model_response_empty_content))
                         requireNotNull(parsed)
-                    }, onSuccess = onSuccess)
+                    }, minimumOutput = minimumOutput, onSuccess = onSuccess)
             }
         }
     }
@@ -240,17 +259,22 @@ class LlmClient(
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
         val retryPolicy = RetryPolicy(RetryHandler.RETRY_COUNT, RetryMode.DEFAULT)
+        val budget = (currentCoroutineContext()[RequestBudgetContext] ?: RequestBudgetContext())
+            .getOrStart(timeoutMs, retryPolicy.maxAttempts)
         for (attempt in 1..retryPolicy.maxAttempts) {
             currentCoroutineContext().ensureActive()
+            if (budget.remainingMs() == 0L) return null
             lastErrorCode = null
             lastErrorBody = null
+            var retryAfter: String? = null
             val result = try {
                 ocrConcurrencyLimiter.withPermit(ocrSettings.apiOcrConcurrencyLimit) {
                     httpTransport.executeRequest(
                         request = request,
-                        timeoutMs = timeoutMs
+                        timeoutMs = budget.attemptTimeoutMs(timeoutMs)
                     ) { response ->
                         val code = response.code
+                        retryAfter = response.header("Retry-After")
                         val body = response.body.string()
                         if (code !in 200..299) {
                             AppLogger.log(
@@ -259,6 +283,9 @@ class LlmClient(
                             )
                             lastErrorCode = "HTTP $code"
                             lastErrorBody = body
+                            null
+                        } else if (responseParser.isRefusedResponse(body, ApiFormat.OPENAI_COMPATIBLE)) {
+                            AppLogger.log("LlmClient", "OCR response refused on ${redactEndpoint(endpoint)}")
                             null
                         } else {
                             val ocrContent = responseParser
@@ -286,7 +313,8 @@ class LlmClient(
                 lastErrorCode = "NETWORK_ERROR"
                 null
             }
-            if (result != null || !retryHandler.canRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody)) {
+            if (result != null || !retryHandler.canRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody) ||
+                !retryHandler.backoffBeforeRetry(attempt, retryPolicy, lastErrorCode, retryAfter, budget)) {
                 if (result != null) return result
                 if (lastErrorCode != null) {
                     AppLogger.log(
@@ -296,7 +324,6 @@ class LlmClient(
                 }
                 return null
             }
-            retryHandler.backoffBeforeRetry(attempt, retryPolicy, lastErrorCode)
         }
         return null
     }
@@ -378,31 +405,44 @@ class LlmClient(
         }
     }
 
-    private suspend fun requestContent(
+    private fun textCalibration(
+        parameters: PayloadBuilder.RequestParameters,
+        context: ModelContextSettings,
+        task: TextUsageCalibration.Task,
+        promptAsset: String,
+        template: JSONObject,
+        composition: () -> TextUsageCalibration.Composition
+    ): TextUsageCalibration.Session? {
+        // Arbitrary custom parameters can add instructions, tools, modality or server-side state.
+        if (!parameters.protocol.trustedTextInputUsage || parameters.custom.any {
+                it.enabled && it.key.trim() != RequestProtocolCapabilities.CHAT_OUTPUT_OVERRIDE
+            }) return null
+        return textUsageCalibration.session(context, task, promptAsset, template, composition)
+    }
+
+    private suspend fun requestTextTranslation(
         text: String,
         glossary: Map<String, String>,
         promptAsset: String,
-        useJsonPayload: Boolean,
         requestTimeoutMs: Int? = null,
         retryCount: Int = RetryHandler.RETRY_COUNT,
-        apiSettings: ApiSettings? = null,
-        userPayloadOverride: String? = null,
-        glossaryProcessingEnabled: Boolean = true
-    ): String? {
+        apiSettings: ApiSettings? = null
+    ): LlmTranslationResult? {
         val settings = apiSettings ?: settingsStore.load()
         if (!settings.isValid()) return null
         val selectedModel = settings.modelName.trim()
-        val userPayload = userPayloadOverride ?: if (useJsonPayload) {
-            payloadBuilder.buildUserPayload(text, glossary)
-        } else {
-            text
-        }
+        val userPayload = payloadBuilder.buildUserPayload(text, glossary)
+        val requestParameters = payloadBuilder.requestParameters(settings)
         val payloadTemplate = payloadBuilder.buildPayload(
-            settings, selectedModel, promptAsset, settings.apiFormat, "", glossaryProcessingEnabled)
+            settings, selectedModel, promptAsset, settings.apiFormat, "", true, requestParameters)
         val capability = settingsStore.loadModelContextSettings(settings)
-        val template = BudgetedTextTemplate(payloadTemplate, settings.apiFormat, capability, 4096)
+        val composition = TextUsageCalibration.Composition(glossary.isNotEmpty(), false)
+        val calibration = textCalibration(requestParameters, capability, TextUsageCalibration.Task.TRANSLATION,
+            promptAsset, payloadTemplate) { composition }
+        val template = BudgetedTextTemplate(payloadTemplate, requestParameters.protocol, capability, 4096,
+            calibration?.estimator ?: Utf8TextTokenEstimator)
         val payload = template.payload(userPayload)
-        val plan = template.check(payload)
+        val plan = template.check(payload, singlePage = true)
         if (plan is TextBatchPlan.Rejected) throw LlmResponseException(
             LlmErrorCode.Custom("TEXT_BUDGET_EXCEEDED"),
             "${plan.reason}: input=${plan.budget.inputTokens}, available=${plan.budget.availableInputTokens}",
@@ -415,11 +455,14 @@ class LlmClient(
             ?: TextAttemptBudget(retryPolicy.maxAttempts * 3)
         return withContext(budgetContext + attempts) {
             deadline.run {
+                var parsed: LlmTranslationResult? = null
                 executeRequestWithRetry(
                     operation = "text:$promptAsset", promptAsset = promptAsset, settings = settings,
                     requestTimeoutMs = timeout, retryCount = retryCount, contentLogLabel = "response",
-                    buildPayload = { payload }, retryPolicyOverride = retryPolicy
+                    buildPayload = { payload }, validateContent = { parsed = responseParser.parseTranslationContent(it) },
+                    retryPolicyOverride = retryPolicy, protocol = requestParameters.protocol, textCalibration = calibration
                 )
+                parsed
             }
         }
     }
@@ -439,6 +482,7 @@ class LlmClient(
         val settings = apiSettings ?: settingsStore.load()
         if (!settings.isValid()) return null
         val selectedModel = settings.modelName.trim()
+        val requestParameters = payloadBuilder.requestParameters(settings)
         return executeRequestWithRetry(
             operation = "image:$promptAsset",
             promptAsset = promptAsset,
@@ -456,11 +500,13 @@ class LlmClient(
                     glossaryProcessingEnabled = glossaryProcessingEnabled,
                     apiFormat = settings.apiFormat,
                     requestedIds = requestedIds,
-                    imagesBase64 = imagesBase64
+                    imagesBase64 = imagesBase64,
+                    parameters = requestParameters
                 )
             },
             sanitizePayloadForLog = { payloadBuilder.sanitizeModelIoForLog(it) },
-            validateContent = validateContent
+            validateContent = validateContent,
+            protocol = requestParameters.protocol
         )
     }
 
@@ -488,7 +534,9 @@ class LlmClient(
         buildPayload: () -> JSONObject,
         sanitizePayloadForLog: ((JSONObject) -> String)? = null,
         validateContent: ((String) -> Unit)? = null,
-        retryPolicyOverride: RetryPolicy? = null
+        retryPolicyOverride: RetryPolicy? = null,
+        protocol: RequestProtocolCapabilities,
+        textCalibration: TextUsageCalibration.Session? = null
     ): String? {
         val callTimeoutMs = RequestTimeoutPolicy.callTimeoutMs(requestTimeoutMs ?: settingsStore.loadApiTimeoutMs())
         val retryPolicy = retryPolicyOverride ?: retryHandler.buildRetryPolicy(retryCount)
@@ -496,7 +544,7 @@ class LlmClient(
             .getOrStart(callTimeoutMs, retryPolicy.maxAttempts)
         return budget.run {
             executeRequestAttempts(operation, promptAsset, settings, callTimeoutMs, retryPolicy,
-                contentLogLabel, buildPayload, sanitizePayloadForLog, budget, validateContent)
+                contentLogLabel, buildPayload, sanitizePayloadForLog, budget, validateContent, protocol, textCalibration)
         }
     }
 
@@ -510,7 +558,9 @@ class LlmClient(
         buildPayload: () -> JSONObject,
         sanitizePayloadForLog: ((JSONObject) -> String)?,
         budget: RequestTimeoutBudget,
-        validateContent: ((String) -> Unit)?
+        validateContent: ((String) -> Unit)?,
+        protocol: RequestProtocolCapabilities,
+        textCalibration: TextUsageCalibration.Session?
     ): String? {
         val selectedModel = settings.modelName.trim()
         val endpoint = EndpointBuilder.buildEndpoint(settings, selectedModel)
@@ -522,6 +572,10 @@ class LlmClient(
             AppLogger.log("LlmClient", "Selected model: $selectedModel")
         }
         val request = httpTransport.buildJsonPostRequest(endpoint, payload, settings)
+        val observeInput = textCalibration?.let { calibration ->
+            val estimatedBytes = Utf8TextTokenEstimator.estimate(payload.toString())
+            if (estimatedBytes == request.body?.contentLength()) calibration.observer(estimatedBytes) else null
+        }
         val retries = retryPolicy.maxAttempts
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
@@ -536,6 +590,8 @@ class LlmClient(
             lastErrorCode = null
             lastErrorBody = null
             lastResponseException = null
+            var retryAfter: String? = null
+            var inputUsage: TextInputUsage? = null
             val attemptTimeoutMs = budget.attemptTimeoutMs(timeoutMs)
             currentCoroutineContext()[TextAttemptBudget]?.consume()
             requestTrace.beginAttempt()
@@ -547,6 +603,7 @@ class LlmClient(
                 ) { response ->
                     val code = response.code
                     requestTrace.recordStatus(code.toString())
+                    retryAfter = response.header("Retry-After")
                     val body = response.body.string()
                     if (code !in 200..299) {
                         AppLogger.log(
@@ -561,19 +618,37 @@ class LlmClient(
                         null
                     } else {
                         // 先检测截断：截断但内容可解析的响应也必须报错，避免静默返回不完整译文。
+                        if (responseParser.isRefusedResponse(body, protocol.format)) {
+                            throw LlmResponseException(LlmErrorCode.Custom("MODEL_RESPONSE_REFUSED"),
+                                "Model refused the request or filtered its output.", retryable = false)
+                        }
                         // 截断优先于空内容判定，给用户更准确的错误原因（达到 max token 上限）。
-                        val truncated = responseParser.isTruncatedResponse(body, settings.apiFormat)
-                        val content = responseParser.parseResponseContent(body, settings.apiFormat)
+                        val truncated = responseParser.isTruncatedResponse(body, protocol.format)
+                        val content = if (truncated) null else responseParser.parseResponseContent(body, protocol.format)
                         if (truncated) {
+                            val config = payload.optJSONObject("generationConfig")
+                            val outputLimit = protocol.outputLimit(payload)
+                            val thinkingConfig = config?.optJSONObject("thinkingConfig")
+                            val thinkingEnabled = payload.opt("enable_thinking") as? Boolean
+                            val effort = payload.optJSONObject("reasoning")?.opt("effort") as? String
+                                ?: payload.opt("reasoning_effort") as? String
+                            val thinkingBudget = protocol.fixedThinking(payload)
+                            val (outputTokens, reasoningTokens) = responseParser.outputTokenUsage(body, protocol.format)
                             AppLogger.log(
                                 "LlmClient",
-                                "Truncated $contentLogLabel on ${redactEndpoint(endpoint)}: " +
-                                    responseParser.summarizeBody(body)
+                                "Truncated $contentLogLabel on ${redactEndpoint(endpoint)} " +
+                                    "(prompt=$promptAsset, requestedOutputTokens=${outputLimit ?: "unset"}, " +
+                                    "thinkingRequested=${thinkingEnabled ?: "unset"}, " +
+                                    "reasoningEffort=${effort ?: "unset"}, requestedThinkingTokens=${thinkingBudget ?: "unset"}, " +
+                                    "requestedThinkingLevel=${thinkingConfig?.opt("thinkingLevel") ?: "unset"}, " +
+                                    "reportedOutputTokens=${outputTokens ?: "unavailable"}, " +
+                                    "reportedReasoningTokens=${reasoningTokens ?: "unavailable"})"
                             )
                             requestTrace.recordStatus(LlmErrorCode.ResponseTruncated.value)
                             lastResponseException = LlmResponseException(
                                 errorCode = LlmErrorCode.ResponseTruncated,
-                                responseContent = appContext.getString(R.string.model_response_truncated)
+                                responseContent = appContext.getString(R.string.model_response_truncated),
+                                cause = outputTokens?.let { TruncatedTokenUsage(it, reasoningTokens) }
                             )
                         } else if (content == null) {
                             AppLogger.log(
@@ -587,13 +662,16 @@ class LlmClient(
                                 }
                             )
                         } else {
+                            validateContent?.invoke(content)
+                            if (observeInput != null && response.priorResponse == null && response.request.url == request.url) {
+                                inputUsage = responseParser.textInputUsage(body, protocol.format)
+                            }
                             if (logModelIo) {
                                 val loggedContent = if (sanitizePayloadForLog != null) {
                                     payloadBuilder.sanitizeModelIoForLog(content)
                                 } else content
                                 AppLogger.log("LlmClient", "Model output: $loggedContent")
                             }
-                            validateContent?.invoke(content)
                         }
                         content
                     }
@@ -631,8 +709,10 @@ class LlmClient(
                 )
                 throw responseException
             }
-            if (result != null || !retryHandler.canRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody)) {
+            if (result != null || !retryHandler.canRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody) ||
+                !retryHandler.backoffBeforeRetry(attempt, retryPolicy, lastErrorCode, retryAfter, budget)) {
                 if (result != null) {
+                    inputUsage?.let { observeInput?.invoke(it) }
                     requestTrace.logSummary(if (validateContent != null) "validated_response" else "response_received")
                     return result
                 }
@@ -648,7 +728,6 @@ class LlmClient(
                 requestTrace.logSummary("empty")
                 return null
             }
-            retryHandler.backoffBeforeRetry(attempt, retryPolicy, lastErrorCode)
         }
         return null
     }
@@ -670,16 +749,21 @@ class LlmClient(
         var lastErrorCode: String? = null
         var lastErrorBody: String? = null
         val retryPolicy = RetryPolicy(RetryHandler.RETRY_COUNT, RetryMode.DEFAULT)
+        val budget = (currentCoroutineContext()[RequestBudgetContext] ?: RequestBudgetContext())
+            .getOrStart(timeoutMs, retryPolicy.maxAttempts)
         for (attempt in 1..retryPolicy.maxAttempts) {
             currentCoroutineContext().ensureActive()
             lastErrorCode = null
             lastErrorBody = null
+            var retryAfter: String? = null
+            val attemptTimeoutMs = budget.attemptTimeoutMs(timeoutMs)
             val result = try {
                 httpTransport.executeRequest(
                     request = httpTransport.buildModelListRequest(endpoint, apiKey, apiFormat),
-                    timeoutMs = timeoutMs
+                    timeoutMs = attemptTimeoutMs
                 ) { response ->
                     val code = response.code
+                    retryAfter = response.header("Retry-After")
                     val body = response.body.string()
                     if (code !in 200..299) {
                         AppLogger.log(
@@ -709,7 +793,8 @@ class LlmClient(
                 lastErrorCode = "NETWORK_ERROR"
                 null
             }
-            if (!result.isNullOrEmpty() || !retryHandler.canRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody)) {
+            if (!result.isNullOrEmpty() || !retryHandler.canRetry(attempt, retryPolicy, lastErrorCode, lastErrorBody) ||
+                !retryHandler.backoffBeforeRetry(attempt, retryPolicy, lastErrorCode, retryAfter, budget)) {
                 if (!result.isNullOrEmpty()) {
                     return result
                 }
@@ -722,7 +807,6 @@ class LlmClient(
                 }
                 return emptyList()
             }
-            retryHandler.backoffBeforeRetry(attempt, retryPolicy, lastErrorCode)
         }
         return emptyList()
     }

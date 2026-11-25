@@ -1,17 +1,21 @@
 package com.manga.translate
 
 import android.content.Context
+import android.content.res.Configuration
+import android.os.LocaleList
 import com.manga.translate.library.LibraryPreferencesGateway
 import com.manga.translate.library.LibraryRepository
 import com.manga.translate.model.ApiFormat
 import com.manga.translate.network.PayloadBuilder
 import com.manga.translate.settings.ApiSettings
 import com.manga.translate.settings.SettingsStore
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import java.util.Locale
 
 @RunWith(RobolectricTestRunner::class)
 class FolderTranslationStyleTest {
@@ -149,5 +153,64 @@ class FolderTranslationStyleTest {
             }
         }
         assertEquals("GLOBAL_STYLE_SENTINEL", store.loadTranslationStyle())
+    }
+
+    @Test
+    fun `translation requests preserve the example messages shown in each bundled template`() {
+        val textModes = listOf("llm_prompts", "llm_prompts_FullTrans", "float_llm_prompts")
+        val imageModes = listOf("vl_bubble_prompts", "vl_page_prompts")
+        val locales = listOf("" to "zh-CN", "_en" to "en", "_hant" to "zh-TW",
+            "_pt_br" to "pt-BR", "_ru" to "ru")
+        val input = """{"items":[{"id":0,"text":"PAGE_INPUT_SENTINEL"}]}"""
+        for (mode in textModes + imageModes) for ((locale, language) in locales) {
+            val localizedContext = context.createConfigurationContext(
+                Configuration(context.resources.configuration).apply {
+                    setLocales(LocaleList(Locale.forLanguageTag(language)))
+                })
+            val builder = PayloadBuilder(localizedContext, SettingsStore(localizedContext))
+            val asset = "prompts/$mode$locale.json"
+            val template = JSONObject(localizedContext.assets.open(asset).bufferedReader().use { it.readText() })
+            val examples = template.getJSONArray("example_messages")
+            assertEquals(asset, "user", examples.getJSONObject(0).getString("role"))
+            assertEquals(asset, "assistant", examples.getJSONObject(1).getString("role"))
+            assertTrue(asset, examples.getJSONObject(1).getString("content").contains("{{STYLE_HINT}}"))
+            for (format in ApiFormat.entries) for (style in listOf("", "STYLE \"quoted\"\n中文")) {
+                val settings = ApiSettings("https://example.com", "key", "model", format, translationStyle = style)
+                val payload = if (mode in textModes) {
+                    builder.buildPayload(settings, "model", asset, format, input)
+                } else {
+                    builder.buildImageTranslationPayload(settings, "model", "image", asset, format,
+                        requestedIds = if (mode == "vl_page_prompts") listOf(0) else null)
+                }
+                val (messages, offset) = when (format) {
+                    ApiFormat.OPENAI_COMPATIBLE -> payload.getJSONArray("messages") to 1
+                    ApiFormat.OPENAI_RESPONSES -> payload.getJSONArray("input") to 0
+                    ApiFormat.GEMINI -> payload.getJSONArray("contents") to 0
+                }
+                val label = "$asset / $format"
+                assertEquals(label, offset + examples.length() + 1, messages.length())
+                for (index in 0 until examples.length()) {
+                    val expected = examples.getJSONObject(index)
+                    val message = messages.getJSONObject(offset + index)
+                    val role = expected.getString("role")
+                    assertEquals(label, if (format == ApiFormat.GEMINI && role == "assistant") "model" else role,
+                        message.getString("role"))
+                    val content = if (format == ApiFormat.GEMINI) {
+                        message.getJSONArray("parts").getJSONObject(0).getString("text")
+                    } else message.getString("content")
+                    assertEquals(label, expected.getString("content").replace("{{STYLE_HINT}}", style), content)
+                }
+                val finalMessage = messages.getJSONObject(messages.length() - 1)
+                val finalText = when {
+                    format == ApiFormat.GEMINI -> finalMessage.getJSONArray("parts").getJSONObject(0).getString("text")
+                    mode in imageModes -> finalMessage.getJSONArray("content").getJSONObject(0).getString("text")
+                    else -> finalMessage.getString("content")
+                }
+                assertEquals(label, "user", finalMessage.getString("role"))
+                assertTrue(label, finalText.startsWith(template.getString("user_prompt_prefix")))
+                if (mode in textModes) assertTrue(label, finalText.endsWith(input))
+                if (style.isNotEmpty()) assertFalse(label, finalText.contains(style))
+            }
+        }
     }
 }

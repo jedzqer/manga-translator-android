@@ -64,6 +64,7 @@ import com.manga.translate.settings.ui.dialogs.ThemeDialog
 import com.manga.translate.settings.ui.dialogs.ThinkingLengthDialog
 import com.manga.translate.settings.ui.dialogs.TranslationRequestSettingsDialog
 import com.manga.translate.settings.ui.dialogs.TranslationStyleDialog
+import com.manga.translate.settings.ui.dialogs.showSingleChoiceSettingDialog
 import java.text.NumberFormat
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
@@ -343,15 +344,19 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
                 "Model I/O logging ${if (isChecked) "enabled" else "disabled"}"
             )
         }
-        binding.enableThinkingSwitch.setOnCheckedChangeListener { _, isChecked ->
-            val current = settingsStore.loadLlmParameters()
-            if (current.enableThinking == isChecked) return@setOnCheckedChangeListener
-            settingsStore.saveLlmParameters(current.copy(enableThinking = isChecked))
-            updateThinkingLengthButton()
-            AppLogger.log(
-                "Settings",
-                "enable_thinking ${if (isChecked) "enabled" else "disabled"}"
-            )
+        binding.thinkingModeButton.setOnClickListener {
+            showSingleChoiceSettingDialog(
+                context = requireContext(),
+                titleRes = R.string.thinking_mode_title,
+                options = listOf(null, true, false),
+                current = settingsStore.loadLlmParameters().enableThinking,
+                labelRes = ::thinkingModeLabel
+            ) { dialog, enabled ->
+                val current = settingsStore.loadLlmParameters()
+                settingsStore.saveLlmParameters(current.copy(enableThinking = enabled))
+                updateThinkingLengthButton()
+                dialog.dismiss()
+            }
         }
         binding.modelContextButton.setOnClickListener {
             persistSettings()
@@ -586,7 +591,6 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
         binding.apiRetryCountInput.setText(formatNumber(settingsStore.loadApiRetryCount()))
         updateTranslationRequestSettingsButton()
         binding.modelIoLoggingSwitch.isChecked = settingsStore.loadModelIoLogging()
-        binding.enableThinkingSwitch.isChecked = settingsStore.loadLlmParameters().enableThinking
         updateThinkingLengthButton()
         updateLanguageButton(settingsStore.loadAppLanguage())
         updateThemeButton(settingsStore.loadThemeMode())
@@ -628,7 +632,8 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
 
     internal fun updateThinkingLengthButton() {
         val params = settingsStore.loadLlmParameters()
-        val enabled = params.enableThinking
+        updateLabeledButton(binding.thinkingModeButton, R.string.thinking_mode_format, thinkingModeLabel(params.enableThinking))
+        val enabled = params.enableThinking == true
         binding.thinkingLengthButton.isEnabled = enabled
         binding.thinkingLengthButton.alpha = if (enabled) 1f else 0.5f
         updateLabeledButton(
@@ -636,6 +641,13 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
             R.string.thinking_length_format,
             params.thinkingLength.labelRes
         )
+    }
+
+    @StringRes
+    private fun thinkingModeLabel(enabled: Boolean?): Int = when (enabled) {
+        true -> R.string.llm_param_enable_thinking
+        false -> R.string.thinking_mode_disabled
+        null -> R.string.thinking_mode_model_default
     }
 
     private fun updateLabeledButton(view: TextView, @StringRes formatRes: Int, @StringRes labelRes: Int) {
@@ -652,7 +664,7 @@ class SettingsFragment : Fragment(), BackupOperationCancelHost, BackupExportOpti
 
     private fun showLanguageDialog() = LanguageDialog(this, settingsStore).show()
 
-    private fun showApiFormatDialog() = ApiFormatDialog(this, settingsStore).show()
+    private fun showApiFormatDialog() = ApiFormatDialog(this).show()
 
     private fun showReadingDisplayDialog() = ReadingDisplayDialog(this, settingsStore).show()
 

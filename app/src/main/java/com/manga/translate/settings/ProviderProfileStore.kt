@@ -510,10 +510,8 @@ internal class ProviderProfileStore(
                 topP = llmJson.optOptionalDouble("topP"),
                 topK = llmJson.optOptionalInt("topK"),
                 maxOutputTokens = llmJson.optOptionalInt("maxOutputTokens"),
-                enableThinking = llmJson.optBoolean(
-                    "enableThinking",
-                    SettingsStore.DEFAULT_LLM_ENABLE_THINKING
-                ),
+                enableThinking = if (llmJson.isNull("enableThinking")) null
+                    else llmJson.optBoolean("enableThinking"),
                 thinkingLength = parseThinkingLength(llmJson),
                 frequencyPenalty = llmJson.optOptionalDouble("frequencyPenalty"),
                 presencePenalty = llmJson.optOptionalDouble("presencePenalty")

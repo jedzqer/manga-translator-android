@@ -13,9 +13,9 @@ enum class ThinkingLength(
     HIGH("high", R.string.thinking_length_high),
     XHIGH("xhigh", R.string.thinking_length_xhigh);
 
-    fun openAiBudgetTokens(): Int {
+    fun openAiBudgetTokens(): Int? {
         return when (this) {
-            AUTO -> DEFAULT_OPENAI_MEDIUM
+            AUTO -> null
             LOW -> 1024
             MEDIUM -> DEFAULT_OPENAI_MEDIUM
             HIGH -> 8192
@@ -34,27 +34,20 @@ enum class ThinkingLength(
     }
 
     companion object {
-        val DEFAULT = MEDIUM
+        val DEFAULT = AUTO
         private const val DEFAULT_OPENAI_MEDIUM = 4096
 
         fun fromPref(value: String?): ThinkingLength {
             return entries.firstOrNull { it.prefValue == value } ?: DEFAULT
         }
 
-        fun optionsFor(apiFormat: ApiFormat): List<ThinkingLength> {
-            return when (apiFormat) {
-                ApiFormat.GEMINI -> entries.toList()
-                ApiFormat.OPENAI_COMPATIBLE,
-                ApiFormat.OPENAI_RESPONSES -> entries.filter { it != AUTO }
-            }
-        }
-
         fun fromLegacyBudget(budget: Int?): ThinkingLength {
             if (budget == null) return DEFAULT
             if (budget < 0) return AUTO
             return entries
-                .filter { it != AUTO }
-                .minByOrNull { kotlin.math.abs(it.openAiBudgetTokens() - budget) }
+                .mapNotNull { length -> length.openAiBudgetTokens()?.let { length to it } }
+                .minByOrNull { (_, tokens) -> kotlin.math.abs(tokens.toLong() - budget) }
+                ?.first
                 ?: DEFAULT
         }
     }

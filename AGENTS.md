@@ -181,7 +181,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 - `SettingsStore` 是设置访问门面；新增设置应归入 `ApiSettingsStore`、`OcrSettingsStore`、`RenderSettingsStore`、`AppSettingsStore`、`LlmParameterStore` 或 `ProviderProfileStore`，不得继续膨胀 UI 层持久化逻辑。
 - 文件夹级设置、标签、排序和阅读方式统一经 `LibraryPreferencesGateway`。
 - 文件夹及集合文风由 `LibraryPreferencesGateway` 管理，默认跟随全局；集合内章节共用集合设置。专属空字符串表示不附加文风要求，不能当作跟随全局。实际文风随请求传递，禁止临时修改全局文风实现覆盖。
-- 模型上下文能力通过 `SettingsStore.loadModelContextSettings()` 读取，按供应商 profile、endpoint、接口格式、模型和 providerId 隔离；能力包含可空的最大输入、最大输出及总上下文（token），与 LLM 单次输出额度独立。未配置字段保持可空持久化，读取 `effectiveLimits` 获得逐字段兜底值，默认值统一由 `ModelContextDefaults` 定义；兜底是应用保守预设，不是已核实模型能力，也不从模型名推断。文本请求由 `TextRequestBudget` 预检实际序列化 Payload；能力、提示词和请求参数按逻辑操作冻结，结构化翻译及全文译名提取以整页不可拆单元装箱，确认截断或上下文溢出后仅按完整页面缩批。网络与响应重试共享截止时间和调用上限；任务不得中途重新读取其他供应商的能力配置。
+- 模型上下文能力通过 `SettingsStore.loadModelContextSettings()` 读取，按供应商 profile、endpoint、接口格式、模型和 providerId 隔离。最大输入、最大输出及总上下文可分别留空，缺失表示未知，上限由服务端执行。AI 参数中的单次请求输出上限与模型能力独立，留空时请求省略该字段，采样和思考未配置时沿用模型默认。文本请求按已知上限预检实际序列化 Payload，内部输出估算用于分批。结构化翻译及全文译名提取以整页为不可拆单元，确认截断或上下文溢出后按完整页面缩批。模型能力、提示词和请求参数按逻辑操作冻结，网络与响应重试共享截止时间和调用上限。
 - AI 供应商 profile 位于 `files/ai_provider_profiles.json`；供应商配置和其他偏好键以对应 Store 常量为准，不在本文复制完整键表。
 - 设置弹窗默认对齐 `dialog_ocr_settings.xml`：滚动容器关闭 padding 裁剪，内容边距和控件节奏复用现有布局资源；不要为单个弹窗另建一套视觉规则。
 
@@ -203,7 +203,9 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 | 当前后台任务描述 | `TranslationTaskPersistence` |
 | 阅读进度 | `ReadingProgressStore` |
 
-Prompt 位于 `assets/prompts/`，基础文件包括 `llm_prompts.json`、`llm_prompts_abstract.json`、`llm_prompts_FullTrans.json`、`float_llm_prompts.json`、`vl_bubble_prompts.json`、`vl_page_prompts.json` 和 `ocr_prompts.json`。加载时必须通过 `PromptAssetResolver` 处理语言变体。自定义提示词由 `CustomPromptStore` 按界面语言与模式保存在设置偏好中，请求构造通过该 Store 读取覆盖内容，未配置时读取内置资源。内置提示词以 `_说明` 字段按模式提供说明，编辑器直接展示，导出保留文档自身的说明，不另行注入。导入使用严格 JSON 校验，兼容缺失说明的旧文件；说明不参与协议占位符校验、保存的有效指令或缓存指纹，不得发送给模型。自定义提示词指纹计入悬浮缓存 scope 及使用 API 的 OCR 缓存，不影响已有译文的直接读取规则。
+Prompt 位于 `assets/prompts/`，基础文件包括 `llm_prompts.json`、`llm_prompts_abstract.json`、`llm_prompts_FullTrans.json`、`float_llm_prompts.json`、`vl_bubble_prompts.json`、`vl_page_prompts.json` 和 `ocr_prompts.json`。加载时必须通过 `PromptAssetResolver` 处理语言变体。自定义提示词由 `CustomPromptStore` 按界面语言与模式保存在设置偏好中，请求构造通过该 Store 读取覆盖内容，未配置时读取内置资源。内置提示词以 `_说明` 字段按模式提供说明，编辑器直接展示，导出保留文档自身的说明，不另行注入。导入使用严格 JSON 校验，兼容缺失说明的旧文件；说明不参与协议占位符校验、保存的有效指令或缓存指纹，不得发送给模型。自定义提示词窗口支持当前界面语言全部模式的 ZIP 提示词包；根目录使用各模式基础 JSON 文件名，导出包含草稿，导入须完整校验全部模式后一次性保存，仅覆盖当前语言。自定义提示词指纹计入悬浮缓存 scope 及使用 API 的 OCR 缓存，不影响已有译文的直接读取规则。
+
+- 内置翻译提示词在 `example_messages` 开头用用户询问和助手回复传递文风。请求组装在助手回复原位替换 `{{STYLE_HINT}}`，保留 JSON 中的消息角色和顺序，并将当前输入放在最后一条用户消息中。设置为空时，回复中的内置说明要求沿用原文语气。
 
 ## 验证要求
 

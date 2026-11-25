@@ -155,13 +155,14 @@
                     android:inputType="number" />
             </com.google.android.material.textfield.TextInputLayout>
 
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/enable_thinking_switch"
+            <Button
+                android:id="@+id/thinking_mode_button"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:text="@string/llm_param_enable_thinking"
-                android:textColor="?attr/dialogTextColor" />
+                android:layout_marginTop="10dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:text="@string/thinking_mode_title" />
 
             <Button
                 android:id="@+id/fetch_models_button"

@@ -49,6 +49,33 @@ internal class ResponseParser {
         }
     }
 
+    fun isRefusedResponse(body: String, apiFormat: ApiFormat): Boolean {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return false
+        return when (apiFormat) {
+            ApiFormat.OPENAI_COMPATIBLE -> {
+                val choice = json.optJSONArray("choices")?.optJSONObject(0)
+                choice?.optString("finish_reason").equals("content_filter", ignoreCase = true) ||
+                    (choice?.optJSONObject("message")?.opt("refusal") as? String)?.isNotBlank() == true
+            }
+            ApiFormat.OPENAI_RESPONSES -> {
+                val output = json.optJSONArray("output")
+                json.optJSONObject("incomplete_details")?.optString("reason") == "content_filter" ||
+                    (0 until (output?.length() ?: 0)).any { i ->
+                        val content = output?.optJSONObject(i)?.optJSONArray("content")
+                        (0 until (content?.length() ?: 0)).any { j ->
+                            content?.optJSONObject(j)?.optString("type") == "refusal"
+                        }
+                    }
+            }
+            ApiFormat.GEMINI -> {
+                val block = json.optJSONObject("promptFeedback")?.optString("blockReason").orEmpty()
+                (block.isNotEmpty() && block != "BLOCK_REASON_UNSPECIFIED") ||
+                    json.optJSONArray("candidates")?.optJSONObject(0)?.optString("finishReason") in
+                    setOf("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY")
+            }
+        }
+    }
+
     private fun hasTruncationMarker(array: JSONArray?, key: String, truncatedValue: String): Boolean {
         if (array == null) return false
         for (i in 0 until array.length()) {
@@ -59,6 +86,95 @@ internal class ResponseParser {
         }
         return false
     }
+
+    fun outputTokenUsage(body: String, apiFormat: ApiFormat): Pair<Int?, Int?> {
+        val json = runCatching { JSONObject(body) }.getOrNull()
+        val usage = json?.optJSONObject(if (apiFormat == ApiFormat.GEMINI) "usageMetadata" else "usage")
+        return when (apiFormat) {
+            ApiFormat.OPENAI_COMPATIBLE ->
+                usage.tokenCount("completion_tokens") to
+                    usage?.optJSONObject("completion_tokens_details").tokenCount("reasoning_tokens")
+            ApiFormat.OPENAI_RESPONSES ->
+                usage.tokenCount("output_tokens") to
+                    usage?.optJSONObject("output_tokens_details").tokenCount("reasoning_tokens")
+            ApiFormat.GEMINI ->
+                usage.tokenCount("candidatesTokenCount") to usage.tokenCount("thoughtsTokenCount")
+        }
+    }
+
+    /** Use the full prompt count, including cache reads. Output and reasoning are accounted for separately. */
+    fun textInputUsage(body: String, apiFormat: ApiFormat): TextInputUsage? {
+        val root = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        val gemini = apiFormat == ApiFormat.GEMINI
+        val model = (root.opt(if (gemini) "modelVersion" else "model") as? String)
+            ?.trim()?.takeIf { it.length in 1..128 && it != "null" } ?: return null
+        val usage = root.optJSONObject(if (gemini) "usageMetadata" else "usage") ?: return null
+        val count = when (apiFormat) {
+            ApiFormat.OPENAI_COMPATIBLE -> {
+                if (root.optJSONArray("choices")?.optJSONObject(0)?.opt("finish_reason") != "stop") return null
+                usage.openAiTextInputCount("prompt_tokens", "completion_tokens")
+            }
+            ApiFormat.OPENAI_RESPONSES -> {
+                if (root.opt("status") != "completed" || root.opt("truncation") == "auto") return null
+                usage.openAiTextInputCount("input_tokens", "output_tokens")
+            }
+            ApiFormat.GEMINI -> {
+                if (root.optJSONArray("candidates")?.optJSONObject(0)?.opt("finishReason") != "STOP") return null
+                usage.geminiTextInputCount()
+            }
+        }?.takeIf { it > 0 } ?: return null
+        return TextInputUsage(count, model)
+    }
+
+    private fun JSONObject.openAiTextInputCount(inputKey: String, outputKey: String): Int? {
+        val count = strictTokenCount(inputKey) ?: return null
+        val detailsKey = "${inputKey}_details"
+        if (!isNull(detailsKey)) {
+            val details = optJSONObject(detailsKey) ?: return null
+            if (!details.tokenCountAtMost("cached_tokens", count) ||
+                !details.tokenCountAtMost("audio_tokens", 0) || !details.tokenCountAtMost("image_tokens", 0)) {
+                return null
+            }
+        }
+        if (has("total_tokens")) {
+            val total = strictTokenCount("total_tokens") ?: return null
+            val output = strictTokenCount(outputKey) ?: return null
+            if (total.toLong() != count.toLong() + output) return null
+        }
+        return count
+    }
+
+    private fun JSONObject.geminiTextInputCount(): Int? {
+        val count = strictTokenCount("promptTokenCount") ?: return null
+        if (!tokenCountAtMost("cachedContentTokenCount", count) || !tokenCountAtMost("toolUsePromptTokenCount", 0)) {
+            return null
+        }
+        if (!textOnlyModalityDetails("promptTokensDetails", count) ||
+            !textOnlyModalityDetails("cacheTokensDetails", count)) return null
+        return count
+    }
+
+    private fun JSONObject.textOnlyModalityDetails(key: String, promptCount: Int): Boolean {
+        if (isNull(key)) return true
+        val details = optJSONArray(key) ?: return false
+        for (index in 0 until details.length()) {
+            val entry = details.optJSONObject(index) ?: return false
+            val count = entry.strictTokenCount("tokenCount") ?: return false
+            if (entry.opt("modality") != "TEXT" || count > promptCount) return false
+        }
+        return true
+    }
+
+    private fun JSONObject.tokenCountAtMost(key: String, max: Int): Boolean =
+        !has(key) || strictTokenCount(key)?.let { it <= max } == true
+
+    private fun JSONObject.strictTokenCount(key: String): Int? = when (val value = opt(key)) {
+        is Int -> value.takeIf { it >= 0 }
+        is Long -> value.takeIf { it in 0..Int.MAX_VALUE.toLong() }?.toInt()
+        else -> null
+    }
+
+    private fun JSONObject?.tokenCount(key: String): Int? = this?.optInt(key, -1)?.takeIf { it >= 0 }
 
     fun parseTranslationContent(content: String): LlmTranslationResult {
         val cleaned = stripCodeFence(content)

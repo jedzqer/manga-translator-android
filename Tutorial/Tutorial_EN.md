@@ -111,6 +111,7 @@ Both per-request and usage-based billing can be suitable. Compare the number of 
 - Adjust normal or free-text bubble opacity under **Normal Bubble Settings** when bubbles cover too much artwork. If a rendered bubble covers the original bubble border, slightly increase **Bubble inset**. Floating-window bubbles have separate settings.
 - Free-text bubbles automatically adapt their text color to the background.
 - Customize the global translation style in Settings, or set a style for a folder. Chapters in a collection share the collection's style. Turning off **Follow Global Style** and leaving the field empty adds no style instruction.
+- If meaningless single characters are often translated, add a requirement to the global or folder style, for example "Ignore meaningless single characters; do not transliterate or keep garbled text." Leaving those translations empty removes their bubbles.
 - Upload a custom font or enable bold text under **Font Settings**. Normal and floating-window bubbles share this font setting.
 
 ### Folder translation options
@@ -207,6 +208,8 @@ Open **Custom prompts** in Settings. If you only want to change tone or wording,
 1. Select a mode: ordinary translation, full-text fast translation, glossary extraction, floating translation, VL full artwork, VL bubble mask, or OCR recognition. Changes apply only to the **current interface language and selected mode**. Configure each interface language separately.
 2. Use **Export JSON** to keep a template, then edit directly or load a file with **Import JSON**. Importing only previews a draft. Switching modes retains drafts.
 3. Tap **Save current mode** to apply changes. Save each mode separately. To remove a saved customization, tap **Restore built-in prompt for this mode** and confirm; the current mode immediately returns to its built-in prompt.
+
+To back up or transfer all modes, tap **Export prompt pack** and choose where to save the ZIP in the system file picker. It contains all 7 modes for the current interface language, using editor drafts where available and saved or built-in prompts for other modes. **Import prompt pack** validates every file, then immediately replaces and saves all modes for the current language; you do not need to save them individually. Other languages remain unchanged, and validation failure leaves all modes untouched. Keep all 7 exported JSON filenames at the ZIP root, with no missing, duplicate, or extra files. Each JSON file is still limited to 256 KiB.
 
 Files must be standard UTF-8 JSON, no larger than **256 KiB**. Fields and types must match the selected mode’s built-in template. Duplicate keys, extra fields, and `//` or `/* */` comments are not allowed. The `_说明` field in exported files provides format instructions; you may keep it, and it is never sent to the model.
 

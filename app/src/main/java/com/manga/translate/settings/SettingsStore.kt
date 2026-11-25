@@ -621,9 +621,6 @@ class SettingsStore(context: Context) {
         internal const val KEY_AI_PROVIDER_PROFILES_STATE = "ai_provider_profiles_state"
         internal const val LEGACY_SETTINGS_JSON_VERSION = 1
         internal const val SETTINGS_JSON_SCHEMA_VERSION = 2
-        internal const val DEFAULT_LLM_TEMPERATURE = 0.8
-        internal const val DEFAULT_LLM_TOP_P = 1.0
-        internal const val DEFAULT_LLM_ENABLE_THINKING = false
         internal const val DEFAULT_TRANSLATION_STYLE =
             "请以普通日漫翻译风格翻译，语言自然流畅，符合中文漫画阅读习惯。"
         internal const val DEFAULT_TRANSLATION_STYLE_HANT =
@@ -690,7 +687,7 @@ data class LlmParameterSettings(
     val topP: Double?,
     val topK: Int?,
     val maxOutputTokens: Int?,
-    val enableThinking: Boolean,
+    val enableThinking: Boolean?,
     val thinkingLength: ThinkingLength = ThinkingLength.DEFAULT,
     val frequencyPenalty: Double?,
     val presencePenalty: Double?

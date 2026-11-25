@@ -54,13 +54,6 @@ internal class SettingsStoreStorage(context: Context) {
         return root.optJSONArray(arrayKey) ?: JSONArray()
     }
 
-    fun readDoubleWithDefault(key: String, defaultValue: Double): Double? {
-        if (!prefs.contains(key)) return defaultValue
-        val value = prefs.getString(key, null)
-        if (value.isNullOrBlank()) return null
-        return value.toDoubleOrNull()
-    }
-
     fun readDoubleOptional(key: String): Double? {
         if (!prefs.contains(key)) return null
         val value = prefs.getString(key, null)

@@ -97,6 +97,23 @@ class RequestTimeoutIntegrationTest {
     }
 
     @Test
+    fun `retry after beyond remaining budget reports timeout without another request`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After", "60").setBody("busy"))
+        val context = RequestBudgetContext().apply { getOrStart(1_000, 1) }
+        withTimeout(4_000) {
+            try {
+                withContext(context) {
+                    client.translate("hello", emptyMap(), retryCount = 3, apiSettings = settings)
+                }
+                fail("Expected timeout when Retry-After exceeds the budget")
+            } catch (error: LlmRequestException) {
+                assertEquals(LlmErrorCode.Timeout, error.errorCode)
+            }
+        }
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
     fun `total budget cancels stalled response body and stops retries`() = runBlocking {
         server.enqueue(MockResponse().setBody("body").setBodyDelay(10, TimeUnit.SECONDS))
         val context = RequestBudgetContext().apply { getOrStart(1_000, 1) }

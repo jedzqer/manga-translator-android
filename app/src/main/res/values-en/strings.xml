@@ -243,7 +243,7 @@
     <string name="ocr_settings_note_api">Uses an OpenAI-compatible OCR API to recognize text. Leave the URL, API Key or model blank to reuse the corresponding main API setting.</string>
     <string name="missing_ocr_api_settings">Please fill in the API address, Key and model name in the main API or OCR settings first</string>
     <string name="llm_params_invalid">The parameter format is incorrect, invalid items have been ignored</string>
-    <string name="llm_params_note">Leave blank to not send this field</string>
+    <string name="llm_params_note">Leave blank for model defaults</string>
     <string name="thinking_length_button">Thinking length</string>
     <string name="thinking_length_title">Thinking length</string>
     <string name="thinking_length_format">Thinking length: %1$s</string>
@@ -258,6 +258,10 @@
     <string name="llm_param_top_p">top_p</string>
     <string name="llm_param_top_k">top_k</string>
     <string name="llm_param_enable_thinking">Enable thinking</string>
+    <string name="thinking_mode_title">Thinking mode</string>
+    <string name="thinking_mode_format">Thinking mode: %1$s</string>
+    <string name="thinking_mode_model_default">Use model default</string>
+    <string name="thinking_mode_disabled">Disable thinking</string>
     <string name="llm_param_frequency_penalty">frequency_penalty</string>
     <string name="llm_param_presence_penalty">presence_penalty</string>
     <string name="view_logs">View Logs</string>
@@ -519,7 +523,7 @@
 %1$s</string>
     <string name="model_response_failed_clear_advanced_params">This API may not support advanced parameters. Clear optional advanced parameters in LLM Parameters and try again.</string>
     <string name="model_response_empty_content">The model returned an empty response and no valid content could be extracted.</string>
-    <string name="model_response_truncated">The translation exceeded the output limit. Increase max_output_tokens in LLM Parameters and try again.</string>
+    <string name="model_response_truncated">The model response reached the output limit. Check “Output limit per request” in AI Parameter Settings and the limit imposed by your provider. If thinking is enabled, try reducing its length or turning it off before retrying.</string>
     <string name="model_text_budget_exceeded">This request exceeds the configured model input or output limit. Shorten the content or review the model capability settings.</string>
     <string name="model_text_budget_exhausted">This request used its shared retry or time budget.</string>
     <string name="model_response_blank_bubbles">Model returned blank results: %2$d bubbles in %1$s mode did not return valid translations.</string>
@@ -644,7 +648,7 @@ Communication and feedback group: %2$s</string>
     <string name="reading_save_failed">Failed to save reading changes</string>
     <string name="custom_prompt_title">Custom prompts</string>
     <string name="custom_prompt_mode">Prompt mode</string>
-    <string name="custom_prompt_warning">Advanced feature: do not modify prompts unless you understand the protocol. Only the current interface language is affected. Switching modes retains drafts. Import previews a draft; use Save current mode to apply it. Existing translations are not automatically replaced.</string>
+    <string name="custom_prompt_warning">Advanced feature: do not modify prompts unless you understand the protocol. Only the current interface language is affected. Switching modes retains drafts. Import JSON previews a draft; use Save current mode to apply it. Existing translations are not automatically replaced.</string>
     <string name="custom_prompt_import">Import JSON</string>
     <string name="custom_prompt_export">Export JSON</string>
     <string name="custom_prompt_reset">Restore built-in prompt for this mode</string>
@@ -676,17 +680,22 @@ Communication and feedback group: %2$s</string>
     <string name="model_context_title">Model context settings</string>
     <string name="model_context_scope">Provider: %1$s\nModel: %2$s\nEndpoint: %3$s</string>
     <string name="model_context_unsaved">Current settings (no saved provider)</string>
-    <string name="model_context_unknown">Default: %1$d tokens</string>
+    <string name="model_context_unknown">Unspecified</string>
     <string name="model_context_input">Maximum input (tokens)</string>
     <string name="model_context_output">Maximum output (tokens)</string>
     <string name="model_context_total">Total context (tokens)</string>
-    <string name="model_context_note">Unsure? Leave the fields blank: defaults are 262,144 input, 65,536 output and 262,144 total context tokens. Empty fields show and use their defaults. Enter a number to override it; confirm to save restored defaults. Some local deployments have smaller limits; adjust these values to match your service.\n\nInput and output are independent maxima. Each request shares total context between input, output and a safety margin. These limits are separate from the output allocation in LLM parameters and do not yet adjust translation batches automatically. Values apply only to this provider, endpoint, API format and model.</string>
+    <string name="model_context_note">Enter the limits your provider documents. The server determines any limits you leave blank. The app batches text using the configured limits and retries with fewer whole pages when the model reports a limit.\n\nThese are model capabilities. To specify the output limit sent with a request, use “Output limit per request” in AI Parameter Settings. These values apply to the current provider, endpoint, API format, and model.</string>
     <string name="model_context_invalid">Enter a whole number from 1 to 2147483647, or leave blank to use the default.</string>
-    <string name="model_context_clear">Use defaults</string>
+    <string name="model_context_clear">Clear</string>
     <string name="model_context_save_failed">Could not save, or the model settings changed. Reopen this dialog and try again.</string>
     <string name="model_context_missing_identity">Enter a model name and endpoint first.</string>
     <string name="llm_param_max_output_tokens">Output limit per request (tokens)</string>
     <string name="reading_page_jump_title">Jump to page</string>
     <string name="reading_page_jump_value">Page %1$d of %2$d</string>
     <string name="image_status_pending">Not checked yet</string>
+    <string name="custom_prompt_pack_export">Export prompt pack</string>
+    <string name="custom_prompt_pack_import">Import prompt pack</string>
+    <string name="custom_prompt_pack_hint">The ZIP includes all modes for the current language, including drafts. Importing immediately replaces and saves all modes for the current language.</string>
+    <string name="custom_prompt_pack_imported">Imported and saved prompts for all modes in the current language</string>
+    <string name="custom_prompt_pack_error">Prompt pack operation failed. Check file permissions. The ZIP root must contain the JSON files for all 7 modes, with no duplicates or extra files. Each file must be at most 256 KiB and follow the prompt format for its mode.</string>
 </resources>

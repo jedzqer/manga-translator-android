@@ -47,21 +47,31 @@ class ModelContextSettingsTest {
         }
         store.save(api.copy(apiKey = "new-key"))
         assertEquals(limits, store.loadModelContextSettings().limits)
-        assertEquals(EffectiveModelContextLimits(100000, 20000, 110000),
-            store.loadModelContextSettings().effectiveLimits)
     }
 
-    @Test fun `missing and partially configured limits resolve defaults without persisting them`() {
-        assertEquals(EffectiveModelContextLimits(262144, 65536, 262144), store.loadModelContextSettings().effectiveLimits)
+    @Test fun `missing and partially configured limits stay unknown`() {
+        assertEquals(ModelContextLimits(), store.loadModelContextSettings().limits)
         assertFalse(prefs.contains(LlmParameterStore.MODEL_CONTEXT_KEY))
-        save(ModelContextLimits(maxOutputTokens = 8192))
-        val reloaded = SettingsStore(context).loadModelContextSettings()
-        assertEquals(EffectiveModelContextLimits(262144, 8192, 262144), reloaded.effectiveLimits)
-        assertNull(reloaded.limits.maxInputTokens)
-        save(ModelContextLimits(2048, 512, 4096))
-        assertEquals(EffectiveModelContextLimits(2048, 512, 4096), store.loadModelContextSettings().effectiveLimits)
+        val outputOnly = ModelContextLimits(maxOutputTokens = 8192)
+        save(outputOnly)
+        assertEquals(outputOnly, SettingsStore(context).loadModelContextSettings().limits)
+        val smallContext = ModelContextLimits(2048, 512, 4096)
+        save(smallContext)
+        assertEquals(smallContext, store.loadModelContextSettings().limits)
         save(ModelContextLimits())
-        assertEquals(EffectiveModelContextLimits(262144, 65536, 262144), store.loadModelContextSettings().effectiveLimits)
+        assertEquals(ModelContextLimits(), store.loadModelContextSettings().limits)
+    }
+
+    @Test fun `profiles preserve explicit thinking and round trip model defaults`() {
+        assertNull(store.loadLlmParameters().enableThinking)
+        assertTrue(store.saveCurrentAsAiProviderProfile("Default"))
+        store.saveLlmParameters(store.loadLlmParameters().copy(enableThinking = false))
+        assertTrue(store.saveCurrentAsAiProviderProfile("Explicit"))
+        assertTrue(store.applyAiProviderProfile("Default"))
+        assertNull(store.loadLlmParameters().enableThinking)
+        assertFalse(prefs.contains(SettingsStore.KEY_LLM_ENABLE_THINKING))
+        assertTrue(store.applyAiProviderProfile("Explicit"))
+        assertEquals(false, store.loadLlmParameters().enableThinking)
     }
 
     @Test fun `profiles isolate matching models and reject stale snapshots`() {
