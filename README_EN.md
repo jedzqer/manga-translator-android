@@ -23,9 +23,8 @@ Requires Android 7.0 (API 24) or later.
 - **Layout and fonts**: horizontal or vertical text, custom fonts, bold text, bubble shapes, size, opacity and text fill ratios. Reader and floating overlays have separate bubble settings; reading and export share the reader settings.
 - **Screen translation**: capture the screen and overlay translations, with manual selection, configurable floating-ball gestures, translucent touch-through mode or opaque mode.
 - **AI configuration**: OpenAI-compatible Chat, OpenAI Responses and Gemini formats; saved provider profiles, custom request parameters, prompts and translation styles. Folders and collections can override the global style.
+- **Custom prompts**: edit 7 modes for the current interface language, import/export individual JSON files, or transfer all modes as a ZIP with Export prompt pack / Import prompt pack; exports include drafts and a valid pack is saved immediately on import. See the [custom prompts tutorial](Tutorial/Tutorial_EN.md#custom-prompts).
 - **Tasks and backups**: background progress and completion notifications, in-app logs and update checks; separately back up manga and translations or app configuration, including providers and custom fonts.
-
-**Custom prompts** in Settings lets you edit 7 modes for the current interface language, import/export individual JSON files, or transfer all modes as a ZIP with **Export prompt pack / Import prompt pack**. Export includes drafts; a valid pack is saved immediately on import. See the [custom prompts tutorial](Tutorial/Tutorial_EN.md#custom-prompts).
 
 ## Choosing a Translation Mode
 
