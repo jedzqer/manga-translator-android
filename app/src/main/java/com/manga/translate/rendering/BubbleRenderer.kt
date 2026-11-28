@@ -168,25 +168,28 @@ class BubbleRenderer(context: Context) {
                         bubble.rect.right * scaleX / output.width, bubble.rect.bottom * scaleY / output.height
                     ))
                 } else null
-                patch?.let {
-                    canvas.withClip(bubblePath) {
-                        it.draw(this, RectF(0f, 0f, output.width.toFloat(), output.height.toFloat()), opacityAlpha)
+                try {
+                    patch?.let {
+                        canvas.withClip(bubblePath) {
+                            it.draw(this, RectF(0f, 0f, output.width.toFloat(), output.height.toFloat()), opacityAlpha)
+                        }
                     }
-                    it.bitmap.recycle()
-                }
-                drawBubble(
-                    canvas = canvas,
-                    text = text,
-                    path = bubblePath,
-                    textFillPercent = if (bubble.source == BubbleSource.TEXT_DETECTOR)
-                        bubbleRenderSettings.freeBubbleTextFillPercent else bubbleRenderSettings.textFillPercent,
-                    verticalLayoutEnabled = verticalLayoutEnabled,
-                    fillBackground = !(bubble.source.isFreeBubble && useAutoAdaptColor),
-                    startFromTop = BubbleTextPlacement.spillsAcrossPage(
-                        bubble.rect,
-                        translation.height
+                    drawBubble(
+                        canvas = canvas,
+                        text = text,
+                        path = bubblePath,
+                        textFillPercent = if (bubble.source == BubbleSource.TEXT_DETECTOR)
+                            bubbleRenderSettings.freeBubbleTextFillPercent else bubbleRenderSettings.textFillPercent,
+                        verticalLayoutEnabled = verticalLayoutEnabled,
+                        fillBackground = !(bubble.source.isFreeBubble && useAutoAdaptColor),
+                        startFromTop = BubbleTextPlacement.spillsAcrossPage(bubble.rect, translation.height),
+                        freeTextPatch = patch,
+                        pageBounds = RectF(0f, 0f, output.width.toFloat(), output.height.toFloat())
                     )
-                )
+                } finally {
+                    patch?.bitmap?.recycle()
+                    patch?.samplingBitmap?.recycle()
+                }
             }
         } finally {
             if (samplingBitmap !== source && !samplingBitmap.isRecycled) {
@@ -231,7 +234,9 @@ class BubbleRenderer(context: Context) {
         textFillPercent: Int,
         verticalLayoutEnabled: Boolean,
         fillBackground: Boolean,
-        startFromTop: Boolean
+        startFromTop: Boolean,
+        freeTextPatch: FreeTextInpaint.Patch?,
+        pageBounds: RectF
     ) {
         path.computeBounds(bubbleBounds, true)
         if (bubbleBounds.width() <= 0f || bubbleBounds.height() <= 0f) return
@@ -244,7 +249,9 @@ class BubbleRenderer(context: Context) {
             textRect,
             textFillPercent,
             verticalLayoutEnabled,
-            startFromTop
+            startFromTop,
+            freeTextPatch,
+            pageBounds
         )
     }
 
@@ -254,14 +261,18 @@ class BubbleRenderer(context: Context) {
         rect: RectF,
         textFillPercent: Int,
         verticalLayoutEnabled: Boolean,
-        startFromTop: Boolean
+        startFromTop: Boolean,
+        freeTextPatch: FreeTextInpaint.Patch?,
+        pageBounds: RectF
     ) {
         val width = rect.width().toInt().coerceAtLeast(1)
         val height = rect.height().toInt().coerceAtLeast(1)
         if (verticalLayoutEnabled) {
             val prepared = BubbleTextLayoutPreparer.vertical(rawText, width, height, textFillPercent, textPaint)
             canvas.withClip(rect) {
-                VerticalTextRenderer.draw(this, rect, prepared.paint, prepared.layout, startFromTop)
+                val draw = { VerticalTextRenderer.draw(this, rect, prepared.paint, prepared.layout, startFromTop) }
+                if (freeTextPatch == null) draw()
+                else freeTextPatch.drawText(pageBounds, 0f, 0f, prepared.paint, fillPaint.alpha, draw)
             }
         } else {
             val prepared = BubbleTextLayoutPreparer.horizontal(
@@ -272,7 +283,9 @@ class BubbleRenderer(context: Context) {
             val top = BubbleTextPlacement.horizontalTextTop(rect, layout.height, startFromTop)
             canvas.withClip(rect) {
                 withTranslation(left, top) {
-                    layout.draw(this)
+                    val draw = { layout.draw(this) }
+                    if (freeTextPatch == null) draw()
+                    else freeTextPatch.drawText(pageBounds, left, top, prepared.paint, fillPaint.alpha, draw)
                 }
             }
         }

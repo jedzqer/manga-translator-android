@@ -662,7 +662,7 @@ class SettingsStore(context: Context) {
         internal const val MAX_NORMAL_BUBBLE_SHRINK_PERCENT = 30
         internal const val DEFAULT_NORMAL_FREE_BUBBLE_SIZE_ADJUST_PERCENT = 10
         internal const val DEFAULT_NORMAL_FREE_BUBBLE_OPACITY_PERCENT = 90
-        internal const val DEFAULT_NORMAL_FREE_BUBBLE_AUTO_ADAPT_COLOR = true
+        internal const val DEFAULT_NORMAL_FREE_BUBBLE_AUTO_ADAPT_COLOR = false
         internal const val DEFAULT_NORMAL_BUBBLE_AUTO_ADAPT_COLOR = false
         internal const val DEFAULT_MAX_CONCURRENCY = 8
         internal const val MIN_MAX_CONCURRENCY = 1

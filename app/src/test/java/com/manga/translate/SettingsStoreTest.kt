@@ -361,11 +361,16 @@ class SettingsStoreTest {
         val store = SettingsStore(context)
 
         assertFalse(store.loadNormalBubbleRenderSettings().autoAdaptBubbleColor)
+        assertFalse(store.loadNormalBubbleRenderSettings().autoAdaptFreeBubbleColor)
 
-        val enabled = store.loadNormalBubbleRenderSettings().copy(autoAdaptBubbleColor = true)
+        val enabled = store.loadNormalBubbleRenderSettings().copy(
+            autoAdaptBubbleColor = true,
+            autoAdaptFreeBubbleColor = true
+        )
         store.saveNormalBubbleRenderSettings(enabled)
 
         assertTrue(SettingsStore(context).loadNormalBubbleRenderSettings().autoAdaptBubbleColor)
+        assertTrue(SettingsStore(context).loadNormalBubbleRenderSettings().autoAdaptFreeBubbleColor)
     }
 
     @Test

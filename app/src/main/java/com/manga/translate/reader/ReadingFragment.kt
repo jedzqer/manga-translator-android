@@ -105,7 +105,7 @@ class ReadingFragment : Fragment() {
     private var activeEmptyBubbleModelErrorDialog: AlertDialog? = null
     private lateinit var webtoonAdapter: WebtoonReadingAdapter
     private lateinit var webtoonLayoutManager: LockedWebtoonLinearLayoutManager
-    private var webtoonProgrammaticScroll = false
+    private var webtoonLayoutAnchor: WebtoonScrollAnchor? = null
     private var webtoonLockedPageIndex: Int? = null
     private var webtoonLockedPagePath: String? = null
     private var webtoonEditOffsets = mutableMapOf<Int, Pair<Float, Float>>()
@@ -169,13 +169,20 @@ class ReadingFragment : Fragment() {
         readingBitmapCache = ReadingBitmapCache()
         webtoonLayoutManager = LockedWebtoonLinearLayoutManager(requireContext())
         webtoonLayoutManager.initialPrefetchItemCount = 6
+        webtoonLayoutManager.onLayoutFinished = {
+            if (webtoonLayoutAnchor != null && folderReadingMode == FolderReadingMode.WEBTOON_SCROLL) {
+                webtoonLayoutAnchor = null
+                updateWebtoonPageInfo()
+                persistWebtoonProgress()
+            }
+        }
         webtoonAdapter = WebtoonReadingAdapter(
             scope = viewLifecycleOwner.lifecycleScope,
             loadTranslation = ::loadValidTranslationForCurrentFolder,
             bitmapCache = readingBitmapCache
         )
         webtoonAdapter.onDisplayStructureChanging = {
-            pendingWebtoonScrollAnchor = captureWebtoonScrollAnchor()
+            pendingWebtoonScrollAnchor = webtoonLayoutAnchor ?: captureWebtoonScrollAnchor()
         }
         webtoonAdapter.onDisplayStructureChanged = {
             restorePendingWebtoonScrollAnchor()
@@ -260,7 +267,7 @@ class ReadingFragment : Fragment() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 if (folderReadingMode != FolderReadingMode.WEBTOON_SCROLL) return
                 updateWebtoonPageInfo()
-                if (!webtoonProgrammaticScroll) {
+                if (dy != 0 && webtoonLayoutAnchor == null) {
                     persistWebtoonProgress()
                 }
                 warmNearbyWebtoonTranslations()
@@ -346,11 +353,16 @@ class ReadingFragment : Fragment() {
                 readingSessionViewModel.state.collect { session ->
                     val previous = rendered
                     rendered = session
-                    if (previous != null && previous.copy(viewport = session.viewport) == session) return@collect
+                    val clearedViewport = previous?.viewport != null && session.viewport == null
+                    if (!clearedViewport && previous != null &&
+                        previous.copy(viewport = session.viewport) == session) return@collect
                     val mode = session.readingMode
                     if (folderReadingMode != mode && isEditMode) setEditMode(false)
                     folderReadingMode = mode
-                    if (mode != FolderReadingMode.WEBTOON_SCROLL) clearWebtoonEditSession()
+                    if (mode != FolderReadingMode.WEBTOON_SCROLL) {
+                        webtoonLayoutAnchor = null
+                        clearWebtoonEditSession()
+                    }
                     if (previous == null || previous.currentFolder != session.currentFolder) applyTextLayoutSetting()
                     applyFolderReadingMode()
                     if (previous == null || previous.currentFolder != session.currentFolder ||
@@ -362,6 +374,8 @@ class ReadingFragment : Fragment() {
                             loadCurrentImage()
                             persistReadingProgress()
                         }
+                    } else if (clearedViewport && mode == FolderReadingMode.WEBTOON_SCROLL) {
+                        loadWebtoonReading()
                     }
                 }
             }
@@ -422,6 +436,9 @@ class ReadingFragment : Fragment() {
         activeEmptyBubbleModelErrorDialog = null
         pageTransitions?.release()
         pageTransitions = null
+        webtoonLayoutAnchor = null
+        pendingWebtoonScrollAnchor = null
+        webtoonLayoutManager.onLayoutFinished = null
         clearWebtoonEditSession(resetCurrentPage = true)
         if (::webtoonAdapter.isInitialized) {
             webtoonAdapter.clearRuntimeCaches()
@@ -639,6 +656,7 @@ class ReadingFragment : Fragment() {
         displayedImagePath = null
         finishPageTransitionImmediately()
         if (images.isEmpty() || folder == null) {
+            webtoonLayoutAnchor = null
             binding.readingEmptyHint.visibility = View.VISIBLE
             binding.readingPageInfo.visibility = View.GONE
             updateEditButtonState()
@@ -664,21 +682,7 @@ class ReadingFragment : Fragment() {
         syncWebtoonEditSession()
         val viewport = readingSessionViewModel.state.value.viewport
         val targetIndex = (viewport?.imageIndex ?: readingSessionViewModel.state.value.index).coerceIn(0, images.lastIndex)
-        webtoonProgrammaticScroll = true
-        binding.readingWebtoonList.post {
-            if (!isAdded || _binding == null || folderReadingMode != FolderReadingMode.WEBTOON_SCROLL) {
-                webtoonProgrammaticScroll = false
-                return@post
-            }
-            val (position, offset) = webtoonAdapter.positionForPageOffset(targetIndex, viewport?.topOffset ?: 0)
-            webtoonLayoutManager.scrollToPositionWithOffset(position, offset)
-            updateWebtoonPageInfo()
-            persistWebtoonProgress()
-            startWebtoonTranslationWatcher()
-            binding.readingWebtoonList.post {
-                webtoonProgrammaticScroll = false
-            }
-        }
+        scrollWebtoonTo(WebtoonScrollAnchor(targetIndex, viewport?.topOffset ?: 0))
     }
 
     private fun isWebtoonEditSessionActive(): Boolean {
@@ -1097,24 +1101,8 @@ class ReadingFragment : Fragment() {
                         val prepared = prepareWebtoonEditSession(targetIndex)
                         if (!prepared || !isAdded || _binding == null) return@launch
                         setEditMode(true)
-                        webtoonProgrammaticScroll = true
-                        binding.readingWebtoonList.post {
-                            if (!isAdded || _binding == null || !isWebtoonEditSessionActive()) {
-                                webtoonProgrammaticScroll = false
-                                return@post
-                            }
-                            val targetOffset = entryAnchor
-                                ?.takeIf { it.imageIndex == targetIndex }
-                                ?.topOffset
-                                ?: 0
-                            val (position, offset) = webtoonAdapter.positionForPageOffset(targetIndex, targetOffset)
-                            webtoonLayoutManager.scrollToPositionWithOffset(position, offset)
-                            updateWebtoonPageInfo()
-                            persistWebtoonProgress()
-                            binding.readingWebtoonList.post {
-                                webtoonProgrammaticScroll = false
-                            }
-                        }
+                        val targetOffset = entryAnchor?.takeIf { it.imageIndex == targetIndex }?.topOffset ?: 0
+                        scrollWebtoonTo(WebtoonScrollAnchor(targetIndex, targetOffset))
                     } finally {
                         webtoonPreparingEdit = false
                     }
@@ -1584,11 +1572,14 @@ class ReadingFragment : Fragment() {
         val anchor = pendingWebtoonScrollAnchor ?: return
         pendingWebtoonScrollAnchor = null
         if (!isAdded || _binding == null || folderReadingMode != FolderReadingMode.WEBTOON_SCROLL) return
-        binding.readingWebtoonList.post {
-            if (!isAdded || _binding == null || folderReadingMode != FolderReadingMode.WEBTOON_SCROLL) return@post
-            val (position, offset) = webtoonAdapter.positionForPageOffset(anchor.imageIndex, anchor.topOffset)
-            webtoonLayoutManager.scrollToPositionWithOffset(position, offset)
-        }
+        scrollWebtoonTo(anchor)
+    }
+
+    private fun scrollWebtoonTo(anchor: WebtoonScrollAnchor) {
+        // RecyclerView applies the offset in the next layout, while the old page may still be visible.
+        webtoonLayoutAnchor = anchor
+        val (position, offset) = webtoonAdapter.positionForPageOffset(anchor.imageIndex, anchor.topOffset)
+        webtoonLayoutManager.scrollToPositionWithOffset(position, offset)
     }
 
     private fun resolveWebtoonItemViewCacheSize(): Int {

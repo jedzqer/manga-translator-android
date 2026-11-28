@@ -10,12 +10,14 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ApplicationProvider
 import com.manga.translate.app.MangaTranslateApp
 import com.manga.translate.databinding.FragmentReadingBinding
+import com.manga.translate.di.appContainer
 import com.manga.translate.library.LibraryStateHostActivity
 import com.manga.translate.model.FolderReadingMode
 import com.manga.translate.model.ReadingDisplayMode
 import com.manga.translate.reader.ReadingFragment
 import com.manga.translate.reader.ReadingImageTransformController
 import com.manga.translate.reader.ReadingSessionViewModel
+import com.manga.translate.storage.ReadingProgressStore
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Test
@@ -159,21 +161,47 @@ class ReadingControlsTest {
         assertEquals(2, vm.state.value.index)
     }
 
-    @Test fun webtoonJumpClearsScrollAnchor() = withReader(FolderReadingMode.WEBTOON_SCROLL) { _, binding, vm ->
+    @Test fun webtoonJumpClearsScrollAnchor() = withReader(FolderReadingMode.WEBTOON_SCROLL, count = 6) { _, binding, vm ->
         vm.recordViewport(1, -120)
         binding.translationOverlay.onTap!!.invoke(300f)
         assertEquals(2, vm.state.value.index)
+        layoutReader(binding)
         vm.recordViewport(1, -120)
+        shadowOf(Looper.getMainLooper()).idle()
         binding.readingPageInfo.performClick()
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         val slider = dialog.findViewById<SeekBar>(R.id.reading_page_jump_slider)!!
         assertEquals(1, slider.progress)
         slider.progress = 2
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-        shadowOf(Looper.getMainLooper()).idle()
+        layoutReader(binding)
         assertEquals(2, vm.state.value.index)
-        assertTrue(vm.state.value.viewport == null || vm.state.value.viewport?.imageIndex == 2)
+        assertEquals(2, vm.state.value.viewport?.imageIndex)
     }
+
+    @Test fun webtoonReopensAtThePersistedPageAfterScrolling() =
+        withReader(FolderReadingMode.WEBTOON_SCROLL, count = 6) { fragment, binding, vm ->
+            val session = vm.state.value
+            val folder = checkNotNull(session.currentFolder)
+            val context = fragment.requireContext()
+            val store = context.appContainer.readingProgressStore
+            val list = binding.readingWebtoonList
+            vm.moveTo(2)
+            layoutReader(binding)
+            assertEquals(2, store.load(folder))
+            list.scrollBy(0, 480)
+            assertEquals(3, store.load(folder))
+
+            val reopenedIndex = ReadingProgressStore(context).load(folder)
+            assertEquals(3, reopenedIndex)
+            vm.setFolder(folder, session.images, 0, session.readingMode)
+            layoutReader(binding)
+            vm.setFolder(folder, session.images, reopenedIndex, session.readingMode)
+            layoutReader(binding)
+            assertEquals(3, store.load(folder))
+            assertEquals("(4/6)", binding.readingPageNumber.text.toString())
+            assertEquals(3, vm.state.value.viewport?.imageIndex)
+        }
 
     @Test fun singlePageDisablesSlider() = withReader(count = 1) { _, binding, vm ->
         binding.readingPageInfo.performClick()

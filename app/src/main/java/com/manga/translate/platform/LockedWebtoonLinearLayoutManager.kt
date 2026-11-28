@@ -8,6 +8,12 @@ class LockedWebtoonLinearLayoutManager(
     context: Context
 ) : LinearLayoutManager(context) {
     private var lockedRange: IntRange? = null
+    var onLayoutFinished: (() -> Unit)? = null
+
+    override fun onLayoutCompleted(state: RecyclerView.State) {
+        super.onLayoutCompleted(state)
+        onLayoutFinished?.invoke()
+    }
 
     fun setLockedPosition(position: Int?) {
         setLockedPositionRange(position?.let { it..it })

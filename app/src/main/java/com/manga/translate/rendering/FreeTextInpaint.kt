@@ -33,13 +33,23 @@ internal object FreeTextInpaint {
     }
 
     // Transparent outside the stroke mask, so overlapping overlays keep their contents.
-    class Patch(val bitmap: Bitmap, val normalizedBounds: RectF) {
+    class Patch(val bitmap: Bitmap, val samplingBitmap: Bitmap, val normalizedBounds: RectF) {
         fun draw(canvas: Canvas, page: RectF, alpha: Int) {
             val r = normalizedBounds
             val target = RectF(page.left + r.left * page.width(), page.top + r.top * page.height(),
                 page.left + r.right * page.width(), page.top + r.bottom * page.height())
             canvas.drawBitmap(bitmap, null, target, Paint(Paint.FILTER_BITMAP_FLAG).apply { this.alpha = alpha })
         }
+
+        fun drawText(page: RectF, dx: Float, dy: Float, paint: android.text.TextPaint,
+            opacity: Int, draw: () -> Unit) {
+            val bounds = RectF(page.left + normalizedBounds.left * page.width() - dx,
+                page.top + normalizedBounds.top * page.height() - dy,
+                page.left + normalizedBounds.right * page.width() - dx,
+                page.top + normalizedBounds.bottom * page.height() - dy)
+            FreeTextBackground.draw(samplingBitmap, bounds, paint, opacity, draw)
+        }
+
     }
 
     @Suppress("DEPRECATION")
@@ -100,12 +110,16 @@ internal object FreeTextInpaint {
                             it.bottom < height && it.intersect(strokesBox) }
                     }
             }
-            if (lines.isEmpty() || minOf(width, height) < 5 || !repair(pixels, width, height, strokesBox, lines, tightSelection)) {
+            val repairedPixels = IntArray(pixels.size)
+            if (lines.isEmpty() || minOf(width, height) < 5 ||
+                !repair(pixels, repairedPixels, width, height, strokesBox, lines, tightSelection)) {
                 local.recycle()
                 return null
             }
             local.setPixels(pixels, 0, width, 0, 0, width, height)
-            return Patch(local, RectF(crop.left.toFloat()/w, crop.top.toFloat()/h,
+            val samplingBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            samplingBitmap.setPixels(repairedPixels, 0, width, 0, 0, width, height)
+            return Patch(local, samplingBitmap, RectF(crop.left.toFloat()/w, crop.top.toFloat()/h,
                 crop.right.toFloat()/w, crop.bottom.toFloat()/h))
         } catch (e: RuntimeException) {
             AppLogger.log("FreeTextInpaint", "Could not repair text region", e)
@@ -115,7 +129,8 @@ internal object FreeTextInpaint {
         }
     }
 
-    private fun repair(pixels: IntArray, w: Int, h: Int, box: Rect, lines: List<Rect>, tightSelection: Boolean): Boolean {
+    private fun repair(pixels: IntArray, repairedPixels: IntArray, w: Int, h: Int, box: Rect,
+        lines: List<Rect>, tightSelection: Boolean): Boolean {
         val rgb = Mat(h, w, CvType.CV_8UC3)
         val gray = Mat()
         val mask = Mat()
@@ -163,9 +178,17 @@ internal object FreeTextInpaint {
             Photo.inpaint(rgb, mask, result, 3.0, Photo.INPAINT_TELEA)
             result.get(0, 0, bytes)
             for (i in pixels.indices) {
-                pixels[i] = if (strokes[i].toInt() == 0) Color.TRANSPARENT else
-                    Color.argb(Color.alpha(pixels[i]), bytes[3*i].toInt() and 255,
-                        bytes[3*i+1].toInt() and 255, bytes[3*i+2].toInt() and 255)
+                val repaired = Color.argb(Color.alpha(pixels[i]), bytes[3*i].toInt() and 255,
+                    bytes[3*i+1].toInt() and 255, bytes[3*i+2].toInt() and 255)
+                pixels[i] = if (strokes[i].toInt() == 0) Color.TRANSPARENT else repaired
+            }
+            // Smooth the complete repaired crop once, before discarding pixels outside the ink mask.
+            val sigma = (minOf(box.width(), box.height()) * 0.06).coerceIn(1.0, 8.0)
+            Imgproc.GaussianBlur(result, result, Size(0.0, 0.0), sigma)
+            result.get(0, 0, bytes)
+            for (i in repairedPixels.indices) {
+                repairedPixels[i] = Color.rgb(bytes[3*i].toInt() and 255,
+                    bytes[3*i+1].toInt() and 255, bytes[3*i+2].toInt() and 255)
             }
             return true
         } finally {

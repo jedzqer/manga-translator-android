@@ -1094,9 +1094,11 @@ class FloatingTranslationView @JvmOverloads constructor(
             ),
             imageHeight
         )
+        var repairPatch: FreeTextInpaint.Patch? = null
         if (bubble.source.isFreeBubble && bubbleRenderSettings.autoAdaptFreeBubbleColor) {
             if (opacityAlpha > 0) {
                 resolveRepairPatch(bubble, offset)?.let { patch ->
+                    repairPatch = patch
                     canvas.withClip(drawPath) { patch.draw(this, displayRect, opacityAlpha) }
                 }
             }
@@ -1112,7 +1114,8 @@ class FloatingTranslationView @JvmOverloads constructor(
         drawClippedContent(canvas, pageClip) {
             val textFillPercent = if (bubble.source == BubbleSource.TEXT_DETECTOR)
                 bubbleRenderSettings.freeBubbleTextFillPercent else bubbleRenderSettings.textFillPercent
-            drawTextInRect(this, bubble.text, textRect, textFillPercent, startFromTop)
+            drawTextInRect(this, bubble.text, textRect, textFillPercent, startFromTop,
+                repairPatch)
         }
     }
 
@@ -1474,7 +1477,8 @@ class FloatingTranslationView @JvmOverloads constructor(
         rawText: String,
         rect: RectF,
         textFillPercent: Int,
-        startFromTop: Boolean
+        startFromTop: Boolean,
+        freeTextPatch: FreeTextInpaint.Patch?
     ) {
         if (verticalLayoutEnabled) {
             canvas.withClip(rect) {
@@ -1485,7 +1489,9 @@ class FloatingTranslationView @JvmOverloads constructor(
                     fillPercent = textFillPercent,
                     basePaint = textPaint
                 )
-                VerticalTextRenderer.draw(this, rect, layout.paint, layout.layout, startFromTop)
+                val draw = { VerticalTextRenderer.draw(this, rect, layout.paint, layout.layout, startFromTop) }
+                if (freeTextPatch == null) draw()
+                else freeTextPatch.drawText(displayRect, 0f, 0f, layout.paint, fillPaint.alpha, draw)
             }
         } else {
             val layout = textLayoutCache.horizontal(
@@ -1501,7 +1507,9 @@ class FloatingTranslationView @JvmOverloads constructor(
             val top = BubbleTextPlacement.horizontalTextTop(rect, layout.layout.height, startFromTop)
             canvas.withClip(rect) {
                 withTranslation(left, top) {
-                    layout.layout.draw(this)
+                    val draw = { layout.layout.draw(this) }
+                    if (freeTextPatch == null) draw()
+                    else freeTextPatch.drawText(displayRect, left, top, layout.paint, fillPaint.alpha, draw)
                 }
             }
         }
