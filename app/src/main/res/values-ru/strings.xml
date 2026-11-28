@@ -170,7 +170,7 @@
     <string name="normal_bubble_free_shrink_percent_hint">Размер свободного пузыря (−30–30%)</string>
     <string name="normal_bubble_free_opacity_percent_hint">Непрозрачность свободных пузырьков (0–100)</string>
     <string name="normal_bubble_auto_adapt_color">Адаптивный цвет фона обычных пузырьков</string>
-    <string name="normal_bubble_free_auto_adapt_color">Бесплатный адаптивный цвет фона пузырьков</string>
+    <string name="normal_bubble_free_auto_adapt_color">Автоматически подстраиваться под фон</string>
     <string name="bubble_font_settings_button">Настройки шрифта</string>
     <string name="bubble_font_settings_button_uploaded">Настройки шрифта (загружено)</string>
     <string name="bubble_font_settings_title">Настройки шрифта</string>

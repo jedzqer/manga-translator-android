@@ -284,9 +284,6 @@ class LlmClient(
                             lastErrorCode = "HTTP $code"
                             lastErrorBody = body
                             null
-                        } else if (responseParser.isRefusedResponse(body, ApiFormat.OPENAI_COMPATIBLE)) {
-                            AppLogger.log("LlmClient", "OCR response refused on ${redactEndpoint(endpoint)}")
-                            null
                         } else {
                             val ocrContent = responseParser
                                 .parseResponseContent(body, ApiFormat.OPENAI_COMPATIBLE)?.trim()
@@ -617,11 +614,6 @@ class LlmClient(
                         lastErrorBody = body
                         null
                     } else {
-                        // 先检测截断：截断但内容可解析的响应也必须报错，避免静默返回不完整译文。
-                        if (responseParser.isRefusedResponse(body, protocol.format)) {
-                            throw LlmResponseException(LlmErrorCode.Custom("MODEL_RESPONSE_REFUSED"),
-                                "Model refused the request or filtered its output.", retryable = false)
-                        }
                         // 截断优先于空内容判定，给用户更准确的错误原因（达到 max token 上限）。
                         val truncated = responseParser.isTruncatedResponse(body, protocol.format)
                         val content = if (truncated) null else responseParser.parseResponseContent(body, protocol.format)

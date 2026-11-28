@@ -21,8 +21,8 @@ android {
         applicationId = "com.manga.translate.v3"
         minSdk = 24
         targetSdk = 37
-        versionCode = 135
-        versionName = "3.8.9"
+        versionCode = 136
+        versionName = "3.9.0"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -131,6 +131,7 @@ dependencies {
     implementation("net.lingala.zip4j:zip4j:2.11.6")
     implementation("io.github.awxkee:avif-coder:2.2.1")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("org.opencv:opencv:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.test:core:1.7.0")

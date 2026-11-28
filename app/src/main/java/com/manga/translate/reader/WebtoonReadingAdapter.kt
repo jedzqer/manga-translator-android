@@ -998,6 +998,10 @@ class WebtoonReadingAdapter(
                 bottom = if (lockedForEdit) currentImageHeight.toFloat() else 0f
             )
             binding.readingPageOverlay.onOffsetChanged = if (lockedForEdit) { bubbleId, offsetX, offsetY ->
+                lockedPageOffsets = lockedPageOffsets + (bubbleId to (offsetX to offsetY))
+                boundHolders[boundPath]?.forEach { other ->
+                    if (other !== this) other.binding.readingPageOverlay.setOffsets(lockedPageOffsets)
+                }
                 onLockedBubbleOffsetChanged?.invoke(bubbleId, offsetX, offsetY)
             } else {
                 null
@@ -1108,10 +1112,11 @@ class WebtoonReadingAdapter(
 
         private fun normalizeTranslation(translation: TranslationResult?): TranslationResult? {
             if (translation == null) return null
-            return if (translation.width == currentImageWidth && translation.height == currentImageHeight) {
+            val imageName = boundFile?.name ?: translation.imageName
+            return if (translation.imageName == imageName && translation.width == currentImageWidth && translation.height == currentImageHeight) {
                 translation
             } else {
-                translation.copy(width = currentImageWidth, height = currentImageHeight)
+                translation.copy(imageName = imageName, width = currentImageWidth, height = currentImageHeight)
             }
         }
 

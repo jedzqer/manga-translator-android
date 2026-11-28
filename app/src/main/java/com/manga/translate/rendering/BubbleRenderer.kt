@@ -162,6 +162,18 @@ class BubbleRenderer(context: Context) {
                     scaleY = scaleY,
                     shrinkPercent = resolveBubbleShrinkPercent(bubble)
                 )
+                val patch = if (bubble.source.isFreeBubble && useAutoAdaptColor && opacityAlpha > 0) {
+                    FreeTextInpaint.create(appContext, samplingBitmap, null, RectF(
+                        bubble.rect.left * scaleX / output.width, bubble.rect.top * scaleY / output.height,
+                        bubble.rect.right * scaleX / output.width, bubble.rect.bottom * scaleY / output.height
+                    ))
+                } else null
+                patch?.let {
+                    canvas.withClip(bubblePath) {
+                        it.draw(this, RectF(0f, 0f, output.width.toFloat(), output.height.toFloat()), opacityAlpha)
+                    }
+                    it.bitmap.recycle()
+                }
                 drawBubble(
                     canvas = canvas,
                     text = text,
@@ -169,6 +181,7 @@ class BubbleRenderer(context: Context) {
                     textFillPercent = if (bubble.source == BubbleSource.TEXT_DETECTOR)
                         bubbleRenderSettings.freeBubbleTextFillPercent else bubbleRenderSettings.textFillPercent,
                     verticalLayoutEnabled = verticalLayoutEnabled,
+                    fillBackground = !(bubble.source.isFreeBubble && useAutoAdaptColor),
                     startFromTop = BubbleTextPlacement.spillsAcrossPage(
                         bubble.rect,
                         translation.height
@@ -217,13 +230,14 @@ class BubbleRenderer(context: Context) {
         path: Path,
         textFillPercent: Int,
         verticalLayoutEnabled: Boolean,
+        fillBackground: Boolean,
         startFromTop: Boolean
     ) {
         path.computeBounds(bubbleBounds, true)
         if (bubbleBounds.width() <= 0f || bubbleBounds.height() <= 0f) return
         val textRect = BubbleTextScaling.resolveTextRect(path)
         if (textRect.width() <= 0f || textRect.height() <= 0f) return
-        canvas.drawPath(path, fillPaint)
+        if (fillBackground) canvas.drawPath(path, fillPaint)
         drawTextInRect(
             canvas,
             text,

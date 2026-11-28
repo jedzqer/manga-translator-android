@@ -169,7 +169,7 @@
     <string name="normal_bubble_free_shrink_percent_hint">Ajuste do balão livre (−30–30%)</string>
     <string name="normal_bubble_free_opacity_percent_hint">Opacidade do balão livre (0–100)</string>
     <string name="normal_bubble_auto_adapt_color">Cor de fundo adaptável do balão normal</string>
-    <string name="normal_bubble_free_auto_adapt_color">Cor de fundo adaptativa do balão livre</string>
+    <string name="normal_bubble_free_auto_adapt_color">Adaptar ao fundo automaticamente</string>
     <string name="bubble_font_settings_button">Configurações de fonte</string>
     <string name="bubble_font_settings_button_uploaded">Configurações de fonte (enviadas)</string>
     <string name="bubble_font_settings_title">Configurações de fonte</string>

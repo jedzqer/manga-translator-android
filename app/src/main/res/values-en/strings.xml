@@ -169,7 +169,7 @@
     <string name="normal_bubble_free_shrink_percent_hint">Free bubble size adjustment (−30–30%)</string>
     <string name="normal_bubble_free_opacity_percent_hint">Free bubble opacity (0–100)</string>
     <string name="normal_bubble_auto_adapt_color">Normal bubble adaptive background color</string>
-    <string name="normal_bubble_free_auto_adapt_color">Free bubble adaptive background color</string>
+    <string name="normal_bubble_free_auto_adapt_color">Automatically match the background</string>
     <string name="bubble_font_settings_button">Font Settings</string>
     <string name="bubble_font_settings_button_uploaded">Font settings (uploaded)</string>
     <string name="bubble_font_settings_title">Font Settings</string>

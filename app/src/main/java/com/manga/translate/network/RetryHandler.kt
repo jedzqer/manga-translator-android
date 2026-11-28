@@ -87,8 +87,7 @@ internal class RetryHandler(private val settingsStore: SettingsStore) {
             "billing hard limit", "payment required", "insufficient balance", "insufficient credits",
             "credit balance is too low", "out of credits", "quota exhausted", "exceeded your current quota",
             "invalid_api_key", "invalid api key", "unauthorized", "forbidden", "authentication_error",
-            "invalid parameter", "invalid_parameter", "unknown parameter", "unsupported parameter",
-            "content_filter", "content policy violation", "safety filter", "refusal"
+            "invalid parameter", "invalid_parameter", "unknown parameter", "unsupported parameter"
         )
         private val temporaryGatewayFailures = listOf(
             "temporarily unavailable", "temporary unavailable", "service unavailable", "server busy",

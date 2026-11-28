@@ -44,6 +44,30 @@ class ReadingFragmentTranslationTest {
     @get:Rule val temporaryFolder = TemporaryFolder()
 
     @Test
+    fun `confirm saves dragged manual bubble on a legacy page with an empty image name`() {
+        withEditingFragment { fragment, store, image ->
+            val binding = getField(fragment, "_binding") as FragmentReadingBinding
+            val bitmap = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888)
+            binding.readingImage.setImageBitmap(bitmap)
+            val legacy = manualResult(image).let { result ->
+                result.copy(imageName = "", bubbles = result.bubbles.map { it.copy(ownerImageName = image.name) })
+            }
+            val update = ReadingFragment::class.java.getDeclaredMethod(
+                "updateOverlay", TranslationResult::class.java, android.graphics.Bitmap::class.java
+            ).apply { isAccessible = true }
+            update.invoke(fragment, legacy, bitmap)
+            binding.translationOverlay.setOffsets(mapOf(1 to (12f to 7f)))
+            update.invoke(fragment, getField(fragment, "currentTranslation"), bitmap)
+            invoke(fragment, "toggleEditMode")
+            awaitMain { !(getField(fragment, "isEditMode") as Boolean) }
+            val saved = store.load(image)!!
+            assertEquals(image.name, saved.imageName)
+            assertEquals(RectF(22f, 17f, 92f, 87f), saved.bubbles.single().rect)
+            assertEquals("你好", saved.bubbles.single().text)
+        }
+    }
+
+    @Test
     fun `exit edit waits for blocked save before pending bubbles can be merged`() {
         withEditingFragment { fragment, store, image ->
             val pending = manualResult(image).copy(bubbles = listOf(

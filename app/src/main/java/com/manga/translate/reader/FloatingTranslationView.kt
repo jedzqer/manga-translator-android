@@ -21,6 +21,7 @@ import androidx.core.graphics.withTranslation
 import com.manga.translate.model.BubbleSource
 import com.manga.translate.model.BubbleTranslation
 import com.manga.translate.model.TranslationResult
+import com.manga.translate.rendering.FreeTextInpaint
 import com.manga.translate.rendering.BubbleColorSampler
 import com.manga.translate.rendering.BubbleFontResolver
 import com.manga.translate.rendering.BubbleShapePaths
@@ -163,6 +164,9 @@ class FloatingTranslationView @JvmOverloads constructor(
     private var sourceBitmap: Bitmap? = null
     private var sourceImageFile: java.io.File? = null
     private val bubbleColorCache = mutableMapOf<BubbleIdentity, Int>()
+    private val repairRegions = mutableMapOf<BubbleIdentity, RectF>()
+    private val repairJobs = mutableMapOf<BubbleIdentity, Job>()
+    private val repairPatches = mutableMapOf<BubbleIdentity, FreeTextInpaint.Patch?>()
     private val bubbleColorJobs = mutableMapOf<BubbleIdentity, Job>()
     private val bubbleColorSemaphore = Semaphore(2)
     private var bubbleColorGeneration = 0
@@ -1076,10 +1080,11 @@ class FloatingTranslationView @JvmOverloads constructor(
         val offset = offsets[bubbleIdentity(bubble)] ?: 0f to 0f
         val shrinkPercent = resolveBubbleShrinkPercent(bubble)
         val opacityAlpha = resolveBubbleOpacityAlpha(bubble)
-        resolveBubbleFillColor(bubble, offset, opacityAlpha)
         val drawPath = resolveBubblePath(bubble, offset, shrinkPercent) ?: return
         if (bubbleBounds.width() <= 0f || bubbleBounds.height() <= 0f) return
         val pageClip = pageClipRect()
+        if (!RectF.intersects(bubbleBounds, pageClip)) return
+        resolveBubbleFillColor(bubble, offset, opacityAlpha)
         val startFromTop = BubbleTextPlacement.spillsAcrossPage(
             RectF(
                 bubble.rect.left + offset.first,
@@ -1089,14 +1094,20 @@ class FloatingTranslationView @JvmOverloads constructor(
             ),
             imageHeight
         )
-        // Empty bubbles still need a filled frame in edit mode; text layout can exit early.
-        val hasText = bubble.hasDisplayText()
-        if (lightweightDraw || !hasText) {
+        if (bubble.source.isFreeBubble && bubbleRenderSettings.autoAdaptFreeBubbleColor) {
+            if (opacityAlpha > 0) {
+                resolveRepairPatch(bubble, offset)?.let { patch ->
+                    canvas.withClip(drawPath) { patch.draw(this, displayRect, opacityAlpha) }
+                }
+            }
+            if (editMode && repairPatches[bubbleIdentity(bubble)] == null && !bubble.hasDisplayText()) {
+                canvas.drawPath(drawPath, previewStrokePaint)
+            }
+        } else {
             drawClippedPath(canvas, drawPath, pageClip)
-            return
         }
+        if (lightweightDraw || !bubble.hasDisplayText()) return
         val textRect = BubbleTextScaling.resolveTextRect(Path(drawPath))
-        drawClippedPath(canvas, drawPath, pageClip)
         if (textRect.width() <= 0f || textRect.height() <= 0f) return
         drawClippedContent(canvas, pageClip) {
             val textFillPercent = if (bubble.source == BubbleSource.TEXT_DETECTOR)
@@ -1325,6 +1336,36 @@ class FloatingTranslationView @JvmOverloads constructor(
         fillPaint.alpha = opacityAlpha
     }
 
+    private fun resolveRepairPatch(
+        bubble: BubbleTranslation,
+        offset: Pair<Float, Float>
+    ): FreeTextInpaint.Patch? {
+        val identity = bubbleIdentity(bubble)
+        val rect = if (identity == resizeDragId && resizeDragActive && !resizeDragWorkingRect.isEmpty) {
+            resizeDragWorkingRect
+        } else bubble.rect
+        val region = RectF(
+            (rect.left + offset.first) / imageWidth, (rect.top + offset.second) / imageHeight,
+            (rect.right + offset.first) / imageWidth, (rect.bottom + offset.second) / imageHeight
+        )
+        if (repairRegions[identity] == region) return repairPatches[identity]
+        val bitmap = sourceBitmap
+        val file = sourceImageFile
+        if (bitmap == null && file == null) return null
+        repairRegions[identity] = region
+        repairJobs.remove(identity)?.cancel()
+        repairPatches.remove(identity)
+        repairJobs[identity] = viewScope.launch {
+            val patch = bubbleColorSemaphore.withPermit {
+                withContext(Dispatchers.Default) { FreeTextInpaint.create(context, bitmap, file, region) }
+            }
+            repairJobs.remove(identity)
+            repairPatches[identity] = patch
+            requestFullRedraw()
+        }
+        return null
+    }
+
     private fun scheduleBubbleColorSample(
         identity: BubbleIdentity,
         left: Float,
@@ -1371,12 +1412,19 @@ class FloatingTranslationView @JvmOverloads constructor(
     }
 
     private fun cancelBubbleColorJobsExcept(validIdentities: Set<BubbleIdentity>) {
+        repairRegions.keys.retainAll(validIdentities)
+        repairPatches.keys.retainAll(validIdentities)
+        repairJobs.keys.filterNot { it in validIdentities }.forEach { repairJobs.remove(it)?.cancel() }
         val obsolete = bubbleColorJobs.keys.filterNot { it in validIdentities }
         if (obsolete.isEmpty()) return
         obsolete.forEach { identity -> bubbleColorJobs.remove(identity)?.cancel() }
     }
 
     private fun cancelBubbleColorJobs() {
+        repairRegions.clear()
+        repairPatches.clear()
+        repairJobs.values.forEach { it.cancel() }
+        repairJobs.clear()
         bubbleColorGeneration += 1
         bubbleColorJobs.values.forEach { it.cancel() }
         bubbleColorJobs.clear()

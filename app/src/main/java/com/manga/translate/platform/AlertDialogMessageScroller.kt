@@ -55,7 +55,6 @@ private fun disableFrameworkScrollBars(view: View) {
     // Some Android builds crash in ScrollBarDrawable methods when dialog scrollbars are enabled.
     view.isVerticalScrollBarEnabled = false
     view.isHorizontalScrollBarEnabled = false
-    view.isScrollbarFadingEnabled = false
     if (view is ViewGroup) {
         view.clipToPadding = true
     }
@@ -83,7 +82,6 @@ private fun AlertDialog.Builder.createSafeScrollableMessageView(message: CharSeq
                 isFillViewport = true
                 isVerticalScrollBarEnabled = false
                 isHorizontalScrollBarEnabled = false
-                isScrollbarFadingEnabled = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 addView(
                     messageView,

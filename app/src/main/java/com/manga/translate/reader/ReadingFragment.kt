@@ -776,8 +776,7 @@ class ReadingFragment : Fragment() {
         currentImageFile = imageFile
         currentTranslation = when {
             translation == null -> TranslationResult(imageFile.name, width, height, emptyList())
-            translation.width == width && translation.height == height -> translation
-            else -> translation.copy(width = width, height = height)
+            else -> translation.copy(imageName = imageFile.name, width = width, height = height)
         }
         webtoonLockedPageIndex = index
         webtoonLockedPagePath = imageFile.absolutePath
@@ -816,10 +815,12 @@ class ReadingFragment : Fragment() {
             binding.translationOverlay.setSourceImageFile(null)
             return
         }
+        val pageName = currentImageFile?.name ?: translation?.imageName.orEmpty()
         val normalized = when {
-            translation == null -> TranslationResult("", resolvedWidth, resolvedHeight, emptyList())
-            translation.width == resolvedWidth && translation.height == resolvedHeight -> translation
-            else -> translation.copy(width = resolvedWidth, height = resolvedHeight)
+            translation == null -> TranslationResult(pageName, resolvedWidth, resolvedHeight, emptyList())
+            translation.imageName == pageName && translation.width == resolvedWidth &&
+                translation.height == resolvedHeight -> translation
+            else -> translation.copy(imageName = pageName, width = resolvedWidth, height = resolvedHeight)
         }
         currentTranslation = normalized
         binding.translationOverlay.setDisplayRect(rect)
@@ -828,7 +829,7 @@ class ReadingFragment : Fragment() {
         binding.translationOverlay.setSourceImageFile(currentImageFile)
         binding.translationOverlay.setCurrentImageName(currentImageFile?.name ?: normalized.imageName)
         binding.translationOverlay.setTranslations(normalized)
-        binding.translationOverlay.setOffsets(emptyMap())
+        if (!isEditMode) binding.translationOverlay.setOffsets(emptyMap())
         binding.translationOverlay.setEditOverflowBounds(0f, 0f)
         binding.translationOverlay.setEditMode(isEditMode)
         binding.translationOverlay.visibility = View.VISIBLE
@@ -1702,7 +1703,6 @@ class ReadingFragment : Fragment() {
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val updatedText = input.text?.toString().orEmpty()
-                persistCurrentTranslation(forceSave = true)
                 val refreshed = currentTranslation ?: return@setPositiveButton
                 val updatedBubbles = refreshed.bubbles.map { current ->
                     if (current.id == bubbleId) {
@@ -1713,8 +1713,7 @@ class ReadingFragment : Fragment() {
                 }
                 val updated = refreshed.copy(bubbles = updatedBubbles)
                 currentTranslation = updated
-                renderCurrentTranslation()
-                saveCurrentTranslation()
+                renderAndMaybePersistCurrentTranslation()
             }
             .show()
     }

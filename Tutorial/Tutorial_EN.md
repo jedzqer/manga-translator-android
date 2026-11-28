@@ -109,7 +109,7 @@ Both per-request and usage-based billing can be suitable. Compare the number of 
 
 - If full-text fast translation is too slow, turn it off to use concurrent page-by-page translation instead.
 - Adjust normal or free-text bubble opacity under **Normal Bubble Settings** when bubbles cover too much artwork. If a rendered bubble covers the original bubble border, slightly increase **Bubble inset**. Floating-window bubbles have separate settings.
-- Free-text bubbles automatically adapt their text color to the background.
+- **What if a bubble smudges the artwork?** By default, the reader and exports try to erase the original lettering in free-text regions and manually drawn boxes, and adjust the translation’s text color to suit the background. If this smudges outlines, screentones, or bubble borders, open **Settings → Normal Bubble Settings** and turn off **Automatically match the background**.
 - Customize the global translation style in Settings, or set a style for a folder. Chapters in a collection share the collection's style. Turning off **Follow Global Style** and leaving the field empty adds no style instruction.
 - If meaningless single characters are often translated, add a requirement to the global or folder style, for example "Ignore meaningless single characters; do not transliterate or keep garbled text." Leaving those translations empty removes their bubbles.
 - Upload a custom font or enable bold text under **Font Settings**. Normal and floating-window bubbles share this font setting.

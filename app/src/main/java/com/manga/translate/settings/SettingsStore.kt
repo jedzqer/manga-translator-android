@@ -190,7 +190,7 @@ data class NormalBubbleRenderSettings(
     val freeBubbleOpacityPercent: Int,
     val useHorizontalText: Boolean,
     val autoAdaptBubbleColor: Boolean = false,
-    val autoAdaptFreeBubbleColor: Boolean = true,
+    val autoAdaptFreeBubbleColor: Boolean = SettingsStore.DEFAULT_NORMAL_FREE_BUBBLE_AUTO_ADAPT_COLOR,
     val font: BubbleFont = BubbleFont.SYSTEM_DEFAULT,
     val customFontUrl: String = "",
     val customFontFileName: String = "",

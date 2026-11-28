@@ -49,33 +49,6 @@ internal class ResponseParser {
         }
     }
 
-    fun isRefusedResponse(body: String, apiFormat: ApiFormat): Boolean {
-        val json = runCatching { JSONObject(body) }.getOrNull() ?: return false
-        return when (apiFormat) {
-            ApiFormat.OPENAI_COMPATIBLE -> {
-                val choice = json.optJSONArray("choices")?.optJSONObject(0)
-                choice?.optString("finish_reason").equals("content_filter", ignoreCase = true) ||
-                    (choice?.optJSONObject("message")?.opt("refusal") as? String)?.isNotBlank() == true
-            }
-            ApiFormat.OPENAI_RESPONSES -> {
-                val output = json.optJSONArray("output")
-                json.optJSONObject("incomplete_details")?.optString("reason") == "content_filter" ||
-                    (0 until (output?.length() ?: 0)).any { i ->
-                        val content = output?.optJSONObject(i)?.optJSONArray("content")
-                        (0 until (content?.length() ?: 0)).any { j ->
-                            content?.optJSONObject(j)?.optString("type") == "refusal"
-                        }
-                    }
-            }
-            ApiFormat.GEMINI -> {
-                val block = json.optJSONObject("promptFeedback")?.optString("blockReason").orEmpty()
-                (block.isNotEmpty() && block != "BLOCK_REASON_UNSPECIFIED") ||
-                    json.optJSONArray("candidates")?.optJSONObject(0)?.optString("finishReason") in
-                    setOf("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY")
-            }
-        }
-    }
-
     private fun hasTruncationMarker(array: JSONArray?, key: String, truncatedValue: String): Boolean {
         if (array == null) return false
         for (i in 0 until array.length()) {

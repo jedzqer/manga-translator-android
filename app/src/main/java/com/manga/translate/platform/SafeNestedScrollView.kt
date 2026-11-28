@@ -13,9 +13,9 @@ open class SafeNestedScrollView @JvmOverloads constructor(
     init {
         // Disable framework scrollbars by default to avoid OEM/framework crashes
         // in ScrollBarDrawable code paths.
+        // Leave fading at its default. Disabling it activates the scroll cache even with both bars off.
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
-        isScrollbarFadingEnabled = false
     }
 
     private var scrollBarCrashOccurred = false

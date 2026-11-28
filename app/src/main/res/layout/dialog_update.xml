@@ -11,8 +11,7 @@
         android:clipToPadding="false"
         android:fillViewport="true"
         android:overScrollMode="ifContentScrolls"
-        android:scrollbars="none"
-        android:fadeScrollbars="false">
+        android:scrollbars="none">
 
         <LinearLayout
             android:layout_width="match_parent"

@@ -182,7 +182,7 @@
     <string name="normal_bubble_free_shrink_percent_hint">游離氣泡大小調整 (−30–30%)</string>
     <string name="normal_bubble_free_opacity_percent_hint">游離氣泡不透明度 (0–100)</string>
     <string name="normal_bubble_auto_adapt_color">普通氣泡自適應背景色</string>
-    <string name="normal_bubble_free_auto_adapt_color">游離氣泡自適應背景色</string>
+    <string name="normal_bubble_free_auto_adapt_color">自動適配背景</string>
     <string name="bubble_font_settings_button">字型設定</string>
     <string name="bubble_font_settings_button_uploaded">字型設定（已上傳）</string>
     <string name="bubble_font_settings_title">字型設定</string>
